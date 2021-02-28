@@ -47,9 +47,8 @@ In a mission with a group called `Aerial-2` set up the triggers:
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
 |MISSION START|DO SCRIPT FILE|respawnable_on_call.lua|
 |MISSION START|DO SCRIPT|respawnable_on_call.addGroup("Aerial-2",60,300,300,"red")|
-|---|---|---|
 
 
 Then the red coalition will have a "Respawnable Assets" sub-menu in the `F10` comms menu,
 from which they can request that `Aerial-2` is respawned. If available it will activate 
-60 seconds after user selects this option. Once the group dies or goes RTB (it may take a minute for the script to detect this) a cooldown os 5 minutes (300 seconds) begins, during which time the group can not be respawned - players instead receive a message saying when the group will be available again.
+60 seconds after user selects this option. Once the group dies or goes RTB (it may take a minute for the script to detect this) a cooldown of 5 minutes (300 seconds) begins, during which time the group can not be respawned - players instead receive a message saying when the group will be available again.
