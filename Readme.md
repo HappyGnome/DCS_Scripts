@@ -2,6 +2,9 @@
 
 This repository contains some lua scripts for making DCS World missions.
 
+## Download
+See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
+
 ## General Usage
 All scripts assume the use of the [mist helper library for DCS](https://github.com/mrSkortch/MissionScriptingTools/releases)
 
