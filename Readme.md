@@ -43,11 +43,11 @@ Example
 In a mission with a group called `Aerial-2` set up the triggers:
 
 |Trigger|Action|Action Detail|
-|=======|======|============|
+|---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
 |MISSION START|DO SCRIPT FILE|respawnable_on_call.lua|
 |MISSION START|DO SCRIPT|respawnable_on_call.addGroup("Aerial-2",60,300,300,"red")|
-|====|====|====
+|---|---|---|
 
 
 Then the red coalition will have a "Respawnable Assets" sub-menu in the `F10` comms menu,
