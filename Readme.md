@@ -20,7 +20,7 @@ Initialization
 =====
 Call `DO SCRIPT FILE -> respawnable_on_call.lua`
 
-Add an assets
+Add an asset
 ====
 At any point in the mission after initialization, a group can be added by calling `DO SCRIPT -> respawnable_on_call.addGroup(<groupName>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
 
