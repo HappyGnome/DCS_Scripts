@@ -43,9 +43,15 @@ onTick=function(self, now) --> 	called during the poll step so that the pool can
 asset_pools.pools_={}
 
 --[[
-Logger for this module
+Loggers for this module
 --]]
 asset_pools.log_i=mist.Logger:new("asset_pools","info")
+asset_pools.log_e=mist.Logger:new("asset_pools","error")
+
+--error handler for xpcalls. wraps asset_pools.log_e:error
+asset_pools.catchError=function(err)
+	asset_pools.log_e:error(err)
+end 
 
 
 --RESPAWNABLE_ON_CALL-----------------------------------------------------------------------------------------
@@ -117,7 +123,7 @@ asset_pools.RespawnableOnCall={
 		local subMenuName="subMenu_"..coa_string
 		if asset_pools.RespawnableOnCall[subMenuName]==nil then--create submenu
 			asset_pools.RespawnableOnCall[subMenuName] = 
-				missionCommands.addSubMenuForCoalition(coa, coa_string.." Assets",nil)
+				missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
 		end	
 		return subMenuName
 	end,
@@ -164,7 +170,7 @@ asset_pools.RespawnableOnCall.meta_.__index={ --Metatable for this "class"
 	end,
 
 	--Asset pool override
-	onTick=function(self, now)			
+	onTick=function(self, now)	
 	end,
 
 	--Asset pool override
@@ -223,16 +229,16 @@ asset_pools.RespawnableOnCall.meta_.__index={ --Metatable for this "class"
 	--]]
 	createComms=function(self)
 		--add menu options
-		if self.coa then --coalition specific addition	
-			local subMenuName=asset_pools.RespawnableOnCall.ensureCoalitionSubmenu_(self.coa)
+		if self.side then --coalition specific addition	
+			local subMenuName=asset_pools.RespawnableOnCall.ensureCoalitionSubmenu_(self.side)
 			
-			missionCommands.addCommandForCoalition(self.coa,self.groupName,asset_pools.RespawnableOnCall[subMenuName],
-				self.handleSpawnRequest_,{self})
+			missionCommands.addCommandForCoalition(self.side,self.groupName,asset_pools.RespawnableOnCall[subMenuName],
+				self.handleSpawnRequest_,self)
 		else --add for all	
 			local subMenuName=asset_pools.RespawnableOnCall.ensureUniversalSubmenu_()
 			
 			missionCommands.addCommand(self.groupName,asset_pools.RespawnableOnCall[subMenuName],
-				self.handleSpawnRequest_,{self})
+				self.handleSpawnRequest_,self)
 		end
 	end
 }--meta_
@@ -246,7 +252,7 @@ asset_pools.RespawnableOnCall.meta_.__index={ --Metatable for this "class"
 Convert coalition name to coalition.side
 
 return coalition.side, or nil if none recognised 
-name is not case sensitive, but otherwise should be "red" or "blue" to name a particular faction
+name is not case sensitive, but otherwise should be "red", "blue" or "neutral" to name a particular faction
 --]]
 ap_utils.stringToSide = function(name)
 	name=string.lower(name) --remove case sensitivity
@@ -254,19 +260,23 @@ ap_utils.stringToSide = function(name)
 		return coalition.side.RED
 	elseif name == "blue" then
 		return coalition.side.BLUE
+	elseif name == "neutral" then
+		return coalition.side.NEUTRAL
 	end--else nil
 end
 
 --[[
-Convert coalition to "Red "Blue" or "Neutral"
+Convert coalition to "Red", "Blue", "Neutral", or "None"
 --]]
 ap_utils.sideToString = function(side)
 	if side == coalition.side.RED then
 		return "Red"
 	elseif side == coalition.side.BLUE then
 		return "Blue"
-	else
+	elseif side == coalition.side.NEUTRAL then
 		return "Neutral"
+	else
+		return "None"
 	end
 end
 
@@ -295,8 +305,10 @@ end
 		int -> time (s) before respawn requests allowed when unit goes idle
 	delayWhenDead ==
 		int -> time (s) before respawn requests allowed when unit is dead
-	coalitionName == "red", "blue", or "all" (anything else counts as "all")
+	coalitionName == "red", "blue","neutral" or "all" (anything else counts as "all")
 		-> coalition name that can spawn group and receive updates about them
+		-> Note that neutral players don't seem to have a dedicated comms menu 
+		-> units added with "neutral" will not be spawnable!
 --]]
 asset_pools.createRespawnableGroup=function(groupName, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
 	
@@ -326,7 +338,14 @@ Private: do poll of first unit in each watched group
 asset_pools.doPoll_=function()
 
 	local now=timer.getTime()
-	for groupName,pool in pairs(asset_pools.tracked_groups_) do
+	
+	local groupName=""--loop variables for use in the poll lambda (avoid making lambda in a loop)
+	local poolAt=0
+	
+	--Lambda that does the polling work
+	--wrap the poll work in a function so we can run it in xpcall, without crasghing the loop
+	local function pollGroup()
+		local pool = asset_pools.pools_[poolAt]
 		if pool.inPoll(pool,groupName) then --This is a group that needs to be polled
 			local unit = nil
 			local group = Group.getByName(groupName)
@@ -362,20 +381,36 @@ asset_pools.doPoll_=function()
 			end
 			
 			if isDead then
-				pool.groupDead(pool,groupName)				
+				pool.groupDead(pool,groupName,now)				
 			elseif not isActive then
-				pool.groupIdle(pool,groupName)
+				pool.groupIdle(pool,groupName,now)
 			end
 		end
+	end--pollGroup
+	
+	for k,v in pairs(asset_pools.tracked_groups_) do
+		--parameters for the lambda
+		groupName=k
+		poolAt=v
+		
+		xpcall(pollGroup,asset_pools.catchError) --safely do work of polling the group
+	end
+	
+	local tickPool--parameter for the lambda - pool to update
+	
+	--lambda for onTick callbacks
+	local function doTick()
+		tickPool.onTick(tickPool,asset_pools.poll_interval)
 	end
 	
 	--do misc state updates for each pool
 	for k,pool in ipairs(asset_pools.pools_) do
-		pool.onTick(pool,asset_pools.poll_interval)
+		tickPool=pool
+		xpcall(doTick,asset_pools.catchError) --safely do work of dispatching tick events
 	end
 
 	--schedule next poll
-	mist.scheduleFunction(respawnable_on_call.doPoll_,nil,now+asset_pools.poll_interval)
+	mist.scheduleFunction(asset_pools.doPoll_,nil,now+asset_pools.poll_interval)
 end
 
 mist.scheduleFunction(asset_pools.doPoll_,nil,timer.getTime()+asset_pools.poll_interval)
