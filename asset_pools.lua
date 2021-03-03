@@ -19,9 +19,9 @@ asset_pools.poll_interval=60 --seconds, time between updates of group availabili
 List of groups belonging to all pools. Lifecyclye state of all assets is updated at the same time
 
 keys - groupName
-value - key of associated pool in asset_pools.pools
+value - key of associated pool in asset_pools.pools, or nil if state should not be updated
 
-N.B. a group can only belong to one pool!
+N.B. a group can only belong to one pool at a time. Adding it to multiple pools has undefined results
 --]]
 asset_pools.tracked_groups_={} 
 
@@ -29,18 +29,23 @@ asset_pools.tracked_groups_={}
 --[[
 Table of pool objects. Each should be instances a class implementing:
 
-inPoll=function(self,groupName), --> called each poll, return true if the group should have its state checked
+poolId --> key of the pool in asset_pools.pools_
 
 groupDead=function(self,groupName, now), --> called when group despawns or dies
 												now == Mission time at death detection
+											return true to keep polling this group, or false to stop
 
 groupIdle=function(self,groupName, now) --> called when group no-longer has a task
 												now == Mission time at idle detection
+											return true to keep polling this group, or false to stop
 
 onTick=function(self, now) --> 	called during the poll step so that the pool can do update work
 									now == Mission time at the tick
+								return true to keep receiving tick events and polling associated groups
+									or false to stop
 --]]
 asset_pools.pools_={}
+asset_pools.next_pool_id_=0 --id of next item to add
 
 --[[
 Loggers for this module
@@ -62,10 +67,15 @@ asset_pools.RespawnableOnCall={
 
 	meta_={},		
 	
-	--Return a new instance of RespawnableOnCall
+	-- Return a new instance of RespawnableOnCall
+	-- param id = index of this pool in pools list
 	new = function()
 		local instance={}
 		--Properties
+		
+		--Asset pool override
+		instance.poolId = nil
+		
 		
 		--[[
 		Set the group tracked by this asset_pool
@@ -104,12 +114,6 @@ asset_pools.RespawnableOnCall={
 		--]]
 		instance.side = nil
 		
-		
-		--[[
-		Private: the (one)controlled group is eligible for polling?
-		--]]
-		instance.inPoll_=false
-		
 		setmetatable(instance,asset_pools.RespawnableOnCall.meta_)
 		
 		return instance
@@ -146,36 +150,32 @@ asset_pools.RespawnableOnCall={
 asset_pools.RespawnableOnCall.meta_.__index={ --Metatable for this "class"
 
 	--Asset pool override
-	groupDead=function(self, groupName, now)	
-		self.inPoll_=false --disable polling
-		
+	groupDead=function(self, groupName, now)			
 		self.canRequestAt
 			= now + self.delayWhenDead
 			
 		--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
 		--asset_pools.log_i:info(self.groupName.." was detected dead.")
-			
 		
+		--stop polling this group
+		return false		
 	end,
 
 	--Asset pool override
-	groupIdle=function(self, groupName, now)	
-		self.inPoll_=false
-		
+	groupIdle=function(self, groupName, now)			
 		self.canRequestAt
 			= now + self.delayWhenIdle
 			
 		--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
 		--asset_pools.log_i:info(groupName.." was detected idle.")
+		
+		--stop polling this group
+		return false 
 	end,
 
 	--Asset pool override
 	onTick=function(self, now)	
-	end,
-
-	--Asset pool override
-	inPoll=function(self, groupName)	
-		return self.inPoll_
+		return true -- keep polling
 	end,
 
 
@@ -221,7 +221,7 @@ asset_pools.RespawnableOnCall.meta_.__index={ --Metatable for this "class"
 			trigger.action.activateGroup(group) --ensure group is active
 		end
 		
-		self.inPoll_=true
+		asset_pools.addGroupToPoll(self,self.groupName)
 	end,
 
 	--[[
@@ -315,6 +315,7 @@ asset_pools.createRespawnableGroup=function(groupName, spawnDelay, delayWhenIdle
 	local coa=ap_utils.stringToSide(coalitionName)
 	
 	local newPool=asset_pools.RespawnableOnCall.new()
+	
 	newPool.canRequestAt=true --allow immediate requests
 	newPool.spawnDelay=spawnDelay
 	newPool.delayWhenIdle=delayWhenIdle
@@ -323,12 +324,34 @@ asset_pools.createRespawnableGroup=function(groupName, spawnDelay, delayWhenIdle
 	newPool.groupName=groupName
 	
 	--add pool and add group to poll list, with an association to this group
-	table.insert(asset_pools.pools_,newPool)
-	asset_pools.tracked_groups_[groupName]=table.maxn(asset_pools.pools_)
+	asset_pools.addPoolToPoll_(newPool)
 	
-	newPool.createComms(newPool)
+	newPool:createComms()
 	
 end--asset_pools.createRespawnableGroup
+
+--[[
+Add a pool to poll list, assign it its index as an id
+--]]
+asset_pools.addPoolToPoll_ = function(pool)
+	pool.poolId = asset_pools.next_pool_id_ 
+	asset_pools.pools_[pool.poolId]=pool	
+	asset_pools.next_pool_id_ = asset_pools.next_pool_id_ + 1
+end
+
+--[[
+Add groupName to the poll list associated to a given pool
+--]]
+asset_pools.addGroupToPoll = function(pool,groupName)
+	asset_pools.tracked_groups_[groupName]=pool.poolId
+end
+
+--[[
+Remove groupName from the poll list
+--]]
+asset_pools.removeGroupFromPoll = function(groupName)
+	asset_pools.tracked_groups_[groupName]=nil
+end
 
 --GLOBAL POLL---------------------------------------------------------------------------------------
 
@@ -340,54 +363,68 @@ asset_pools.doPoll_=function()
 	local now=timer.getTime()
 	
 	local groupName=""--loop variables for use in the poll lambda (avoid making lambda in a loop)
-	local poolAt=0
+	local poolAt=nil
 	
 	--Lambda that does the polling work
 	--wrap the poll work in a function so we can run it in xpcall, without crasghing the loop
 	local function pollGroup()
+		if not poolAt then return end -- group is not set up for polling
+		
 		local pool = asset_pools.pools_[poolAt]
-		if pool.inPoll(pool,groupName) then --This is a group that needs to be polled
-			local unit = nil
-			local group = Group.getByName(groupName)
-			if group then
-				local units = Group.getUnits(group)
-				if units then
-					unit=units[1]
-				end				
-			end	
-			
-			local isActive = false
-			local isDead = true -- being dead takes precedence over being inactive 
-								-- if the unit doesn't exist we also count it as dead
-			
-			if unit then
-				if Unit.getLife(unit)>1.0 then
-					isDead=false
-					
-					--check whether group or unit have a controller with active task
-					
-					local controller=Unit.getController(unit)
-					local groupController=Group.getController(group)
-					
-					--if controller then trigger.action.outText("DB2",5)end--DEBUG
-					--if groupController then trigger.action.outText("DB3",5)end--DEBUG
-					
-					local unitHasTask = controller and Controller.hasTask(controller)
-					local groupHasTask =  groupController and Controller.hasTask(groupController)
-					
-					isActive= Unit.isActive(unit) and (unitHasTask or groupHasTask)					
-				end
-				--trigger.action.outText("DB1",5)--DEBUG
+		
+		if not pool then -- associated pool disabled - prevent this group from polling for now
+			asset_pools.tracked_groups_[groupName]=nil
+			return
+		end
+		
+		-- || group and associated pool now both alive for polling ||
+		-- vv                                                      vv
+		
+		local unit = nil
+		local group = Group.getByName(groupName)
+		if group then
+			local units = Group.getUnits(group)
+			if units then
+				unit=units[1]
+			end				
+		end	
+		
+		local isActive = false
+		local isDead = true -- being dead takes precedence over being inactive 
+							-- if the unit doesn't exist we also count it as dead
+		
+		if unit then
+			if Unit.getLife(unit)>1.0 then
+				isDead=false
+				
+				--check whether group or unit have a controller with active task
+				
+				local controller=Unit.getController(unit)
+				local groupController=Group.getController(group)
+				
+				--if controller then trigger.action.outText("DB2",5)end--DEBUG
+				--if groupController then trigger.action.outText("DB3",5)end--DEBUG
+				
+				local unitHasTask = controller and Controller.hasTask(controller)
+				local groupHasTask =  groupController and Controller.hasTask(groupController)
+				
+				isActive= Unit.isActive(unit) and (unitHasTask or groupHasTask)					
 			end
-			
-			if isDead then
-				pool.groupDead(pool,groupName,now)				
-			elseif not isActive then
-				pool.groupIdle(pool,groupName,now)
+			--trigger.action.outText("DB1",5)--DEBUG
+		end
+		
+		if isDead then
+			if not pool:groupDead(groupName,now) then -- if pool requests to stop polling this group
+				asset_pools.tracked_groups_[groupName]=nil
+			end 
+		elseif not isActive then
+			if not pool:groupIdle(groupName,now) then -- if pool requests to stop polling this group
+				asset_pools.tracked_groups_[groupName]=nil
 			end
 		end
-	end--pollGroup
 	
+	end--pollGroup
+
 	for k,v in pairs(asset_pools.tracked_groups_) do
 		--parameters for the lambda
 		groupName=k
@@ -400,7 +437,10 @@ asset_pools.doPoll_=function()
 	
 	--lambda for onTick callbacks
 	local function doTick()
-		tickPool.onTick(tickPool,asset_pools.poll_interval)
+		if not tickPool:onTick(asset_pools.poll_interval) then
+		-- if pool requests to stop polling it and its groups
+			asset_pools.pools_[tickPool.poolId]=nil
+		end
 	end
 	
 	--do misc state updates for each pool
