@@ -13,6 +13,13 @@ end
 --NAMESPACES---------------------------------------------------------------------------------------------- 
 ap_utils={}
 
+--[[
+Loggers for this module
+--]]
+ap_utils.log_i=mist.Logger:new("ap_utils","info")
+ap_utils.log_e=mist.Logger:new("ap_utils","error")
+
+
 --UTILS------------------------------------------------------------------------------------------------
 --[[
 Convert coalition name to coalition.side
@@ -68,6 +75,56 @@ ap_utils.messageForCoalitionOrAll = function(side,message,delay)
 	end
 end
 
+--[[
+Randomly remove N elements from a table and return removed elements (key,value)
+--]]
+ap_utils.removeRandom=function(t,N)
+	local ret={}
+	local count=0
+	
+	for k in pairs(t) do
+		count=count+1
+	end
+	
+	N=math.min(N,count)
+	
+	local n=0
+	while(n<N) do
+		local toRemove=mist.random(count-n)
+			
+		local i=0
 
+		for k,v in pairs(t) do
+			i=i+1
+			if i==toRemove then
+				t[k]=nil
+				ret[k]=v
+			end
+		end
+		n=n+1
+	end
+	
+	return ret
+end
+
+--[[
+Given a set s with multiplicity (key = Any, value= multiplicity)
+Remove any for which pred(key)==true
+Return the number removed counting multiplicity
+--]]
+ap_utils.eraseByPredicate=function(s,pred)
+	local ret=0
+	
+	
+	
+	for k,v in pairs(s) do
+		if pred(k) then
+			ret=ret+v
+			s[k]=nil
+		end
+	end
+	
+	return ret
+end
 
 return ap_utils

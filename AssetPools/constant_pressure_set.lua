@@ -14,92 +14,194 @@ local ap_utils=dofile('./Scripts/AssetPools/ap_utils.lua')
 constant_pressure_set={}
 ----------------------------------------------------------------------------------------------------------
 
+--[[
+Loggers for this module
+--]]
+constant_pressure_set.log_i=mist.Logger:new("constant_pressure_set","info")
+constant_pressure_set.log_e=mist.Logger:new("constant_pressure_set","error")
+
 --CONSTANT_PRESENCE_SET-----------------------------------------------------------------------------------------
 --[[
 Pool class used for managing a collection of groups, respawning them at random to keep up an approximately constant 
 number in-mission
 --]]
-constant_pressure_set.ConstantPresenceSet={
+constant_pressure_set.instance_meta_={--Do metatable setup
+	__index={ --Metatable for this "class"
 
-	meta_={--Do metatable setup
-		__index={ --Metatable for this "class"
-
-			--Asset pool override
-			groupDead=function(self, groupName, now)		
-
-				self.groupList_[groupName]=now+self.cooldownOnDeath
-				
-				--stop polling this group
-				return false		
-			end,
-
-			--Asset pool override
-			groupIdle=function(self, groupName, now)	
-					
-				self.groupList_[groupName]=now+self.cooldownOnIdle
-				
-				--stop polling this group
-				return false 
-			end,
-
-			--Asset pool override
-			onTick=function(self, now)	
-				
-				--update cooldowns 
-				
+		--Asset pool override
+		groupDead=function(self, groupName, now)						
 			
-				return true -- keep polling
-			end,
+			local cooldownTime=now+self.cooldownOnDeath
+			self:putGroupOnCooldown(groupName,cooldownTime)				
+			
+			--stop polling this group
+			return false		
+		end,
 
+		--Asset pool override
+		groupIdle=function(self, groupName, now)
+			
+			local cooldownTime=now+self.cooldownOnIdle
+			self:putGroupOnCooldown(groupName,cooldownTime)		
+			
+			--stop polling this group
+			return false 
+		end,
 
-			--Other methods
-			addGroup=function(self, groupName)
-				if not self.groupList_[groupName] then
-					self.groupList_[groupName]=0--ready to spawn immediately
-				end
+		--Asset pool override
+		onTick=function(self, now)	
+			
+			--update cooldowns 
+			local pred=function(T)--predicate, remove all times in the past
+				return T<now
+			end				
+			
+			--remove a number of groups from cooldown equal to number of 
+			--expired cooldown timers this tick
+			--remove expired timers from list
+			local toReactivate= ap_utils.removeRandom(self.groupListCooldown_, 
+				ap_utils.eraseByPredicate(self.timeListCooldown_,pred))
+				
+			for k in pairs(toReactivate) do
+				takeGroupOffCooldown(k)
 			end
 			
+			--schedule spawns
 			
-		}--index
-	},--meta_,		
+			--count active groups in excess of target
+			local surplusSpawned=-self.targetActiveCount
+			for _ in pairs(self.groupListActive_) do
+				surplusSpawned=surplusSpawned+1
+			end
+			
+			--pick random subset of ready groups to spawn
+			for g in pairs(
+				ap_utils.removeRandom(self.groupListReady_,-surplusSpawned)
+				) do
+				self:doScheduleSpawn(g,now)--activate group and schedule to spawn with random delay
+			end
+		
+			return true -- keep polling
+		end,
+
+
+		--Other methods
+		
+		--add group assuming it's not already managed by this pool
+		addGroup=function(self, groupName)
+			if (not self.groupListActive_[groupName]) and (not self.groupListCooldown_[groupName]) then
+				self.groupListReady_[groupName]=true--ready to spawn immediately
+			end
+		end,
+		
+		-- Move group to cooldown list and off of active list
+		-- add cooldown clock time to cooldown list
+		putGroupOnCooldown=function(self,groupName,cooldownTime)
+		
+			self.groupListActive_[groupName]=nil
+			self.groupListCooldown_[groupName]=true
+			
+			if self.timeListCooldown_[cooldownTime] then
+				self.timeListCooldown_[cooldownTime]
+					=self.timeListCooldown_[cooldownTime]+1
+			else
+				self.timeListCooldown_[cooldownTime]=1
+				--constant_pressure_set.log_i:info(self.timeListCooldown_[cooldownTime]..", "..cooldownTime)--DEBUG
+			end	
+		end,
+		
+		-- Move group to ready list and off cooldown list 
+		takeGroupOffCooldown=function(self,groupName)
+		
+			self.groupListReady_[groupName]=true
+			self.groupListCooldown_[groupName]=nil
+			constant_pressure_set.log_i:info(groupName.." cooled down")
+		end,
+		
+		-- Schedule spawn of group at random future time
+		doScheduleSpawn=function(self,groupName,now)
+		
+			self.groupListReady_[groupName]=nil
+			self.groupListActive_[groupName]=true
+			
+			local delay= mist.random(self.minSpawnDelay,self.maxSpawnDelay)
+			
+			mist.scheduleFunction(asset_pools.RespawnGroupForPoll,
+				{self,groupName},now+delay)
+				
+			constant_pressure_set.log_i:info(groupName.." called in with delay "..delay)
+			
+		end
+		
+		
+	}--index
+}--meta_,		
 	
-	-- Return a new instance of RespawnableOnCall
-	-- param id = index of this pool in pools list
-	new = function()
-		local instance={}
-		--Properties
-		
-		--Asset pool override
-		instance.poolId = nil
-		
-		--Other properties
-		
-		--Managed groups and their cooldown times 
-		--key=groupNames
-		--values = clock time of cooldown (>0 for cooling down, ==0 for spawnable, <0 for on-call)
-		instance.groupList_={}
-		
-		--number of groups we're currently trying to keep alive
-		instance.targetActiveCount=0
-		
-		--NOTE: when a unit finishes cooldown, a random unit in cooldown queue is made available
-		--for spawn - to stop a consistent spawn order developing
-		
-		--seconds of cooldown when group finishes its tasks
-		instance.cooldownOnIdle=300
-		
-		--seconds of cooldown when group dies/despawns
-		instance.cooldownOnDeath=3600
-		
-		--max delay when a unit respawns
-		instance.maxSpawnDelay=300
-		
-		--min delay when a unit respawns
-		instance.minSpawnDelay=0
-		
-		--Assign methods
-		setmetatable(instance,constant_pressure_set.ConstantPresenceSet.meta_)
-		
-		return instance
+--[[ 
+-- Return a new instance of a constant pressure object
+
+-- params 
+-- targetActive = number of groups to try to keep active
+-- idleCooldown = cooldown added when group goes idleCooldown
+-- deathCooldown = cooldown added (s) when group dies/despawns
+-- min/maxSpawnDelay = max/min  time(s) of random delay to add to respawn time of groups
+-- ... - list of groupnames in the set
+--]]
+constant_pressure_set.new = function(targetActive,idleCooldown, deathCooldown, minSpawnDelay, maxSpawnDelay, ...)
+	local instance={}
+	--Properties
+	
+	--Asset pool override
+	instance.poolId = nil
+	
+	--Other properties
+	
+	--set (table) for active groups (those active or requested spawned)
+	--key=groupNames
+	--values = true
+	instance.groupListActive_={}
+	
+	--set (table) for ready groups (those available to spawn)
+	--key=groupNames
+	--values = true
+	instance.groupListReady_={}
+	
+	-- set (table) of groups cooling down
+	-- key= groupName
+	-- value = true
+	instance.groupListCooldown_={}
+	
+	--List of times at which cooldowns will happen
+	--key=time(s)
+	--value == number of groups to cooldown at that time
+	instance.timeListCooldown_={}
+	
+	--number of groups we're currently trying to keep alive
+	instance.targetActiveCount=targetActive
+	
+	--NOTE: when a unit finishes cooldown, a random unit in cooldown queue is made available
+	--for spawn - to stop a consistent spawn order developing
+	
+	--seconds of cooldown when group finishes its tasks
+	instance.cooldownOnIdle=idleCooldown
+	
+	--seconds of cooldown when group dies/despawns
+	instance.cooldownOnDeath=deathCooldown
+	
+	--max delay when a unit respawns
+	instance.maxSpawnDelay=maxSpawnDelay
+	
+	--min delay when a unit respawns
+	instance.minSpawnDelay=minSpawnDelay
+	
+	--Assign methods
+	setmetatable(instance,constant_pressure_set.instance_meta_)
+	
+	for _,g in pairs{...} do
+		instance:addGroup(g)
 	end
-}
+	
+	asset_pools.addPoolToPoll_(instance)
+	
+	return instance
+end
