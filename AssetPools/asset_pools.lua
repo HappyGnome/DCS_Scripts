@@ -190,7 +190,7 @@ asset_pools.doPoll_=function()
 	
 	--lambda for onTick callbacks
 	local function doTick()
-		if not tickPool:onTick(asset_pools.poll_interval) then
+		if not tickPool:onTick(now) then
 		-- if pool requests to stop polling it and its groups
 			asset_pools.pools_[tickPool.poolId]=nil
 		end

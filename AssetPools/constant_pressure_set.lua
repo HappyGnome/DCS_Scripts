@@ -63,7 +63,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				ap_utils.eraseByPredicate(self.timeListCooldown_,pred))
 				
 			for k in pairs(toReactivate) do
-				takeGroupOffCooldown(k)
+				self:takeGroupOffCooldown(k)
 			end
 			
 			--schedule spawns
@@ -124,7 +124,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			self.groupListReady_[groupName]=nil
 			self.groupListActive_[groupName]=true
 			
-			local delay= mist.random(self.minSpawnDelay,self.maxSpawnDelay)
+			local delay= math.random(self.minSpawnDelay,self.maxSpawnDelay)
 			
 			mist.scheduleFunction(asset_pools.RespawnGroupForPoll,
 				{self,groupName},now+delay)

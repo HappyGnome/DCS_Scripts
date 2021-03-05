@@ -90,7 +90,7 @@ ap_utils.removeRandom=function(t,N)
 	
 	local n=0
 	while(n<N) do
-		local toRemove=mist.random(count-n)
+		local toRemove=math.random(count-n)
 			
 		local i=0
 
