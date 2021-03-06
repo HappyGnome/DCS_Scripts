@@ -25,12 +25,12 @@ Allows assets to be (re)spawned via the comms menu with timeouts applied when th
 Assets can be coalition specific or available to all
 ### Usage
 
-Initialization
-=====
+#### Initialization
+
 Call `DO SCRIPT FILE -> respawnable_on_call.lua`
 
-Add an asset
-====
+#### Add an asset
+
 At any point in the mission after initialization, a group can be added by calling `DO SCRIPT -> respawnable_on_call.new(<groupName>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
 
 Where
@@ -46,8 +46,7 @@ Where
 
 `<coalitionName>` should be `"red"` `"blue"` or `"all"` to declare which side will be able to call in the asset (it doesn't have to match the allegience of the asset)
 
-Example
-=====
+#### Example
 
 In a mission with a group called `Aerial-2` set up the triggers:
 
@@ -69,12 +68,12 @@ Mission builders can define a collection of groups and how many of them should b
 
 ### Usage
 
-Initialization
-=====
+#### Initialization
+
 Call `DO SCRIPT FILE -> constant_pressure_set.lua`
 
-Add assets
-====
+#### Add assets
+
 At any point in the mission after initialization, a set of group can be added by calling `DO SCRIPT -> constant_pressure_set.new(<targetActive>,<reinforceStrength>,<idleCooldown>, <deathCooldown>, <minSpawnDelay>, <maxSpawnDelay>, ...)`
 
 Where
@@ -95,8 +94,7 @@ Where
 
 `...` A list of group names comprising the set of assets for the maintained presence
 
-Example
-=====
+#### Example
 
 In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
 
@@ -111,8 +109,8 @@ Then two groups from among the seven Aerial groups will spawn, as each finishs t
 each time one of the 1800s or 3600s cooldowns finishes. 
  
  
- Suggestion
- ====
+#### Suggestion
+
 
 To keep a roughly equal presence in the absence of attrition, set the `<idleCooldown>` to at most `(<reinforceStrength>/<targetActive>) x <minimum mission time among the groups>` 
 E.g. the example above would suit groups with missions not shorter than 30 minutes (`= 2/2 x 1800s`). Otherwise, e.g. if groups typically finished their missions in 10 minutes there would be 
