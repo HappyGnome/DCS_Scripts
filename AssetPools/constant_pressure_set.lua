@@ -87,10 +87,19 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 
 		--Other methods
 		
-		--add group assuming it's not already managed by this pool
-		addGroup=function(self, groupName)
-			if (not self.groupListActive_[groupName]) and (not self.groupListCooldown_[groupName]) then
-				self.groupListReady_[groupName]=true--ready to spawn immediately
+		--add group to current ready pool  or cooldown pool
+		-- if named group already managed by this pool, nothing will change
+		-- param groupName = group to add
+		-- ready = is this group available as reinforcement immediately?
+		addGroup=function(self, groupName, ready)
+			if (not self.groupListActive_[groupName]) 
+				and (not self.groupListCooldown_[groupName]) 
+				and (not self.groupListReady_[groupName])  then --don't add duplicates
+				if ready then
+					self.groupListReady_[groupName]=true--ready to spawn immediately
+				else
+					self.groupListCooldown_[groupName]=true--only spawn after a cooldown event puts it back to ready
+				end
 			end
 		end,
 		
@@ -142,12 +151,14 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 
 -- params 
 -- targetActive = number of groups to try to keep active
+-- reinforceStrength = number of groups available to spawn at the start (excl first spawned groups) 
+--		All other spawns will require a cooldown to complete first
 -- idleCooldown = cooldown added when group goes idleCooldown
 -- deathCooldown = cooldown added (s) when group dies/despawns
 -- min/maxSpawnDelay = max/min  time(s) of random delay to add to respawn time of groups
 -- ... - list of groupnames in the set
 --]]
-constant_pressure_set.new = function(targetActive,idleCooldown, deathCooldown, minSpawnDelay, maxSpawnDelay, ...)
+constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldown, deathCooldown, minSpawnDelay, maxSpawnDelay, ...)
 	local instance={}
 	--Properties
 	
@@ -197,8 +208,17 @@ constant_pressure_set.new = function(targetActive,idleCooldown, deathCooldown, m
 	--Assign methods
 	setmetatable(instance,constant_pressure_set.instance_meta_)
 	
-	for _,g in pairs{...} do
-		instance:addGroup(g)
+	--select random groups to be initial spawns and ready retinforcements
+	local allGroups={...}
+	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
+	
+	for _,g in pairs initForce do
+		instance:addGroup(g,true)
+	end
+	
+	-- remaining groups are not available immediately
+	for _,g in pairs allGroups do
+		instance:addGroup(g,false)
 	end
 	
 	asset_pools.addPoolToPoll_(instance)

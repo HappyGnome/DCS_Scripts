@@ -6,6 +6,8 @@ This repository contains some lua scripts for making DCS World missions.
 See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
 
 ## General Usage
+
+### Prerequisites
 All scripts assume the use of the [mist helper library for DCS](https://github.com/mrSkortch/MissionScriptingTools/releases)
 
 Add the trigger `MISSION START -> DO SCRIPT FILE -> mist_*_*_*.lua`
@@ -14,7 +16,11 @@ Add the trigger `MISSION START -> DO SCRIPT FILE -> mist_*_*_*.lua`
 
 Currently tested with Mist version 4.4.90
 
-## Respawnable Assets
+### Installation
+
+Copy the folder `AssetPools` into `<DCS World path>\Scripts`. These need to be in the main install location, not `<User>\Saved Games\...` because of a security feature of DCS mission scripting (which I don't want to ask users to disable).
+
+## Respawnable On-Call Assets
 Allows assets to be (re)spawned via the comms menu with timeouts applied when the unit dies or goes idle
 Assets can be coalition specific or available to all
 ### Usage
@@ -25,7 +31,7 @@ Call `DO SCRIPT FILE -> respawnable_on_call.lua`
 
 Add an asset
 ====
-At any point in the mission after initialization, a group can be added by calling `DO SCRIPT -> respawnable_on_call.addGroup(<groupName>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
+At any point in the mission after initialization, a group can be added by calling `DO SCRIPT -> respawnable_on_call.new(<groupName>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
 
 Where
 `<groupName>` is the name of the group to make spawnable (in quotes)
@@ -49,9 +55,66 @@ In a mission with a group called `Aerial-2` set up the triggers:
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
 |MISSION START|DO SCRIPT FILE|respawnable_on_call.lua|
-|MISSION START|DO SCRIPT|respawnable_on_call.addGroup("Aerial-2",60,300,300,"red")|
+|MISSION START|DO SCRIPT|respawnable_on_call.new("Aerial-2",60,300,300,"red")|
 
 
 Then the red coalition will have a "Respawnable Assets" sub-menu in the `F10` comms menu,
 from which they can request that `Aerial-2` is respawned. If available it will activate 
 60 seconds after user selects this option. Once the group dies or goes RTB (it may take a minute for the script to detect this) a cooldown of 5 minutes (300 seconds) begins, during which time the group can not be respawned - players instead receive a message saying when the group will be available again.
+
+## Constant Pressure Set
+This script is designed to help mission builders keep an area constantly busy with units for missions of indefinite duration, while allowing for some attritional effects.
+ 
+Mission builders can define a collection of groups and how many of them should be kept constantly in play. Once a group dies or finishes its tasks, a cooldown time is set, at which a dead/idle group (possibly a different one - this prevents any spawn order building up) will become available to respawn. If the number of active groups in play falls below the target, a new one will be (re)spawned at random from the cooled down groups, and with random delay. 
+
+### Usage
+
+Initialization
+=====
+Call `DO SCRIPT FILE -> constant_pressure_set.lua`
+
+Add assets
+====
+At any point in the mission after initialization, a set of group can be added by calling `DO SCRIPT -> constant_pressure_set.new(<targetActive>,<reinforceStrength>,<idleCooldown>, <deathCooldown>, <minSpawnDelay>, <maxSpawnDelay>, ...)`
+
+Where
+`<targetActive>` is the number of groups the script will try to maintain in-play
+
+`<reinforceStrength>` is the number of groups in excess of `<targetActive>` available for spawn at the start. 
+		After this many groups despawn or go idle, further spawns will only be possible after one of the cooldowns has completed.
+
+`<idleCooldown>` is the length of the cooldown time (s) set when a group becomes idle
+(e.g. time delay after declaring RTB)
+
+`<deathCooldown>` is the length of the cooldown time (s) set when a group dies/despawns
+
+
+`<minSpawnDelay>` minimum time (s) between groups in-play dropping below `targetActive` and a new group spawning
+
+`<maxSpawnDelay>` approximate maximum time (s) between groups in-play dropping below `targetActive` and a new group spawning
+
+`...` A list of group names comprising the set of assets for the maintained presence
+
+Example
+=====
+
+In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
+
+|Trigger|Action|Action Detail|
+|---|---|---|
+|MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
+|MISSION START|DO SCRIPT FILE|constant_pressure_set.lua|
+|MISSION START|DO SCRIPT|constant_pressure_set.new(2,2,1800,3600,10,120, "Aerial-1","Aerial-2","Aerial-3","Aerial-4","Aerial-5","Aerial-6","Aerial-7" )|
+
+Then two groups from among the seven Aerial groups will spawn, as each finishs their mission/dies/despawns, it enters a cooldown and
+ another one will spawn within between 10s and  ~120s afterwards. Up to two additional groups will spawn this way. But this numebr increases
+each time one of the 1800s or 3600s cooldowns finishes. 
+ 
+ 
+ Suggestion
+ ====
+
+To keep a roughly equal presence in the absence of attrition, set the `<idleCooldown>` to at most `(<reinforceStrength>/<targetActive>) x <minimum mission time among the groups>` 
+E.g. the example above would suit groups with missions not shorter than 30 minutes (`= 2/2 x 1800s`). Otherwise, e.g. if groups typically finished their missions in 10 minutes there would be 
+a loose cycle where for about 20 minutes, all 4 groups (two at a time) would finish their missions, followed by a 20 minute delay before more spawns could occur, 
+(i.e. 30 minutes after the first groups finished). 
