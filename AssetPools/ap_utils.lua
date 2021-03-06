@@ -1,7 +1,6 @@
 -- AP_UTILS
 -- misc Utilities for asset_pool scripts
 --
--- V1.0
 -- Script by HappyGnome
 
 

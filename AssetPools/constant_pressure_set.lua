@@ -2,7 +2,6 @@
 --
 -- Asset pool functionality for keeping randomized steady presence of assets alive
 --
--- V1.0
 -- Script by HappyGnome
 
 --REQUISITES----------------------------------------------------------------------------------------------

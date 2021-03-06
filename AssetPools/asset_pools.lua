@@ -4,7 +4,6 @@
 -- Adds functionality based on pools of groups, tracking availability
 -- And allowing availability-dependent respawing based on various triggers
 --
--- V1.0
 -- Script by HappyGnome
 
 --doFile returns single global instance, or creates one
