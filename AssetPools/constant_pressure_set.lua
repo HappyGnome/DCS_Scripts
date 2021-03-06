@@ -156,20 +156,30 @@ constant_pressure_set.new = function(targetActive,idleCooldown, deathCooldown, m
 	
 	--Other properties
 	
-	--set (table) for active groups (those active or requested spawned)
-	--key=groupNames
+	-- array of task forces
+	-- entries are tables {"<groupName>"=true/false...} 
+	-- where true indicates group is active
+	instance.tfList_={}
+	
+	-- tf lookup by group
+	-- key = group name
+	-- value = index in tfList
+	instance.tfLookup_={}
+	
+	--set (table) for active taskforces (those active or requested spawned)
+	--key=tfKey
 	--values = true
-	instance.groupListActive_={}
+	instance.tfListActive_={}
 	
 	--set (table) for ready groups (those available to spawn)
-	--key=groupNames
+	--key=tfKey
 	--values = true
-	instance.groupListReady_={}
+	instance.tfListReady_={}
 	
 	-- set (table) of groups cooling down
 	-- key= groupName
 	-- value = true
-	instance.groupListCooldown_={}
+	instance.tfListCooldown_={}
 	
 	--List of times at which cooldowns will happen
 	--key=time(s)
@@ -197,8 +207,23 @@ constant_pressure_set.new = function(targetActive,idleCooldown, deathCooldown, m
 	--Assign methods
 	setmetatable(instance,constant_pressure_set.instance_meta_)
 	
-	for _,g in pairs{...} do
-		instance:addGroup(g)
+	--tfg = array of groups or single group
+	for _,tfg in pairs{...} do
+		--add new taskforce to list
+		local tf={}
+		table.insert(instance.tfList_, tf)
+		local index=#instance.tfList_
+			
+		--initialize the taskforce based on this argument	
+		if type(tfg)=="table" then -- taskforce of possibly multiple groups			
+			for _,g in pairs tf do
+				tf[g]=false -- group not initially spawned
+				instance.tfLookup_[g]=index
+			end			
+		elseif 	 type(tf)=="string"	then --taskforce of one group of one
+			tf[g]=false -- group not initially spawned
+			instance.tfLookup_[g]=index
+		end
 	end
 	
 	asset_pools.addPoolToPoll_(instance)
