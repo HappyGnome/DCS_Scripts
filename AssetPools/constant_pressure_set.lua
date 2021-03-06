@@ -212,12 +212,12 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	local allGroups={...}
 	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
 	
-	for _,g in pairs initForce do
+	for _,g in pairs(initForce) do
 		instance:addGroup(g,true)
 	end
 	
 	-- remaining groups are not available immediately
-	for _,g in pairs allGroups do
+	for _,g in pairs(allGroups) do
 		instance:addGroup(g,false)
 	end
 	
