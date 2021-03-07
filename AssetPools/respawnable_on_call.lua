@@ -34,9 +34,7 @@ respawnable_on_call.instance_meta_={
 		--]]
 		delete=function(self)
 			self.killSwitch=true
-			if self.commsPath then -- very important it's not il, or whole comms menu will be emptied
-				missionCommands.removeItem(self.commsPath)
-			end
+			self:deleteComms_()
 			return self
 		end,
 
@@ -115,9 +113,23 @@ respawnable_on_call.instance_meta_={
 				self.commsPath=missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
 					self.handleSpawnRequest_,self)
 			end
+		end,
+		
+		--[[
+		Remove comms menus for spawning this group
+		--]]
+		deleteComms_=function(self)
+			if not self.commsPath then return end-- very important it's not nil, or whole comms menu will be emptied
+			
+			--remove menu options
+			if self.side then --coalition specific removal				
+				missionCommands.removeItemForCoalition(self.side,self.commsPath)
+			else --remove for all					
+				missionCommands.removeItem(self.commsPath)
+			end
 		end
 	}----index
-},	--meta_	
+}--meta_	
 	
 --[[
 Add comms submenu for red or blue (side == instance of coalition.side)
@@ -130,7 +142,7 @@ respawnable_on_call.ensureCoalitionSubmenu_=function(side)
 			missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
 	end	
 	return subMenuName
-end,
+end
 
 --[[
 Add comms submenu for assets available to any faction
