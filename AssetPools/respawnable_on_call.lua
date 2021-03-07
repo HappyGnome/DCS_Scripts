@@ -21,168 +21,114 @@ respawnable_on_call.log_e=mist.Logger:new("respawnable_on_call","error")
 --[[
 Pool class used for respawnable-on-call operation. Currently only designed for controlling a single group
 --]]
-respawnable_on_call.RespawnableOnCall={
+respawnable_on_call.instance_meta_={
 
-	meta_={
-		__index={ --Metatable for this "class"
+	__index={ --Metatable for this "class"
 
-			--Asset pool override
-			groupDead=function(self, groupName, now)			
-				self.canRequestAt
-					= now + self.delayWhenDead
-					
-				--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
-				--asset_pools.log_i:info(self.groupName.." was detected dead.")
+		--Asset pool override
+		groupDead=function(self, groupName, now)			
+			self.canRequestAt
+				= now + self.delayWhenDead
 				
-				--stop polling this group
-				return false		
-			end,
+			--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
+			--asset_pools.log_i:info(self.groupName.." was detected dead.")
+			
+			--stop polling this group
+			return false		
+		end,
 
-			--Asset pool override
-			groupIdle=function(self, groupName, now)			
-				self.canRequestAt
-					= now + self.delayWhenIdle
-					
-				--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
-				--asset_pools.log_i:info(groupName.." was detected idle.")
+		--Asset pool override
+		groupIdle=function(self, groupName, now)			
+			self.canRequestAt
+				= now + self.delayWhenIdle
 				
-				--stop polling this group
-				return false 
-			end,
+			--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
+			--asset_pools.log_i:info(groupName.." was detected idle.")
+			
+			--stop polling this group
+			return false 
+		end,
 
-			--Asset pool override
-			onTick=function(self, now)	
-				return true -- keep polling
-			end,
+		--Asset pool override
+		onTick=function(self, now)	
+			return true -- keep polling
+		end,
 
 
-			--Other methods
+		--Other methods
 
-			--[[
-			Private: Request to spawn new instance of template group if there's not already one
-			--]]
-			handleSpawnRequest_ = function(self)
-				local now=timer.getTime()
-				local cRA=self.canRequestAt
-				local cRA_isnum = type(cRA)=="number"
+		--[[
+		Private: Request to spawn new instance of template group if there's not already one
+		--]]
+		handleSpawnRequest_ = function(self)
+			local now=timer.getTime()
+			local cRA=self.canRequestAt
+			local cRA_isnum = type(cRA)=="number"
+			
+			if cRA==true or (cRA_isnum and cRA<now) then
+				self.canRequestAt=false --try to prevent dual requests, schedule spawn
+				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName},now+self.spawnDelay)
 				
-				if cRA==true or (cRA_isnum and cRA<now) then
-					self.canRequestAt=false --try to prevent dual requests, schedule spawn
-					mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName},now+self.spawnDelay)
+				ap_utils.messageForCoalitionOrAll(self.side,
+					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
 					
+				respawnable_on_call.log_i:info(self.groupName.." was called in.")
+			else
+				ap_utils.messageForCoalitionOrAll(self.side,
+					string.format("%s is not available or is already on-call",self.groupName),5)
+				if cRA_isnum then
+					local toWait= self.canRequestAt-now
 					ap_utils.messageForCoalitionOrAll(self.side,
-						string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
-						
-					respawnable_on_call.log_i:info(self.groupName.." was called in.")
-				else
-					ap_utils.messageForCoalitionOrAll(self.side,
-						string.format("%s is not available or is already on-call",self.groupName),5)
-					if cRA_isnum then
-						local toWait= self.canRequestAt-now
-						ap_utils.messageForCoalitionOrAll(self.side,
-							string.format("%s will be available in %ds",self.groupName,toWait),5)
-					end
-				end
-			end,
-
-			--[[
-			Set up comms menus needed to spawn this group
-			--]]
-			createComms=function(self)
-				--add menu options
-				if self.side then --coalition specific addition	
-					local subMenuName=respawnable_on_call.RespawnableOnCall.ensureCoalitionSubmenu_(self.side)
-					
-					missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
-						self.handleSpawnRequest_,self)
-				else --add for all	
-					local subMenuName=respawnable_on_call.RespawnableOnCall.ensureUniversalSubmenu_()
-					
-					missionCommands.addCommand(self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
-						self.handleSpawnRequest_,self)
+						string.format("%s will be available in %ds",self.groupName,toWait),5)
 				end
 			end
-		}----index
-	},	--meta_	
+		end,
+
+		--[[
+		Set up comms menus needed to spawn this group
+		--]]
+		createComms_=function(self)
+			--add menu options
+			if self.side then --coalition specific addition	
+				local subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
+				
+				missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
+					self.handleSpawnRequest_,self)
+			else --add for all	
+				local subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
+				
+				missionCommands.addCommand(self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
+					self.handleSpawnRequest_,self)
+			end
+		end
+	}----index
+},	--meta_	
 	
-	-- Return a new instance of RespawnableOnCall
-	-- param id = index of this pool in pools list
-	new = function()
-		local instance={}
-		--Properties
-		
-		--Asset pool override
-		instance.poolId = nil
-		
-		
-		--[[
-		Set the group tracked by this asset_pool
-		--]]
-		instance.groupName = ""
-		
-		--[[
-			canRequestAt ==
-			true -> request any time
-			false -> not available to request
-			int -> time that requests can next be made (s elapsed in mission)
-		--]]
-		instance.canRequestAt = true
-		
-		--[[
-			spawnDelay ==
-			int -> time between request and activation/respawn (s)
-		--]]
-		instance.spawnDelay = 60
-		
-		--[[
-			delayWhenIdle ==
-			int -> time before respawn requests allowed when unit goes idle
-		--]]
-		instance.delayWhenIdle = 300
-		
-		--[[
-			delayWhenDead ==
-			int -> time before respawn requests allowed when unit is dead
-		--]]
-		instance.delayWhenDead = 300
-		
-		--[[
-			side == coalition.side, or nil for all
-			-> coalition name that can spawn group and receive updates about them
-		--]]
-		instance.side = nil
-		
-		setmetatable(instance,respawnable_on_call.RespawnableOnCall.meta_)
-		
-		return instance
-	end,
-	
-	--[[
-	Add comms submenu for red or blue (side == instance of coalition.side)
-	--]]
-	ensureCoalitionSubmenu_=function(side)
-		local coa_string=ap_utils.sideToString(side)
-		local subMenuName="subMenu_"..coa_string
-		if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
-			respawnable_on_call.RespawnableOnCall[subMenuName] = 
-				missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
-		end	
-		return subMenuName
-	end,
-	
-	--[[
-	Add comms submenu for assets available to any faction
-	return name of the submenu
-	--]]
-	ensureUniversalSubmenu_=function()
-		local subMenuName="subMenu"
-		if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
-			respawnable_on_call.RespawnableOnCall[subMenuName] = 
-				missionCommands.addSubMenu("Other Assets",nil)
-		end		
-		return subMenuName
-	end
-}
+--[[
+Add comms submenu for red or blue (side == instance of coalition.side)
+--]]
+respawnable_on_call.ensureCoalitionSubmenu_=function(side)
+	local coa_string=ap_utils.sideToString(side)
+	local subMenuName="subMenu_"..coa_string
+	if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
+		respawnable_on_call.RespawnableOnCall[subMenuName] = 
+			missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
+	end	
+	return subMenuName
+end,
+
+--[[
+Add comms submenu for assets available to any faction
+return name of the submenu
+--]]
+respawnable_on_call.ensureUniversalSubmenu_=function()
+	local subMenuName="subMenu"
+	if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
+		respawnable_on_call.RespawnableOnCall[subMenuName] = 
+			missionCommands.addSubMenu("Other Assets",nil)
+	end		
+	return subMenuName
+end
 
 ----------------------------------------------------------------------------------------------------
 
@@ -205,25 +151,66 @@ respawnable_on_call.RespawnableOnCall={
 		-> Note that neutral players don't seem to have a dedicated comms menu 
 		-> units added with "neutral" will not be spawnable!
 --]]
-respawnable_on_call.add=function(groupName, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
+respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
 	
 	local coa=ap_utils.stringToSide(coalitionName)
 	
-	local newPool=respawnable_on_call.RespawnableOnCall.new()
+	local instance={}
 	
-	newPool.canRequestAt=true --allow immediate requests
-	newPool.spawnDelay=spawnDelay
-	newPool.delayWhenIdle=delayWhenIdle
-	newPool.delayWhenDead=delayWhenDead
-	newPool.side=coa
-	newPool.groupName=groupName
+	--Properties
+	
+	--Asset pool override
+	instance.poolId = nil
+	
+	
+	--[[
+	Set the group tracked by this asset_pool
+	--]]
+	instance.groupName = groupName
+	
+	--[[
+		canRequestAt ==
+		true -> request any time
+		false -> not available to request
+		int -> time that requests can next be made (s elapsed in mission)
+	--]]
+	instance.canRequestAt = true
+	
+	--[[
+		spawnDelay ==
+		int -> time between request and activation/respawn (s)
+	--]]
+	instance.spawnDelay = spawnDelay
+	
+	--[[
+		delayWhenIdle ==
+		int -> time before respawn requests allowed when unit goes idle
+	--]]
+	instance.delayWhenIdle = delayWhenIdle
+	
+	--[[
+		delayWhenDead ==
+		int -> time before respawn requests allowed when unit is dead
+	--]]
+	instance.delayWhenDead = delayWhenDead
+	
+	--[[
+		side == coalition.side, or nil for all
+		-> coalition name that can spawn group and receive updates about them
+	--]]
+	instance.side = coa
+	
+	setmetatable(instance,respawnable_on_call.instance_meta_)	
+	
 	
 	--add pool and add group to poll list, with an association to this group
-	asset_pools.addPoolToPoll_(newPool)
+	asset_pools.addPoolToPoll_(instance)
 	
-	newPool:createComms()
+	instance:createComms_()
+	
+	return instance
 			
-end--add
+end--new
 
 
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.2a
+* Respawnable_on_call.add should be called respawnable_on_call.new -- Fixed
+
 ## v1.1a
 * Added constant_pressure_set
 * Split code across multiple lua files - installation instructions updated

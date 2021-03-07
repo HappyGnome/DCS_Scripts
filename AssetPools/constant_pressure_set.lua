@@ -31,7 +31,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		groupDead=function(self, groupName, now)						
 			
 			local cooldownTime=now+self.cooldownOnDeath
-			self:putGroupOnCooldown(groupName,cooldownTime)				
+			self:putGroupOnCooldown_(groupName,cooldownTime)				
 			
 			--stop polling this group
 			return false		
@@ -41,7 +41,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		groupIdle=function(self, groupName, now)
 			
 			local cooldownTime=now+self.cooldownOnIdle
-			self:putGroupOnCooldown(groupName,cooldownTime)		
+			self:putGroupOnCooldown_(groupName,cooldownTime)		
 			
 			--stop polling this group
 			return false 
@@ -62,7 +62,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				ap_utils.eraseByPredicate(self.timeListCooldown_,pred))
 				
 			for k in pairs(toReactivate) do
-				self:takeGroupOffCooldown(k)
+				self:takeGroupOffCooldown_(k)
 			end
 			
 			--schedule spawns
@@ -77,7 +77,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			for g in pairs(
 				ap_utils.removeRandom(self.groupListReady_,-surplusSpawned)
 				) do
-				self:doScheduleSpawn(g,now)--activate group and schedule to spawn with random delay
+				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
 			end
 		
 			return true -- keep polling
@@ -90,7 +90,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		-- if named group already managed by this pool, nothing will change
 		-- param groupName = group to add
 		-- ready = is this group available as reinforcement immediately?
-		addGroup=function(self, groupName, ready)
+		addGroup_=function(self, groupName, ready)
 			if (not self.groupListActive_[groupName]) 
 				and (not self.groupListCooldown_[groupName]) 
 				and (not self.groupListReady_[groupName])  then --don't add duplicates
@@ -104,7 +104,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		
 		-- Move group to cooldown list and off of active list
 		-- add cooldown clock time to cooldown list
-		putGroupOnCooldown=function(self,groupName,cooldownTime)
+		putGroupOnCooldown_=function(self,groupName,cooldownTime)
 		
 			self.groupListActive_[groupName]=nil
 			self.groupListCooldown_[groupName]=true
@@ -119,7 +119,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		end,
 		
 		-- Move group to ready list and off cooldown list 
-		takeGroupOffCooldown=function(self,groupName)
+		takeGroupOffCooldown_=function(self,groupName)
 		
 			self.groupListReady_[groupName]=true
 			self.groupListCooldown_[groupName]=nil
@@ -127,7 +127,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		end,
 		
 		-- Schedule spawn of group at random future time
-		doScheduleSpawn=function(self,groupName,now)
+		doScheduleSpawn_=function(self,groupName,now)
 		
 			self.groupListReady_[groupName]=nil
 			self.groupListActive_[groupName]=true
@@ -212,12 +212,12 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
 	
 	for _,g in pairs(initForce) do
-		instance:addGroup(g,true)
+		instance:addGroup_(g,true)
 	end
 	
 	-- remaining groups are not available immediately
 	for _,g in pairs(allGroups) do
-		instance:addGroup(g,false)
+		instance:addGroup_(g,false)
 	end
 	
 	asset_pools.addPoolToPoll_(instance)
