@@ -92,12 +92,12 @@ respawnable_on_call.instance_meta_={
 			if self.side then --coalition specific addition	
 				local subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
 				
-				missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
+				missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call[subMenuName],
 					self.handleSpawnRequest_,self)
 			else --add for all	
 				local subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
 				
-				missionCommands.addCommand(self.groupName,respawnable_on_call.RespawnableOnCall[subMenuName],
+				missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
 					self.handleSpawnRequest_,self)
 			end
 		end
@@ -110,8 +110,8 @@ Add comms submenu for red or blue (side == instance of coalition.side)
 respawnable_on_call.ensureCoalitionSubmenu_=function(side)
 	local coa_string=ap_utils.sideToString(side)
 	local subMenuName="subMenu_"..coa_string
-	if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
-		respawnable_on_call.RespawnableOnCall[subMenuName] = 
+	if respawnable_on_call[subMenuName]==nil then--create submenu
+		respawnable_on_call[subMenuName] = 
 			missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
 	end	
 	return subMenuName
@@ -123,8 +123,8 @@ return name of the submenu
 --]]
 respawnable_on_call.ensureUniversalSubmenu_=function()
 	local subMenuName="subMenu"
-	if respawnable_on_call.RespawnableOnCall[subMenuName]==nil then--create submenu
-		respawnable_on_call.RespawnableOnCall[subMenuName] = 
+	if respawnable_on_call[subMenuName]==nil then--create submenu
+		respawnable_on_call[subMenuName] = 
 			missionCommands.addSubMenu("Other Assets",nil)
 	end		
 	return subMenuName
