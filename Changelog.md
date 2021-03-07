@@ -3,7 +3,7 @@
 ## v1.2a
 * Respawnable_on_call.add should be called respawnable_on_call.new -- Fixed
 * Added respawnable_on_call:delete 
-* Added constant_pressure_set:setTargetActive
+* Added constant_pressure_set:delete
 
 ## v1.1a
 * Added constant_pressure_set
