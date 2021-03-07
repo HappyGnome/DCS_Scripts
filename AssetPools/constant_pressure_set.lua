@@ -30,11 +30,11 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		--Public methods---------------
 		
 		--[[
-		Change target number of units to spawn
+		remove this pool from polling
 		return =self
 		--]]
-		setTargetActive=function(self, targetActive)
-			self.targetActiveCount=targetActive
+		delete=function(self)
+			self.killSwitch=true
 			return self
 		end,
 		
@@ -92,7 +92,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
 			end
 		
-			return true -- keep polling
+			return not self.killSwitch -- keep polling
 		end,
 
 
@@ -215,6 +215,11 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	
 	--min delay when a unit respawns
 	instance.minSpawnDelay=minSpawnDelay
+	
+	--[[
+	Setting this to true will de-activate the this instance at the next tick
+	--]]
+	instance.killSwitch=false
 	
 	--Assign methods
 	setmetatable(instance,constant_pressure_set.instance_meta_)

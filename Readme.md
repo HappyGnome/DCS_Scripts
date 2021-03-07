@@ -46,7 +46,7 @@ Where
 
 `<coalitionName>` should be `"red"` `"blue"` or `"all"` to declare which side will be able to call in the asset (it doesn't have to match the allegience of the asset)
 
-#### Example
+##### Example
 
 In a mission with a group called `Aerial-2` set up the triggers:
 
@@ -54,12 +54,27 @@ In a mission with a group called `Aerial-2` set up the triggers:
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
 |MISSION START|DO SCRIPT FILE|respawnable_on_call.lua|
-|MISSION START|DO SCRIPT|respawnable_on_call.new("Aerial-2",60,300,300,"red")|
+|MISSION START|DO SCRIPT|`respawnable_on_call.new("Aerial-2",60,300,300,"red")`|
 
 
 Then the red coalition will have a "Respawnable Assets" sub-menu in the `F10` comms menu,
 from which they can request that `Aerial-2` is respawned. If available it will activate 
 60 seconds after user selects this option. Once the group dies or goes RTB (it may take a minute for the script to detect this) a cooldown of 5 minutes (300 seconds) begins, during which time the group can not be respawned - players instead receive a message saying when the group will be available again.
+
+#### Remove an asset
+
+To remove an asset call `<respawnable_on_call instance>:delete()` where `<respawnable_on_call instance>` was returned by a call to `respawnable_on_call.new`. Active units will not be de-spawned, but no further respawns of the asset will be possible.
+
+##### Example
+
+In a mission with a group called `Aerial-2` set up the triggers:
+
+|Trigger|Action|Action Detail|
+|---|---|---|
+|...|||
+|MISSION START|DO SCRIPT|`myRemovableAsset=respawnable_on_call.new("Aerial-2",60,300,300,"red")`|
+|...|||
+|`<any>`|DO SCRIPT|`myRemovableAsset:delete()`|
 
 ## Constant Pressure Set
 This script is designed to help mission builders keep an area constantly busy with units for missions of indefinite duration, while allowing for some attritional effects.
@@ -94,7 +109,7 @@ Where
 
 `...` A list of group names comprising the set of assets for the maintained presence
 
-#### Example
+##### Example
 
 In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
 
@@ -102,17 +117,24 @@ In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
 |MISSION START|DO SCRIPT FILE|constant_pressure_set.lua|
-|MISSION START|DO SCRIPT|constant_pressure_set.new(2,2,1800,3600,10,120, "Aerial-1","Aerial-2","Aerial-3","Aerial-4","Aerial-5","Aerial-6","Aerial-7" )|
+|MISSION START|DO SCRIPT|`constant_pressure_set.new(2,2,1800,3600,10,120, "Aerial-1","Aerial-2","Aerial-3","Aerial-4","Aerial-5","Aerial-6","Aerial-7" )`|
 
 Then two groups from among the seven Aerial groups will spawn, as each finishs their mission/dies/despawns, it enters a cooldown and
  another one will spawn within between 10s and  ~120s afterwards. Up to two additional groups will spawn this way. But this numebr increases
 each time one of the 1800s or 3600s cooldowns finishes. 
  
- 
-#### Suggestion
 
+#### Remove pressure
+
+To cease respawning units from this pressure set, call `<constant_pressure_set instance>:delete()` 
+
+Where
+
+`<constant_pressure_set instance>` was returned by a call to `constant_pressure_set.new`
+
+#### Suggestion
 
 To keep a roughly equal presence in the absence of attrition, set the `<idleCooldown>` to at most `(<reinforceStrength>/<targetActive>) x <minimum mission time among the groups>` 
 E.g. the example above would suit groups with missions not shorter than 30 minutes (`= 2/2 x 1800s`). Otherwise, e.g. if groups typically finished their missions in 10 minutes there would be 
 a loose cycle where for about 20 minutes, all 4 groups (two at a time) would finish their missions, followed by a 20 minute delay before more spawns could occur, 
-(i.e. 30 minutes after the first groups finished). 
+(i.e. 30 minutes after the first groups finished).
