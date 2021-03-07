@@ -24,6 +24,21 @@ Pool class used for respawnable-on-call operation. Currently only designed for c
 respawnable_on_call.instance_meta_={
 
 	__index={ --Metatable for this "class"
+	
+		--Public methods-------------------
+		
+		--[[
+		Schedule removal of instance from poll, and remove comms menus
+		
+		return = self
+		--]]
+		delete=function(self)
+			self.killSwitch=true
+			if self.commsPath then -- very important it's not il, or whole comms menu will be emptied
+				missionCommands.removeItem(self.commsPath)
+			end
+			return self
+		end,
 
 		--Asset pool override
 		groupDead=function(self, groupName, now)			
@@ -51,7 +66,7 @@ respawnable_on_call.instance_meta_={
 
 		--Asset pool override
 		onTick=function(self, now)	
-			return true -- keep polling
+			return not killSwitch -- keep polling
 		end,
 
 
@@ -92,12 +107,12 @@ respawnable_on_call.instance_meta_={
 			if self.side then --coalition specific addition	
 				local subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
 				
-				missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call[subMenuName],
+				self.commsPath=missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call[subMenuName],
 					self.handleSpawnRequest_,self)
 			else --add for all	
 				local subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
 				
-				missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
+				self.commsPath=missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
 					self.handleSpawnRequest_,self)
 			end
 		end
@@ -169,12 +184,18 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 	instance.groupName = groupName
 	
 	--[[
+	Setting this to true will de-activate the this instance at the next tick
+	--]]
+	instance.killSwitch=false
+	
+	--[[
 		canRequestAt ==
 		true -> request any time
 		false -> not available to request
 		int -> time that requests can next be made (s elapsed in mission)
 	--]]
-	instance.canRequestAt = true
+	instance.canRequestAt = not ap_utils.groupHasActiveUnit(groupName)
+		--initially true, unless group already exists on the map
 	
 	--[[
 		spawnDelay ==

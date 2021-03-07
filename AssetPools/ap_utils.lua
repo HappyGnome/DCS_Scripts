@@ -126,4 +126,24 @@ ap_utils.eraseByPredicate=function(s,pred)
 	return ret
 end
 
+
+--[[
+Return = Boolean: Does named group have a living active unit in-play
+--]]
+ap_utils.groupHasActiveUnit=function(groupName)
+	local group=Group.getByName(groupName)
+	
+	
+	if group then
+		local units = Group.getUnits(group)
+		if units then
+			local unit=units[1]
+			if unit then
+				return Unit.isActive(unit)
+			end
+		end				
+	end	
+	return false
+end
+
 return ap_utils

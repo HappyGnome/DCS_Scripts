@@ -108,12 +108,30 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName)
 end
 
 --[[
-Private: do poll of first unit in each watched group
+Private: do poll of groups and pools
 --]]
 asset_pools.doPoll_=function()
 
 	local now=timer.getTime()
 	
+	--Update pools------------------------------------------------------
+	local tickPool--parameter for the lambda - pool to update
+	
+	--lambda for onTick callbacks
+	local function doTick()
+		if not tickPool:onTick(now) then
+		-- if pool requests to stop polling it and its groups
+			asset_pools.pools_[tickPool.poolId]=nil
+		end
+	end
+	
+	--do misc state updates for each pool
+	for k,pool in pairs(asset_pools.pools_) do
+		tickPool=pool
+		xpcall(doTick,asset_pools.catchError) --safely do work of dispatching tick events
+	end
+	
+	--Update groups------------------------------------------------------
 	local groupName=""--loop variables for use in the poll lambda (avoid making lambda in a loop)
 	local poolAt=nil
 	
@@ -177,6 +195,7 @@ asset_pools.doPoll_=function()
 	
 	end--pollGroup
 
+	--do group poll
 	for k,v in pairs(asset_pools.tracked_groups_) do
 		--parameters for the lambda
 		groupName=k
@@ -184,24 +203,8 @@ asset_pools.doPoll_=function()
 		
 		xpcall(pollGroup,asset_pools.catchError) --safely do work of polling the group
 	end
-	
-	local tickPool--parameter for the lambda - pool to update
-	
-	--lambda for onTick callbacks
-	local function doTick()
-		if not tickPool:onTick(now) then
-		-- if pool requests to stop polling it and its groups
-			asset_pools.pools_[tickPool.poolId]=nil
-		end
-	end
-	
-	--do misc state updates for each pool
-	for k,pool in pairs(asset_pools.pools_) do
-		tickPool=pool
-		xpcall(doTick,asset_pools.catchError) --safely do work of dispatching tick events
-	end
 
-	--schedule next poll
+	--schedule next poll----------------------------------
 	mist.scheduleFunction(asset_pools.doPoll_,nil,now+asset_pools.poll_interval)
 end
 

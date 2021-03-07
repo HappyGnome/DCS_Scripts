@@ -26,6 +26,18 @@ number in-mission
 --]]
 constant_pressure_set.instance_meta_={--Do metatable setup
 	__index={ --Metatable for this "class"
+	
+		--Public methods---------------
+		
+		--[[
+		Change target number of units to spawn
+		return =self
+		--]]
+		setTargetActive=function(self, targetActive)
+			self.targetActiveCount=targetActive
+			return self
+		end,
+		
 
 		--Asset pool override
 		groupDead=function(self, groupName, now)						
