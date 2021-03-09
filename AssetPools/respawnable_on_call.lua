@@ -46,6 +46,10 @@ respawnable_on_call.instance_meta_={
 			--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
 			--asset_pools.log_i:info(self.groupName.." was detected dead.")
 			
+			if self.groupDeathCallback then
+				self.groupDeathCallback()
+			end
+			
 			--stop polling this group
 			return false		
 		end,
@@ -69,6 +73,17 @@ respawnable_on_call.instance_meta_={
 
 
 		--Other methods
+		
+		
+		--[[
+			Set optional callback for when group dies/despawns
+			param callback = function()
+			return self
+		--]]
+		setGroupDeathCallback = function(self,callback)
+			self.groupDeathCallback = callback
+			return self
+		end,
 
 		--[[
 		Private: Request to spawn new instance of template group if there's not already one
@@ -188,6 +203,10 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 	
 	--Asset pool override
 	instance.poolId = nil
+	
+	-- function() -> nil
+	-- will be called when group dies/despawns
+	instance.groupDeathCallback = nil
 	
 	
 	--[[
