@@ -4,6 +4,7 @@
 * Respawnable_on_call.add should be called respawnable_on_call.new -- Fixed
 * Added respawnable_on_call:delete 
 * Added constant_pressure_set:delete
+* Added ability to create groups  with randomly selected units and missions
 
 ## v1.1a
 * Added constant_pressure_set

@@ -93,11 +93,22 @@ end
 
 --[[
 respawn named group and add it to poll associated to given pool
+
+@param groupName = name of group in ME to respawn (ignored if groupData set)
+@param groupData = nil if named group exists in ME, or override named group with dynamic group Data
+		This is a table that will be accepted by mist.dynAdd
 --]]
-asset_pools.RespawnGroupForPoll = function(pool,groupName)
-	local group = Group.getByName(groupName)
+asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
+	local group 
 	
-	mist.respawnGroup(groupName,true) --respawn with original tasking
+	if groupData then
+		groupName=groupData.groupName
+		mist.dynAdd(groupData)
+	else
+		group = Group.getByName(groupName)
+		
+		mist.respawnGroup(groupName,true) --respawn with original tasking
+	end
 	group = Group.getByName(groupName)
 	
 	if group then

@@ -147,7 +147,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			local delay= math.random(self.minSpawnDelay,self.maxSpawnDelay)
 			
 			mist.scheduleFunction(asset_pools.RespawnGroupForPoll,
-				{self,groupName},now+delay)
+				{self,groupName,self.groupDataLookup[groupName]},now+delay)
 				
 			constant_pressure_set.log_i:info(groupName.." called in with delay "..delay)
 			
@@ -224,8 +224,20 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	--Assign methods
 	setmetatable(instance,constant_pressure_set.instance_meta_)
 	
+	
+	instance.groupDataLookup={} --lookup mapping groupName to group spawn data where available	
+	local allGroups={}--all group names
+	
+	for _,v in pairs{...} do
+		if type(v)=='string' then
+			table.insert(allGroups,v)
+		else --try to interpret as group data
+			table.insert(allGroups,v.groupName)
+			instance.groupDataLookup[v.groupName]=v
+		end
+	end
+	
 	--select random groups to be initial spawns and ready retinforcements
-	local allGroups={...}
 	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
 	
 	for _,g in pairs(initForce) do

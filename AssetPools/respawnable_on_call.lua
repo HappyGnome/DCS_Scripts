@@ -95,7 +95,7 @@ respawnable_on_call.instance_meta_={
 			
 			if cRA==true or (cRA_isnum and cRA<now) then
 				self.canRequestAt=false --try to prevent dual requests, schedule spawn
-				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName},now+self.spawnDelay)
+				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName,nil},now+self.spawnDelay)
 				
 				ap_utils.messageForCoalitionOrAll(self.side,
 					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)

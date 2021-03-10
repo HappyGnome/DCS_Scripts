@@ -146,4 +146,56 @@ ap_utils.groupHasActiveUnit=function(groupName)
 	return false
 end
 
+
+--[[
+Make random groups
+
+param nameRoot = base group name e.g. "dread" generates "dread-1", "dread-2",...
+param count = number of groups to generate
+param unitDonors = array of group names specifying the unit combinations to use
+param taskDonors = array of group names specifying routes/tasks to use
+
+Return = unpacked array of groupData tables that can be passed to dynAdd to spawn a group
+--]]
+ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
+
+	local groupNum =0 --index to go with name route to make group name
+	local ret={}
+	local logMessage="Generated groups: "
+	
+	while groupNum<count do
+		groupNum = groupNum + 1
+		
+		local newGroupData = mist.getGroupData(unitDonors[math.random(#unitDonors)])
+		
+		--get route and task data from random task donor
+		newGroupData.route = mist.getGroupRoute(taskDonors[math.random(#taskDonors)],true)
+		
+		newGroupData.groupName=nameRoot.."-"..groupNum
+		newGroupData.groupId=nil --mist generates a new id
+		
+		--generate unit names and null ids
+		for i,unit in pairs(newGroupData.units) do
+			unit.unitName=nameRoot.."-"..groupNum.."-"..(i+1)
+			unit.unitId=nil
+		end
+		
+		newGroupData.lateActivation = true
+		
+		table.insert(ret,newGroupData)
+		
+		local msgOK=" FAIL"
+		if mist.groupTableCheck(newGroupData) then
+			msgOK=" OK"
+		end
+		logMessage=logMessage..newGroupData.groupName..msgOK..", "				
+		
+	end
+	
+	ap_utils.log_i:info(logMessage)
+	
+	return unpack(ret)
+
+end
+
 return ap_utils
