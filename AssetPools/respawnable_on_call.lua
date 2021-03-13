@@ -47,7 +47,7 @@ respawnable_on_call.instance_meta_={
 			--asset_pools.log_i:info(self.groupName.." was detected dead.")
 			
 			if self.groupDeathCallback then
-				self.groupDeathCallback()
+				self.groupDeathCallback(self.groupName, self.timesCalledIn)
 			end
 			
 			--stop polling this group
@@ -61,6 +61,10 @@ respawnable_on_call.instance_meta_={
 				
 			--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
 			--asset_pools.log_i:info(groupName.." was detected idle.")
+			
+			if self.groupIdleCallback then
+				self.groupIdleCallback(self.groupName, self.timesCalledIn)
+			end
 			
 			--stop polling this group
 			return false 
@@ -77,13 +81,43 @@ respawnable_on_call.instance_meta_={
 		
 		--[[
 			Set optional callback for when group dies/despawns
-			param callback = function()
+			param callback = function(groupName,timesCalledIn)
 			return self
 		--]]
 		setGroupDeathCallback = function(self,callback)
 			self.groupDeathCallback = callback
 			return self
 		end,
+		
+		--[[
+			Set optional callback for when group is called in
+			param callback = function(groupName,timesCalledIn)
+			return self
+		--]]
+		setGroupCallInCallback = function(self,callback)
+			self.groupCallInCallback = callback
+			return self
+		end,
+		
+		--[[
+			Set optional callback for when group goes idle
+			param callback = function(groupName,timesCalledIn)
+			return self
+		--]]
+		setGroupIdleCallback = function(self,callback)
+			self.groupIdleCallback = callback
+			return self
+		end,
+		
+		--[[
+			reset spawn counter
+			return self
+		--]]
+		resetSpawnCount = function(self)
+			self.timesCalledIn=0
+			return self
+		end,
+		
 
 		--[[
 		Private: Request to spawn new instance of template group if there's not already one
@@ -96,6 +130,11 @@ respawnable_on_call.instance_meta_={
 			if cRA==true or (cRA_isnum and cRA<now) then
 				self.canRequestAt=false --try to prevent dual requests, schedule spawn
 				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName,nil},now+self.spawnDelay)
+				
+				self.timesCalledIn = self.timesCalledIn+1 --increment spawn count
+				if self.groupCallInCallback then --post call-in callback
+					self.groupCallInCallback(self.groupName, self.timesCalledIn)
+				end
 				
 				ap_utils.messageForCoalitionOrAll(self.side,
 					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
@@ -204,15 +243,26 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 	--Asset pool override
 	instance.poolId = nil
 	
-	-- function() -> nil
+	-- function(groupName,timesCalledIn) -> nil
 	-- will be called when group dies/despawns
 	instance.groupDeathCallback = nil
+	-- function(groupName,timesCalledIn) -> nil
+	-- will be called when group (re)spawn is scheduled
+	instance.groupCallInCallback = nil
+	-- function(groupName,timesCalledIn) -> nil
+	-- will be called when group (is detected as idle
+	instance.groupIdleCallback = nil
 	
 	
 	--[[
 	Set the group tracked by this asset_pool
 	--]]
 	instance.groupName = groupName
+	
+	--[[
+	Number of times this group has been scheduled to spawn
+	--]]
+	instance.timesCalledIn = 0
 	
 	--[[
 	Setting this to true will de-activate the this instance at the next tick
