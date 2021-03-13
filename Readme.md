@@ -5,6 +5,8 @@ This repository contains some lua scripts for making DCS World missions.
 ## Download
 See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
 
+This readme is for v1.2a
+
 ## General Usage
 
 ### Prerequisites
