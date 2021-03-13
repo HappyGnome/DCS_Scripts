@@ -34,19 +34,19 @@ Call `DO SCRIPT FILE -> respawnable_on_call.lua`
 At any point in the mission after initialization, a group can be added by calling `DO SCRIPT -> respawnable_on_call.new(<groupName>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
 
 Where
-`<groupName>` is the name of the group to make spawnable (in quotes)
+*`<groupName>` is the name of the group to make spawnable (in quotes)
 **N.B.** This group should have late activation - do not activate it yourself!
 
-`<spawnDelay>` is the time (seconds) it takes for the group to spawn after it is requested
+*`<spawnDelay>` is the time (seconds) it takes for the group to spawn after it is requested
 
-`<delayWhenIdle>` is the approximate time (seconds) before the group can be requested after it finishes its mission 
+*`<delayWhenIdle>` is the approximate time (seconds) before the group can be requested after it finishes its mission 
 (e.g. time delay after declaring RTB)
 
-`<delayWhenDead>` is the approximate time (seconds) before the group can be requested after it dies or is otherwise despawned
+*`<delayWhenDead>` is the approximate time (seconds) before the group can be requested after it dies or is otherwise despawned
 
-`<coalitionName>` should be `"red"` `"blue"` or `"all"` to declare which side will be able to call in the asset (it doesn't have to match the allegience of the asset)
+*`<coalitionName>` should be `"red"` `"blue"` or `"all"` to declare which side will be able to call in the asset (it doesn't have to match the allegience of the asset)
 
-Return: a new `respawnable_on_call` instance
+**Return:** a new `respawnable_on_call` instance
 
 ##### Example
 
@@ -109,24 +109,24 @@ Call `DO SCRIPT FILE -> constant_pressure_set.lua`
 At any point in the mission after initialization, a set of group can be added by calling `DO SCRIPT -> constant_pressure_set.new(<targetActive>,<reinforceStrength>,<idleCooldown>, <deathCooldown>, <minSpawnDelay>, <maxSpawnDelay>, ...)`
 
 Where
-`<targetActive>` is the number of groups the script will try to maintain in-play
+*`<targetActive>` is the number of groups the script will try to maintain in-play
 
-`<reinforceStrength>` is the number of groups in excess of `<targetActive>` available for spawn at the start. 
+*`<reinforceStrength>` is the number of groups in excess of `<targetActive>` available for spawn at the start. 
 		After this many groups despawn or go idle, further spawns will only be possible after one of the cooldowns has completed.
 
-`<idleCooldown>` is the length of the cooldown time (s) set when a group becomes idle
+*`<idleCooldown>` is the length of the cooldown time (s) set when a group becomes idle
 (e.g. time delay after declaring RTB)
 
-`<deathCooldown>` is the length of the cooldown time (s) set when a group dies/despawns
+*`<deathCooldown>` is the length of the cooldown time (s) set when a group dies/despawns
 
 
-`<minSpawnDelay>` minimum time (s) between groups in-play dropping below `targetActive` and a new group spawning
+*`<minSpawnDelay>` minimum time (s) between groups in-play dropping below `targetActive` and a new group spawning
 
-`<maxSpawnDelay>` approximate maximum time (s) between groups in-play dropping below `targetActive` and a new group spawning
+*`<maxSpawnDelay>` approximate maximum time (s) between groups in-play dropping below `targetActive` and a new group spawning
 
-`...` A list of group names comprising the set of assets for the maintained presence
+*`...` A list of group names comprising the set of assets for the maintained presence
 
-Return: a new `rconstant_pressure_set` instance
+**Return:** a new `rconstant_pressure_set` instance
 
 ##### Example
 
@@ -167,14 +167,14 @@ Usage: `ap_utils.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
 
 Where
 
-`<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
+*`<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
 
-`<count>` is the number of groups to generate
+*`<count>` is the number of groups to generate
 
-`<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
+*`<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
 
-`<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
+*`<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
 
-Returns: An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
+**Returns:** An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
 
-Example: `constant_pressure_set.new(2,2,1800,3600,10,120, ap_utils.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
+**Example:** `constant_pressure_set.new(2,2,1800,3600,10,120, ap_utils.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
