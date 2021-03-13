@@ -164,11 +164,17 @@ ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
 `ap_utils.generateGroups` can be used to simplify creating large numbers of groups for the `constant_pressure_set.new` to make it easier to add variability to missions at runtime.
 
 Usage: `ap_utils.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
+
 Where
+
 `<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
+
 `<count>` is the number of groups to generate
+
 `<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
+
 `<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
 
 Returns: An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
+
 Example: `constant_pressure_set.new(2,2,1800,3600,10,120, ap_utils.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
