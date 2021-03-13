@@ -46,6 +46,8 @@ Where
 
 `<coalitionName>` should be `"red"` `"blue"` or `"all"` to declare which side will be able to call in the asset (it doesn't have to match the allegience of the asset)
 
+Return: a new `respawnable_on_call` instance
+
 ##### Example
 
 In a mission with a group called `Aerial-2` set up the triggers:
@@ -84,9 +86,9 @@ where `myROC=respawnable_on_call.new(...`.
 
 |Method|Args|Callback Args|Desc|
 |---|---|---|---|
-|`setGroupDeathCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as dead or despawned |
-|`setGroupIdleCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as idle |
-|`setGroupCallInCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned (including this time)|Sets `callback` to be called when the group is scheduled to respawn. |
+|`setGroupDeathCallback`|`callback` - `function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as dead or despawned |
+|`setGroupIdleCallback`|`callback` - `function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as idle |
+|`setGroupCallInCallback`|`callback` - `function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned (including this time)|Sets `callback` to be called when the group is scheduled to respawn. |
 |`resetSpawnCount`|None|N/A|Reset the `timesCalledIn` counter that's passed to callbacks to zero|
 
 **Note** These functions return the calling instance, so they can be chained. E.g. `respawnable_on_call.new(...):setGroupDeathCallback(myFoo):setGroupIdleCallback(myBar)`		
@@ -124,6 +126,8 @@ Where
 
 `...` A list of group names comprising the set of assets for the maintained presence
 
+Return: a new `rconstant_pressure_set` instance
+
 ##### Example
 
 In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
@@ -153,3 +157,18 @@ To keep a roughly equal presence in the absence of attrition, set the `<idleCool
 E.g. the example above would suit groups with missions not shorter than 30 minutes (`= 2/2 x 1800s`). Otherwise, e.g. if groups typically finished their missions in 10 minutes there would be 
 a loose cycle where for about 20 minutes, all 4 groups (two at a time) would finish their missions, followed by a 20 minute delay before more spawns could occur, 
 (i.e. 30 minutes after the first groups finished).
+
+#### Generating random groups
+ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
+
+`ap_utils.generateGroups` can be used to simplify creating large numbers of groups for the `constant_pressure_set.new` to make it easier to add variability to missions at runtime.
+
+Usage: `ap_utils.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
+Where
+`<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
+`<count>` is the number of groups to generate
+`<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
+`<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
+
+Returns: An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
+Example: `constant_pressure_set.new(2,2,1800,3600,10,120, ap_utils.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
