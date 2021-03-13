@@ -76,6 +76,21 @@ In a mission with a group called `Aerial-2` set up the triggers:
 |...|||
 |`<any>`|DO SCRIPT|`myRemovableAsset:delete()`|
 
+#### Additional options
+
+Mission creators can set a few additional options for `respawnable_on_call` instances, including setting Lua functions to be triggered when the tracked group goes idle, dies/despawns, and whenever a respawn is scheduled. 
+The functions in the table below should be called on an instance returned from `respawnable_on_call.new`. E.g. `myROC:setGroupDeathCallback(myFunc)`
+where `myROC=respawnable_on_call.new(...`.
+
+|Method|Args|Callback Args|Desc|
+|---|---|---|---|
+|`setGroupDeathCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as dead or despawned |
+|`setGroupIdleCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned |Sets `callback` to be called when the group is detected as idle |
+|`setGroupCallInCallback`|`callback = function(groupName,timesCalledIn)`|`groupName` - name of the monitored group<br> `timesCalledIn` - number of times this group has been spawned (including this time)|Sets `callback` to be called when the group is scheduled to respawn. |
+|`resetSpawnCount`|None|N/A|Reset the `timesCalledIn` counter that's passed to callbacks to zero|
+
+**Note** These functions return the calling instance, so they can be chained. E.g. `respawnable_on_call.new(...):setGroupDeathCallback(myFoo):setGroupIdleCallback(myBar)`		
+
 ## Constant Pressure Set
 This script is designed to help mission builders keep an area constantly busy with units for missions of indefinite duration, while allowing for some attritional effects.
  

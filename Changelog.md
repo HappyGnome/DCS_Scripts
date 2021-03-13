@@ -4,7 +4,8 @@
 * Respawnable_on_call.add should be called respawnable_on_call.new -- Fixed
 * Added respawnable_on_call:delete 
 * Added constant_pressure_set:delete
-* Added ability to create groups  with randomly selected units and missions
+* Added ability to create groups  with randomly selected units and missions (ap_utils.generateGroups)
+* Added option to set callbacks from respawnable_on_call events
 
 ## v1.1a
 * Added constant_pressure_set
