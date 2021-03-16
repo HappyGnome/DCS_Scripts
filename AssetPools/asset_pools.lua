@@ -1,4 +1,5 @@
--- ASSET_POOLS
+--#######################################################################################################
+-- ASSET_POOLS (PART 1)
 -- Run once at mission start after initializing MIST (Tested with Mist 4.4.90)
 -- 
 -- Adds functionality based on pools of groups, tracking availability
@@ -219,6 +220,779 @@ asset_pools.doPoll_=function()
 	mist.scheduleFunction(asset_pools.doPoll_,nil,now+asset_pools.poll_interval)
 end
 
+--#######################################################################################################
+-- AP_UTILS
+-- misc Utilities for asset_pool scripts
+
+
+--doFile returns single global instance, or creates one
+--if ap_utils then
+	--return ap_utils
+--end
+
+--NAMESPACES---------------------------------------------------------------------------------------------- 
+ap_utils={}
+
+--[[
+Loggers for this module
+--]]
+ap_utils.log_i=mist.Logger:new("ap_utils","info")
+ap_utils.log_e=mist.Logger:new("ap_utils","error")
+
+
+--UTILS------------------------------------------------------------------------------------------------
+--[[
+Convert coalition name to coalition.side
+
+return coalition.side, or nil if none recognised 
+name is not case sensitive, but otherwise should be "red", "blue" or "neutral" to name a particular faction
+--]]
+ap_utils.stringToSide = function(name)
+	name=string.lower(name) --remove case sensitivity
+	if name == "red" then
+		return coalition.side.RED
+	elseif name == "blue" then
+		return coalition.side.BLUE
+	elseif name == "neutral" then
+		return coalition.side.NEUTRAL
+	end--else nil
+end
+
+--[[
+Convert coalition to "Red", "Blue", "Neutral", or "None"
+--]]
+ap_utils.sideToString = function(side)
+	if side == coalition.side.RED then
+		return "Red"
+	elseif side == coalition.side.BLUE then
+		return "Blue"
+	elseif side == coalition.side.NEUTRAL then
+		return "Neutral"
+	else
+		return "None"
+	end
+end
+
+--[[
+Print message to the given coalition.side, or to all players if side==nil
+--]]
+ap_utils.messageForCoalitionOrAll = function(side,message,delay)
+	if side then
+		trigger.action.outTextForCoalition(side,message,delay)
+	else
+		trigger.action.outText(message,5)
+	end
+end
+
+--[[
+Print message to the given coalition.side, or to all players if side==nil
+--]]
+ap_utils.messageForCoalitionOrAll = function(side,message,delay)
+	if side then
+		trigger.action.outTextForCoalition(side,message,delay)
+	else
+		trigger.action.outText(message,5)
+	end
+end
+
+--[[
+Randomly remove N elements from a table and return removed elements (key,value)
+--]]
+ap_utils.removeRandom=function(t,N)
+	local ret={}
+	local count=0
+	
+	for k in pairs(t) do
+		count=count+1
+	end
+	
+	N=math.min(N,count)
+	
+	local n=0
+	while(n<N) do
+		local toRemove=math.random(count-n)
+			
+		local i=0
+
+		for k,v in pairs(t) do
+			i=i+1
+			if i==toRemove then
+				t[k]=nil
+				ret[k]=v
+			end
+		end
+		n=n+1
+	end
+	
+	return ret
+end
+
+--[[
+Given a set s with multiplicity (key = Any, value= multiplicity)
+Remove any for which pred(key)==true
+Return the number removed counting multiplicity
+--]]
+ap_utils.eraseByPredicate=function(s,pred)
+	local ret=0
+	
+	
+	
+	for k,v in pairs(s) do
+		if pred(k) then
+			ret=ret+v
+			s[k]=nil
+		end
+	end
+	
+	return ret
+end
+
+
+--[[
+Return = Boolean: Does named group have a living active unit in-play
+--]]
+ap_utils.groupHasActiveUnit=function(groupName)
+	local group=Group.getByName(groupName)
+	
+	
+	if group then
+		local units = Group.getUnits(group)
+		if units then
+			local unit=units[1]
+			if unit then
+				return Unit.isActive(unit)
+			end
+		end				
+	end	
+	return false
+end
+
+
+--[[
+Make random groups
+
+param nameRoot = base group name e.g. "dread" generates "dread-1", "dread-2",...
+param count = number of groups to generate
+param unitDonors = array of group names specifying the unit combinations to use
+param taskDonors = array of group names specifying routes/tasks to use
+
+Return = unpacked array of groupData tables that can be passed to dynAdd to spawn a group
+--]]
+ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
+
+	local groupNum =0 --index to go with name route to make group name
+	local ret={}
+	local logMessage="Generated groups: "
+	
+	while groupNum<count do
+		groupNum = groupNum + 1
+		
+		local newGroupData = mist.getGroupData(unitDonors[math.random(#unitDonors)])
+		
+		--get route and task data from random task donor
+		newGroupData.route = mist.getGroupRoute(taskDonors[math.random(#taskDonors)],true)
+		
+		newGroupData.groupName=nameRoot.."-"..groupNum
+		newGroupData.groupId=nil --mist generates a new id
+		
+		--generate unit names and null ids
+		for i,unit in pairs(newGroupData.units) do
+			unit.unitName=nameRoot.."-"..groupNum.."-"..(i+1)
+			unit.unitId=nil
+		end
+		
+		newGroupData.lateActivation = true
+		
+		table.insert(ret,newGroupData)
+		
+		local msgOK=" FAIL"
+		if mist.groupTableCheck(newGroupData) then
+			msgOK=" OK"
+		end
+		logMessage=logMessage..newGroupData.groupName..msgOK..", "				
+		
+	end
+	
+	ap_utils.log_i:info(logMessage)
+	
+	return unpack(ret)
+
+end
+
+--return ap_utils
+
+--#######################################################################################################
+-- RESPAWNABLE_ON_CALL
+
+--REQUISITES----------------------------------------------------------------------------------------------
+--local asset_pools=dofile('./Scripts/AssetPools/asset_pools.lua')
+--local ap_utils=dofile('./Scripts/AssetPools/ap_utils.lua')
+
+
+--NAMESPACES----------------------------------------------------------------------------------------------
+respawnable_on_call={}
+----------------------------------------------------------------------------------------------------------
+
+--[[
+Loggers for this module
+--]]
+respawnable_on_call.log_i=mist.Logger:new("respawnable_on_call","info")
+respawnable_on_call.log_e=mist.Logger:new("respawnable_on_call","error")
+
+--RESPAWNABLE_ON_CALL-----------------------------------------------------------------------------------------
+--[[
+Pool class used for respawnable-on-call operation. Currently only designed for controlling a single group
+--]]
+respawnable_on_call.instance_meta_={
+
+	__index={ --Metatable for this "class"
+	
+		--Public methods-------------------
+		
+		--[[
+		Schedule removal of instance from poll, and remove comms menus
+		
+		return = self
+		--]]
+		delete=function(self)
+			self.killSwitch=true
+			self:deleteComms_()
+			return self
+		end,
+
+		--Asset pool override
+		groupDead=function(self, groupName, now)			
+			self.canRequestAt
+				= now + self.delayWhenDead
+				
+			--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
+			--asset_pools.log_i:info(self.groupName.." was detected dead.")
+			
+			if self.groupDeathCallback then
+				self.groupDeathCallback(self.groupName, self.timesCalledIn)
+			end
+			
+			--stop polling this group
+			return false		
+		end,
+
+		--Asset pool override
+		groupIdle=function(self, groupName, now)			
+			self.canRequestAt
+				= now + self.delayWhenIdle
+				
+			--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
+			--asset_pools.log_i:info(groupName.." was detected idle.")
+			
+			if self.groupIdleCallback then
+				self.groupIdleCallback(self.groupName, self.timesCalledIn)
+			end
+			
+			--stop polling this group
+			return false 
+		end,
+
+		--Asset pool override
+		onTick=function(self, now)	
+			return not killSwitch -- keep polling
+		end,
+
+
+		--Other methods
+		
+		
+		--[[
+			Set optional callback for when group dies/despawns
+			param callback = function(groupName,timesCalledIn)
+			return self
+		--]]
+		setGroupDeathCallback = function(self,callback)
+			self.groupDeathCallback = callback
+			return self
+		end,
+		
+		--[[
+			Set optional callback for when group is called in
+			param callback = function(groupName,timesCalledIn)
+			return self
+		--]]
+		setGroupCallInCallback = function(self,callback)
+			self.groupCallInCallback = callback
+			return self
+		end,
+		
+		--[[
+			Set optional callback for when group goes idle
+			param callback = function(groupName,timesCalledIn)
+			return self
+		--]]
+		setGroupIdleCallback = function(self,callback)
+			self.groupIdleCallback = callback
+			return self
+		end,
+		
+		--[[
+			reset spawn counter
+			return self
+		--]]
+		resetSpawnCount = function(self)
+			self.timesCalledIn=0
+			return self
+		end,
+		
+
+		--[[
+		Private: Request to spawn new instance of template group if there's not already one
+		--]]
+		handleSpawnRequest_ = function(self)
+			local now=timer.getTime()
+			local cRA=self.canRequestAt
+			local cRA_isnum = type(cRA)=="number"
+			
+			if cRA==true or (cRA_isnum and cRA<now) then
+				self.canRequestAt=false --try to prevent dual requests, schedule spawn
+				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName,nil},now+self.spawnDelay)
+				
+				self.timesCalledIn = self.timesCalledIn+1 --increment spawn count
+				if self.groupCallInCallback then --post call-in callback
+					self.groupCallInCallback(self.groupName, self.timesCalledIn)
+				end
+				
+				ap_utils.messageForCoalitionOrAll(self.side,
+					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
+					
+				respawnable_on_call.log_i:info(self.groupName.." was called in.")
+			else
+				ap_utils.messageForCoalitionOrAll(self.side,
+					string.format("%s is not available or is already on-call",self.groupName),5)
+				if cRA_isnum then
+					local toWait= self.canRequestAt-now
+					ap_utils.messageForCoalitionOrAll(self.side,
+						string.format("%s will be available in %ds",self.groupName,toWait),5)
+				end
+			end
+		end,
+
+		--[[
+		Set up comms menus needed to spawn this group
+		--]]
+		createComms_=function(self)
+			--add menu options
+			if self.side then --coalition specific addition	
+				local subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
+				
+				self.commsPath=missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call[subMenuName],
+					self.handleSpawnRequest_,self)
+			else --add for all	
+				local subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
+				
+				self.commsPath=missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
+					self.handleSpawnRequest_,self)
+			end
+		end,
+		
+		--[[
+		Remove comms menus for spawning this group
+		--]]
+		deleteComms_=function(self)
+			if not self.commsPath then return end-- very important it's not nil, or whole comms menu will be emptied
+			
+			--remove menu options
+			if self.side then --coalition specific removal				
+				missionCommands.removeItemForCoalition(self.side,self.commsPath)
+			else --remove for all					
+				missionCommands.removeItem(self.commsPath)
+			end
+		end
+	}----index
+}--meta_	
+	
+--[[
+Add comms submenu for red or blue (side == instance of coalition.side)
+--]]
+respawnable_on_call.ensureCoalitionSubmenu_=function(side)
+	local coa_string=ap_utils.sideToString(side)
+	local subMenuName="subMenu_"..coa_string
+	if respawnable_on_call[subMenuName]==nil then--create submenu
+		respawnable_on_call[subMenuName] = 
+			missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
+	end	
+	return subMenuName
+end
+
+--[[
+Add comms submenu for assets available to any faction
+return name of the submenu
+--]]
+respawnable_on_call.ensureUniversalSubmenu_=function()
+	local subMenuName="subMenu"
+	if respawnable_on_call[subMenuName]==nil then--create submenu
+		respawnable_on_call[subMenuName] = 
+			missionCommands.addSubMenu("Other Assets",nil)
+	end		
+	return subMenuName
+end
+
+----------------------------------------------------------------------------------------------------
+
+--API--------------------------------------------------------------------------------------------------
+
+--[[
+	Create a respawn-on-command asset pool. Add comms menu command to trigger it
+
+	Call this at mission start/when associated unit can first be requested
+	for each respawnable resource
+
+	spawnDelay ==
+		int -> time between request and activation/respawn (s)
+	delayWhenIdle ==
+		int -> time (s) before respawn requests allowed when unit goes idle
+	delayWhenDead ==
+		int -> time (s) before respawn requests allowed when unit is dead
+	coalitionName == "red", "blue","neutral" or "all" (anything else counts as "all")
+		-> coalition name that can spawn group and receive updates about them
+		-> Note that neutral players don't seem to have a dedicated comms menu 
+		-> units added with "neutral" will not be spawnable!
+--]]
+respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
+	
+	local coa=ap_utils.stringToSide(coalitionName)
+	
+	local instance={}
+	
+	--Properties
+	
+	--Asset pool override
+	instance.poolId = nil
+	
+	-- function(groupName,timesCalledIn) -> nil
+	-- will be called when group dies/despawns
+	instance.groupDeathCallback = nil
+	-- function(groupName,timesCalledIn) -> nil
+	-- will be called when group (re)spawn is scheduled
+	instance.groupCallInCallback = nil
+	-- function(groupName,timesCalledIn) -> nil
+	-- will be called when group (is detected as idle
+	instance.groupIdleCallback = nil
+	
+	
+	--[[
+	Set the group tracked by this asset_pool
+	--]]
+	instance.groupName = groupName
+	
+	--[[
+	Number of times this group has been scheduled to spawn
+	--]]
+	instance.timesCalledIn = 0
+	
+	--[[
+	Setting this to true will de-activate the this instance at the next tick
+	--]]
+	instance.killSwitch=false
+	
+	--[[
+		canRequestAt ==
+		true -> request any time
+		false -> not available to request
+		int -> time that requests can next be made (s elapsed in mission)
+	--]]
+	instance.canRequestAt = not ap_utils.groupHasActiveUnit(groupName)
+		--initially true, unless group already exists on the map
+	
+	--[[
+		spawnDelay ==
+		int -> time between request and activation/respawn (s)
+	--]]
+	instance.spawnDelay = spawnDelay
+	
+	--[[
+		delayWhenIdle ==
+		int -> time before respawn requests allowed when unit goes idle
+	--]]
+	instance.delayWhenIdle = delayWhenIdle
+	
+	--[[
+		delayWhenDead ==
+		int -> time before respawn requests allowed when unit is dead
+	--]]
+	instance.delayWhenDead = delayWhenDead
+	
+	--[[
+		side == coalition.side, or nil for all
+		-> coalition name that can spawn group and receive updates about them
+	--]]
+	instance.side = coa
+	
+	setmetatable(instance,respawnable_on_call.instance_meta_)	
+	
+	
+	--add pool and add group to poll list, with an association to this group
+	asset_pools.addPoolToPoll_(instance)
+	
+	instance:createComms_()
+	
+	return instance
+			
+end--new
+
+--#######################################################################################################
+-- CONSTANT_PRESSURE_SET
+--
+-- Asset pool functionality for keeping randomized steady presence of assets alive
+
+--REQUISITES----------------------------------------------------------------------------------------------
+--local asset_pools=dofile('./Scripts/AssetPools/asset_pools.lua')
+--local ap_utils=dofile('./Scripts/AssetPools/ap_utils.lua')
+
+
+--NAMESPACES----------------------------------------------------------------------------------------------
+constant_pressure_set={}
+----------------------------------------------------------------------------------------------------------
+
+--[[
+Loggers for this module
+--]]
+constant_pressure_set.log_i=mist.Logger:new("constant_pressure_set","info")
+constant_pressure_set.log_e=mist.Logger:new("constant_pressure_set","error")
+
+--CONSTANT_PRESENCE_SET-----------------------------------------------------------------------------------------
+--[[
+Pool class used for managing a collection of groups, respawning them at random to keep up an approximately constant 
+number in-mission
+--]]
+constant_pressure_set.instance_meta_={--Do metatable setup
+	__index={ --Metatable for this "class"
+	
+		--Public methods---------------
+		
+		--[[
+		remove this pool from polling
+		return =self
+		--]]
+		delete=function(self)
+			self.killSwitch=true
+			return self
+		end,
+		
+
+		--Asset pool override
+		groupDead=function(self, groupName, now)						
+			
+			local cooldownTime=now+self.cooldownOnDeath
+			self:putGroupOnCooldown_(groupName,cooldownTime)				
+			
+			--stop polling this group
+			return false		
+		end,
+
+		--Asset pool override
+		groupIdle=function(self, groupName, now)
+			
+			local cooldownTime=now+self.cooldownOnIdle
+			self:putGroupOnCooldown_(groupName,cooldownTime)		
+			
+			--stop polling this group
+			return false 
+		end,
+
+		--Asset pool override
+		onTick=function(self, now)	
+			
+			--update cooldowns 
+			local pred=function(T)--predicate, remove all times in the past
+				return T<now
+			end				
+			
+			--remove a number of groups from cooldown equal to number of 
+			--expired cooldown timers this tick
+			--remove expired timers from list
+			local toReactivate= ap_utils.removeRandom(self.groupListCooldown_, 
+				ap_utils.eraseByPredicate(self.timeListCooldown_,pred))
+				
+			for k in pairs(toReactivate) do
+				self:takeGroupOffCooldown_(k)
+			end
+			
+			--schedule spawns
+			
+			--count active groups in excess of target
+			local surplusSpawned=-self.targetActiveCount
+			for _ in pairs(self.groupListActive_) do
+				surplusSpawned=surplusSpawned+1
+			end
+			
+			--pick random subset of ready groups to spawn
+			for g in pairs(
+				ap_utils.removeRandom(self.groupListReady_,-surplusSpawned)
+				) do
+				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
+			end
+		
+			return not self.killSwitch -- keep polling
+		end,
+
+
+		--Other methods
+		
+		--add group to current ready pool  or cooldown pool
+		-- if named group already managed by this pool, nothing will change
+		-- param groupName = group to add
+		-- ready = is this group available as reinforcement immediately?
+		addGroup_=function(self, groupName, ready)
+			if (not self.groupListActive_[groupName]) 
+				and (not self.groupListCooldown_[groupName]) 
+				and (not self.groupListReady_[groupName])  then --don't add duplicates
+				if ready then
+					self.groupListReady_[groupName]=true--ready to spawn immediately
+				else
+					self.groupListCooldown_[groupName]=true--only spawn after a cooldown event puts it back to ready
+				end
+			end
+		end,
+		
+		-- Move group to cooldown list and off of active list
+		-- add cooldown clock time to cooldown list
+		putGroupOnCooldown_=function(self,groupName,cooldownTime)
+		
+			self.groupListActive_[groupName]=nil
+			self.groupListCooldown_[groupName]=true
+			
+			if self.timeListCooldown_[cooldownTime] then
+				self.timeListCooldown_[cooldownTime]
+					=self.timeListCooldown_[cooldownTime]+1
+			else
+				self.timeListCooldown_[cooldownTime]=1
+				--constant_pressure_set.log_i:info(self.timeListCooldown_[cooldownTime]..", "..cooldownTime)--DEBUG
+			end	
+		end,
+		
+		-- Move group to ready list and off cooldown list 
+		takeGroupOffCooldown_=function(self,groupName)
+		
+			self.groupListReady_[groupName]=true
+			self.groupListCooldown_[groupName]=nil
+			constant_pressure_set.log_i:info(groupName.." cooled down")
+		end,
+		
+		-- Schedule spawn of group at random future time
+		doScheduleSpawn_=function(self,groupName,now)
+		
+			self.groupListReady_[groupName]=nil
+			self.groupListActive_[groupName]=true
+			
+			local delay= math.random(self.minSpawnDelay,self.maxSpawnDelay)
+			
+			mist.scheduleFunction(asset_pools.RespawnGroupForPoll,
+				{self,groupName,self.groupDataLookup[groupName]},now+delay)
+				
+			constant_pressure_set.log_i:info(groupName.." called in with delay "..delay)
+			
+		end
+		
+		
+	}--index
+}--meta_,		
+	
+--[[ 
+-- Return a new instance of a constant pressure object
+
+-- params 
+-- targetActive = number of groups to try to keep active
+-- reinforceStrength = number of groups available to spawn at the start (excl first spawned groups) 
+--		All other spawns will require a cooldown to complete first
+-- idleCooldown = cooldown added when group goes idleCooldown
+-- deathCooldown = cooldown added (s) when group dies/despawns
+-- min/maxSpawnDelay = max/min  time(s) of random delay to add to respawn time of groups
+-- ... - list of groupnames in the set
+--]]
+constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldown, deathCooldown, minSpawnDelay, maxSpawnDelay, ...)
+	local instance={}
+	--Properties
+	
+	--Asset pool override
+	instance.poolId = nil
+	
+	--Other properties
+	
+	--set (table) for active groups (those active or requested spawned)
+	--key=groupNames
+	--values = true
+	instance.groupListActive_={}
+	
+	--set (table) for ready groups (those available to spawn)
+	--key=groupNames
+	--values = true
+	instance.groupListReady_={}
+	
+	-- set (table) of groups cooling down
+	-- key= groupName
+	-- value = true
+	instance.groupListCooldown_={}
+	
+	--List of times at which cooldowns will happen
+	--key=time(s)
+	--value == number of groups to cooldown at that time
+	instance.timeListCooldown_={}
+	
+	--number of groups we're currently trying to keep alive
+	instance.targetActiveCount=targetActive
+	
+	--NOTE: when a unit finishes cooldown, a random unit in cooldown queue is made available
+	--for spawn - to stop a consistent spawn order developing
+	
+	--seconds of cooldown when group finishes its tasks
+	instance.cooldownOnIdle=idleCooldown
+	
+	--seconds of cooldown when group dies/despawns
+	instance.cooldownOnDeath=deathCooldown
+	
+	--max delay when a unit respawns
+	instance.maxSpawnDelay=maxSpawnDelay
+	
+	--min delay when a unit respawns
+	instance.minSpawnDelay=minSpawnDelay
+	
+	--[[
+	Setting this to true will de-activate the this instance at the next tick
+	--]]
+	instance.killSwitch=false
+	
+	--Assign methods
+	setmetatable(instance,constant_pressure_set.instance_meta_)
+	
+	
+	instance.groupDataLookup={} --lookup mapping groupName to group spawn data where available	
+	local allGroups={}--all group names
+	
+	for _,v in pairs{...} do
+		if type(v)=='string' then
+			table.insert(allGroups,v)
+		else --try to interpret as group data
+			table.insert(allGroups,v.groupName)
+			instance.groupDataLookup[v.groupName]=v
+		end
+	end
+	
+	--select random groups to be initial spawns and ready retinforcements
+	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
+	
+	for _,g in pairs(initForce) do
+		instance:addGroup_(g,true)
+	end
+	
+	-- remaining groups are not available immediately
+	for _,g in pairs(allGroups) do
+		instance:addGroup_(g,false)
+	end
+	
+	asset_pools.addPoolToPoll_(instance)
+	
+	return instance
+end
+
+--#######################################################################################################
+-- ASSET_POOLS (PART 2)
 mist.scheduleFunction(asset_pools.doPoll_,nil,timer.getTime()+asset_pools.poll_interval)
 
 return asset_pools

@@ -5,7 +5,7 @@ This repository contains some lua scripts for making DCS World missions.
 ## Download
 See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
 
-This readme is for v1.2a
+This readme is for v1.3a
 
 ## General Usage
 
@@ -18,18 +18,14 @@ Add the trigger `MISSION START -> DO SCRIPT FILE -> mist_*_*_*.lua`
 
 Currently tested with Mist version 4.4.90
 
-### Installation
+### Initialization
 
-Copy the folder `AssetPools` into `<DCS World path>\Scripts`. These need to be in the main install location, not `<User>\Saved Games\...` because of a security feature of DCS mission scripting (which I don't want to ask users to disable).
+Before using any of the methods detailed below trigger `DO SCRIPT FILE -> asset_pools.lua` in your mission. The easiest time for this is immediately after initializsing MIST.
 
 ## Respawnable On-Call Assets
 Allows assets to be (re)spawned via the comms menu with timeouts applied when the unit dies or goes idle
 Assets can be coalition specific or available to all
 ### Usage
-
-#### Initialization
-
-Call `DO SCRIPT FILE -> respawnable_on_call.lua`
 
 #### Add an asset
 
@@ -57,7 +53,7 @@ In a mission with a group called `Aerial-2` set up the triggers:
 |Trigger|Action|Action Detail|
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
-|MISSION START|DO SCRIPT FILE|respawnable_on_call.lua|
+|MISSION START|DO SCRIPT FILE|asset_pools.lua|
 |MISSION START|DO SCRIPT|`respawnable_on_call.new("Aerial-2",60,300,300,"red")`|
 
 
@@ -102,10 +98,6 @@ Mission builders can define a collection of groups and how many of them should b
 
 ### Usage
 
-#### Initialization
-
-Call `DO SCRIPT FILE -> constant_pressure_set.lua`
-
 #### Add assets
 
 At any point in the mission after initialization, a set of group can be added by calling `DO SCRIPT -> constant_pressure_set.new(<targetActive>,<reinforceStrength>,<idleCooldown>, <deathCooldown>, <minSpawnDelay>, <maxSpawnDelay>, ...)`
@@ -137,7 +129,7 @@ In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
 |Trigger|Action|Action Detail|
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
-|MISSION START|DO SCRIPT FILE|constant_pressure_set.lua|
+|MISSION START|DO SCRIPT FILE|asset_pools.lua|
 |MISSION START|DO SCRIPT|`constant_pressure_set.new(2,2,1800,3600,10,120, "Aerial-1","Aerial-2","Aerial-3","Aerial-4","Aerial-5","Aerial-6","Aerial-7" )`|
 
 Then two groups from among the seven Aerial groups will spawn, as each finishs their mission/dies/despawns, it enters a cooldown and
