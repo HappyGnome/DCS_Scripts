@@ -390,15 +390,38 @@ ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
 		local newGroupData = mist.getGroupData(unitDonors[math.random(#unitDonors)])
 		
 		--get route and task data from random task donor
-		newGroupData.route = mist.getGroupRoute(taskDonors[math.random(#taskDonors)],true)
+		local taskDonorName=taskDonors[math.random(#taskDonors)]
+		local taskDonorData = mist.getGroupData(taskDonorName)
+		newGroupData.route  = mist.getGroupRoute(taskDonorName,true) --copying taskDonorData.route directly doesn't work...
+																	  -- mist... 
 		
 		newGroupData.groupName=nameRoot.."-"..groupNum
 		newGroupData.groupId=nil --mist generates a new id
 		
+		--copy group position
+		newGroupData.x=taskDonorData.x
+		newGroupData.y=taskDonorData.y
+		
+		local unitInFront=taskDonorData.units[1] --unit in formation in front of the one being set. Initially the leader from the task donor
+		--lateral offsets between group units
+		--local xOff=100*math.sin(unitInFront.heading+math.rad(120))
+		--local yOff=100*math.cos(unitInFront.heading+math.rad(120))
+		
 		--generate unit names and null ids
+		--also copy initial locations and headings
 		for i,unit in pairs(newGroupData.units) do
 			unit.unitName=nameRoot.."-"..groupNum.."-"..(i+1)
 			unit.unitId=nil
+			
+			--ensure units spawn at group location
+			--group spacing and setting runway heading etc. seems to sort itself out at spawn
+			unit.x=taskDonorData.x
+			unit.y=taskDonorData.x
+			unit.alt=unitInFront.alt
+			unit.alt_type=unitInFront.alt_type
+			unit.heading=unitInFront.heading
+			--unitInFront=unit
+			
 		end
 		
 		newGroupData.lateActivation = true
