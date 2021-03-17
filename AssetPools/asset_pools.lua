@@ -164,33 +164,37 @@ asset_pools.doPoll_=function()
 		
 		local unit = nil
 		local group = Group.getByName(groupName)
+		local units={}
+		local groupController=nil
+		
 		if group then
-			local units = Group.getUnits(group)
-			if units then
-				unit=units[1]
-			end				
+			units = group:getUnits()
+			groupController = group:getController()
 		end	
 		
 		local isActive = false
 		local isDead = true -- being dead takes precedence over being inactive 
 							-- if the unit doesn't exist we also count it as dead
+							
 		
-		if unit then
-			if Unit.getLife(unit)>1.0 then
+		local groupHasTask =  groupController and groupController:hasTask()
+		
+		for i,unit in pairs(units) do
+			if unit:getLife()>1.0 then
 				isDead=false
 				
 				--check whether group or unit have a controller with active task
 				
-				local controller=Unit.getController(unit)
-				local groupController=Group.getController(group)
+				local controller=unit:getController()
+				
 				
 				--if controller then trigger.action.outText("DB2",5)end--DEBUG
 				--if groupController then trigger.action.outText("DB3",5)end--DEBUG
 				
-				local unitHasTask = controller and Controller.hasTask(controller)
-				local groupHasTask =  groupController and Controller.hasTask(groupController)
+				local unitHasTask = controller and controller:hasTask()
 				
-				isActive= Unit.isActive(unit) and (unitHasTask or groupHasTask)					
+				
+				isActive = isActive or (unit:isActive() and (unitHasTask or groupHasTask))					
 			end
 			--trigger.action.outText("DB1",5)--DEBUG
 		end
@@ -378,7 +382,7 @@ param taskDonors = array of group names specifying routes/tasks to use
 
 Return = unpacked array of groupData tables that can be passed to dynAdd to spawn a group
 --]]
-ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
+ap_utils.generateGroups = function(nameRoot,count,unitDonors,taskDonors)
 
 	local groupNum =0 --index to go with name route to make group name
 	local ret={}
@@ -398,9 +402,9 @@ ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
 		newGroupData.groupName=nameRoot.."-"..groupNum
 		newGroupData.groupId=nil --mist generates a new id
 		
-		--copy group position
-		newGroupData.x=taskDonorData.x
-		newGroupData.y=taskDonorData.y
+		--null group position - get it from the route
+		newGroupData.x=nil --taskDonorData.x
+		newGroupData.y=nil --taskDonorData.y
 		
 		local unitInFront=taskDonorData.units[1] --unit in formation in front of the one being set. Initially the leader from the task donor
 		--lateral offsets between group units
@@ -413,14 +417,16 @@ ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
 			unit.unitName=nameRoot.."-"..groupNum.."-"..(i+1)
 			unit.unitId=nil
 			
-			--ensure units spawn at group location
-			--group spacing and setting runway heading etc. seems to sort itself out at spawn
-			unit.x=taskDonorData.x
-			unit.y=taskDonorData.x
-			unit.alt=unitInFront.alt
-			unit.alt_type=unitInFront.alt_type
-			unit.heading=unitInFront.heading
+			--null unit locations - force them to be set by start of route
+			unit.x=nil--taskDonorData.x
+			unit.y=nil--taskDonorData.y
+			unit.alt=nil--unitInFront.alt
+			unit.alt_type=nil--unitInFront.alt_type
+			unit.heading=nil--unitInFront.heading
 			--unitInFront=unit
+			
+			--debug
+			--ap_utils.log_i:info("unit data: "..unit.x..","..unit.y..","..unit.type)
 			
 		end
 		
@@ -428,18 +434,76 @@ ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
 		
 		table.insert(ret,newGroupData)
 		
-		local msgOK=" FAIL"
+		--[[local msgOK=" FAIL"
 		if mist.groupTableCheck(newGroupData) then
 			msgOK=" OK"
 		end
-		logMessage=logMessage..newGroupData.groupName..msgOK..", "				
+		
+		--debug
+		p_utils.log_i:info("group data: "..newGroupData.category..","..newGroupData.country)
+		
+		logMessage=logMessage..newGroupData.groupName..msgOK..", "		--]]		
 		
 	end
 	
-	ap_utils.log_i:info(logMessage)
+	--ap_utils.log_i:info(logMessage)
 	
 	return unpack(ret)
 
+end
+
+--[[
+Find the closest player to any living unit in named group
+ignores altitude - only lateral coordinates considered
+@param groupName - name of the group to check
+@param side - coalition.side of players to check against
+@param unitFilter - (unit)-> boolean returns true if unit should be considered
+		(if this is nil then all units are considered)
+@return dist,playerUnit, closestUnit OR nil,nil,nil if no players found or group empty
+--]]
+ap_utils.getClosestLateralPlayer = function(groupName,side, unitFilter)
+
+	local playerUnits = coalition.getPlayers(side)
+	local group = Group.getByName(groupName)
+	
+	local ret={nil,nil,nil} --default return
+	
+	
+	
+	local units=group:getUnits()
+	
+	local positions={} -- {x,z},.... Indices correspond to indices in units
+	for i,unit in pairs(units) do
+		local location=unit:getPoint()
+		
+		if not unitFilter or unitFilter(unit) then
+			positions[i]={location.x,location.z}
+		end
+	end
+	
+	local preRet=nil --{best dist,player index,unit index}
+	for i,punit in pairs(playerUnits) do
+		local location=punit:getPoint()
+		
+		for j,pos in pairs(positions) do
+			local dist2 = (pos[1]-location.x)^2 + (pos[2]-location.z)^2
+			if preRet then
+				if dist2<preRet[1] then
+					preRet={dist2,i,j}
+				end
+			else --initial pairs
+				preRet={dist2,i,j}
+			end
+		end
+		
+	end
+	
+	if preRet then
+		ret = {math.sqrt(preRet[1]),playerUnits[preRet[2]],units[preRet[3]]}
+	end
+	
+	return unpack(ret)
+	
 end
 
 --return ap_utils
@@ -811,6 +875,11 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 
 		--Asset pool override
 		groupIdle=function(self, groupName, now)
+		
+			--check optional predicate if set
+			if self.idlePredicate_ and not self.idlePredicate_(groupName) then
+				return true -- not idle if predicate returns false
+			end
 			
 			local cooldownTime=now+self.cooldownOnIdle
 			self:putGroupOnCooldown_(groupName,cooldownTime)		
@@ -911,6 +980,14 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				
 			constant_pressure_set.log_i:info(groupName.." called in with delay "..delay)
 			
+		end,
+		
+		-- Set an idle predicate - an additional check before group goes idle
+		-- predicate=function(groupName) -> Boolean
+		-- predicate should return true if group allowed to go idle
+		setIdlePredicate =function(self,predicate) 
+			self.idlePredicate_=predicate
+			return self
 		end
 		
 		
@@ -952,6 +1029,10 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	-- key= groupName
 	-- value = true
 	instance.groupListCooldown_={}
+	
+	-- Optional predicate (groupName)->Boolean
+	-- if set it must return true for group to go idle
+	instance.idlePredicate_=nil
 	
 	--List of times at which cooldowns will happen
 	--key=time(s)

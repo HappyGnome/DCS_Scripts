@@ -2,6 +2,10 @@
  
 ## v1.3a
 * Combined all scripts into one file
+* Fixed ap_utils.generateGroups issue with airbourne spawns
+* Added optional predicate for groups going idle in constant_pressure_set
+* Added ap_utils.getClosestLateralPlayer to help build predicates based on distance between player and units of a group
+* Idle check now checks all units in the group
 
 ## v1.2a
 * Respawnable_on_call.add should be called respawnable_on_call.new -- Fixed

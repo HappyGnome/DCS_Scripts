@@ -152,9 +152,21 @@ E.g. the example above would suit groups with missions not shorter than 30 minut
 a loose cycle where for about 20 minutes, all 4 groups (two at a time) would finish their missions, followed by a 20 minute delay before more spawns could occur, 
 (i.e. 30 minutes after the first groups finished).
 
-#### Generating random groups
-ap_utils.generateGroups=function(nameRoot,count,unitDonors,taskDonors)
+#### Additional options
 
+The functions in the table below should can be called on an instance returned from `constant_pressure_set.new`. E.g. `myCPS:setIdlePredicate(myFunc)`
+where `myROC=respawnable_on_call.new(...`.
+
+|Method|Args|Callback Args|Desc|
+|---|---|---|---|
+|`setIdlePredicate`|`predicate` - `function(groupName) -> Boolean`|`groupName` - name of the monitored group<br> **Returns** true to allow group to go idle |Sets an additional condition for a group to be considered idle. E.g. check whether a player is nearby one of the units in the group (see `ap_utils.getClosestLateralPlayer`)|
+
+
+**Note** These functions return the calling instance, so they can be chained. E.g. `constant_pressure_set.new(...):setIdlePredicate(myFunc)`	
+
+## Utilities
+
+### Generating random groups
 `ap_utils.generateGroups` can be used to simplify creating large numbers of groups for the `constant_pressure_set.new` to make it easier to add variability to missions at runtime.
 
 Usage: `ap_utils.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
@@ -171,3 +183,21 @@ Where
 **Returns:** An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
 
 **Example:** `constant_pressure_set.new(2,2,1800,3600,10,120, ap_utils.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
+
+### Checking for player proximity
+`ap_utils.getClosestLateralPlayer` can be used to find the closest player (in lateral coordinates, i.e. ignoring altitude) to a unit from a specified group.
+
+Usage: `ap_utils.getClosestLateralPlayer(<groupName>,<side>, <unitFilter>)`
+
+Where
+* `<groupName>` is the name of the group for which to calculate separation from players
+* `<side>` is a `coalition.side` for the faction of players to check e.g. `coalition.side.BLUE` will find the closest blue player to any unit in the group
+* `<unitFilter>` a function (unit) -> Boolean, or nil. If set the function should return true if a unit is to be counted. If `nil`, all living units in the group will count
+ 
+**Returns:** `<distance>, <playerUnit>, <closestUnit>`, or `nil,nil,nil` if no matching players or no matching units exist
+Where
+* `<distance>` (m) is the shortest distance between a matching player and a matching unit
+* `<playerUnit>` (unit) is the player-controlled unit that achieves `<distance>` to the group
+* `<closestUnit>` (unit) is the unit that attains `<distance>` to the `<playerUnit>`
+
+**Example:**  `ap_utils.getClosestLateralPlayer("Raider-1",coalition.side.BLUE, Object.inAir)` returns information about the airbourne unit in the group *Raider-1* that's closest to a blue player.
