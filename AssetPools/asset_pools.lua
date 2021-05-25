@@ -507,7 +507,7 @@ ap_utils.getClosestLateralPlayer = function(groupName,side, unitFilter)
 end
 
 --[[
-	Create respawn-on-command asset pools for all groups ending with a certain suffix.
+	Create respawn-on-command asset pools for all groups whose name contains a certain substring.
 	Add comms menu commands to trigger them
 
 	Call this at mission start/when associated unit can first be requested
@@ -524,9 +524,9 @@ end
 		-> Note that neutral players don't seem to have a dedicated comms menu 
 		-> units added with "neutral" will not be spawnable!
 --]]
-ap_utils.makeRespawnableBySuffix = function(suffix, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
+ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
 	for name,v in pairs(mist.DBs.groupsByName) do
-		if string.sub(name,string.len(name)-string.len(suffix)+1,-1) == suffix then
+		if string.find(name,substring) ~= nil then
 			respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)	
 		end
 	end

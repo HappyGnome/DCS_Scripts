@@ -1,7 +1,7 @@
 # Changelog
  
 ## v1.3.1a
-* Added ap_utils.makeRespawnableBySuffix
+* Added ap_utils.makeRocIfNameContains
 ## v1.3a
 * Combined all scripts into one file
 * Fixed ap_utils.generateGroups issue with airbourne spawns
