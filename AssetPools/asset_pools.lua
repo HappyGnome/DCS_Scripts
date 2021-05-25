@@ -148,7 +148,7 @@ asset_pools.doPoll_=function()
 	local poolAt=nil
 	
 	--Lambda that does the polling work
-	--wrap the poll work in a function so we can run it in xpcall, without crasghing the loop
+	--wrap the poll work in a function so we can run it in xpcall, without crashing the loop
 	local function pollGroup()
 		if not poolAt then return end -- group is not set up for polling
 		
@@ -506,6 +506,32 @@ ap_utils.getClosestLateralPlayer = function(groupName,side, unitFilter)
 	
 end
 
+--[[
+	Create respawn-on-command asset pools for all groups ending with a certain suffix.
+	Add comms menu commands to trigger them
+
+	Call this at mission start/when associated unit can first be requested
+	for each respawnable resource
+
+	spawnDelay ==
+		int -> time between request and activation/respawn (s)
+	delayWhenIdle ==
+		int -> time (s) before respawn requests allowed when unit goes idle
+	delayWhenDead ==
+		int -> time (s) before respawn requests allowed when unit is dead
+	coalitionName == "red", "blue","neutral" or "all" (anything else counts as "all")
+		-> coalition name that can spawn group and receive updates about them
+		-> Note that neutral players don't seem to have a dedicated comms menu 
+		-> units added with "neutral" will not be spawnable!
+--]]
+ap_utils.makeRespawnableBySuffix = function(suffix, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
+	for name,v in pairs(mist.DBs.groupsByName) do
+		if string.sub(name,string.len(name)-string.len(suffix)+1,-1) == suffix then
+			respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)	
+		end
+	end
+end
+
 --return ap_utils
 
 --#######################################################################################################
@@ -843,7 +869,7 @@ Loggers for this module
 constant_pressure_set.log_i=mist.Logger:new("constant_pressure_set","info")
 constant_pressure_set.log_e=mist.Logger:new("constant_pressure_set","error")
 
---CONSTANT_PRESENCE_SET-----------------------------------------------------------------------------------------
+--CONSTANT_PRESSURE_SET-----------------------------------------------------------------------------------------
 --[[
 Pool class used for managing a collection of groups, respawning them at random to keep up an approximately constant 
 number in-mission
