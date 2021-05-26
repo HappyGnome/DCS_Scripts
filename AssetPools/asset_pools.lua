@@ -692,16 +692,21 @@ respawnable_on_call.instance_meta_={
 		createComms_=function(self)
 			--add menu options
 			if self.side then --coalition specific addition	
-				local subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
+				self.subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
 				
-				self.commsPath=missionCommands.addCommandForCoalition(self.side,self.groupName,respawnable_on_call[subMenuName],
+				self.commsPath=missionCommands.addCommandForCoalition(self.side,self.groupName,
+				respawnable_on_call.commsMenus[self.subMenuName][2],
 					self.handleSpawnRequest_,self)
 			else --add for all	
-				local subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
+				self.subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
 				
-				self.commsPath=missionCommands.addCommand(self.groupName,respawnable_on_call[subMenuName],
+				self.commsPath=missionCommands.addCommand(self.groupName,
+				respawnable_on_call.commsMenus[self.subMenuName][2],
 					self.handleSpawnRequest_,self)
 			end
+			
+			respawnable_on_call.commsMenus[self.subMenuName][1] 
+					= respawnable_on_call.commsMenus[self.subMenuName][1] + 1
 		end,
 		
 		--[[
@@ -716,21 +721,48 @@ respawnable_on_call.instance_meta_={
 			else --remove for all					
 				missionCommands.removeItem(self.commsPath)
 			end
+			
+			--update submenu item count
+			if self.subMenuName then
+				respawnable_on_call.commsMenus[self.subMenuName][1] 
+					= respawnable_on_call.commsMenus[self.subMenuName][1] - 1
+			end
 		end
 	}----index
 }--meta_	
 	
 --[[
+Menu item counts for submenus
+key = menu name
+value = {item count,path}
+--]]
+respawnable_on_call.commsMenus = {}
+
+--[[
 Add comms submenu for red or blue (side == instance of coalition.side)
 --]]
 respawnable_on_call.ensureCoalitionSubmenu_=function(side)
 	local coa_string=ap_utils.sideToString(side)
-	local subMenuName="subMenu_"..coa_string
-	if respawnable_on_call[subMenuName]==nil then--create submenu
-		respawnable_on_call[subMenuName] = 
-			missionCommands.addSubMenuForCoalition(side, coa_string.." Assets",nil)
+	local menuNameRoot = coa_string.." Assets"
+	local level = 1
+	local menuName = menuNameRoot .. "_" .. level
+	
+	if respawnable_on_call.commsMenus[menuName]==nil then--create submenu
+		respawnable_on_call.commsMenus[menuName] = {0, missionCommands.addSubMenuForCoalition(side, menuNameRoot ,nil)}
+	else 
+		
+		while respawnable_on_call.commsMenus[menuName][1]>=9 do --create overflow if no space here
+			level = level + 1
+			local newMenuName = menuNameRoot .. "_"..level
+			
+			if respawnable_on_call.commsMenus[newMenuName]==nil then--create submenu of menu at menuName
+				respawnable_on_call.commsMenus[newMenuName] = {0,
+				missionCommands.addSubMenuForCoalition(side, "Next",respawnable_on_call.commsMenus[menuName][2])}
+			end
+			menuName = newMenuName
+		end
 	end	
-	return subMenuName
+	return menuName
 end
 
 --[[
@@ -738,12 +770,26 @@ Add comms submenu for assets available to any faction
 return name of the submenu
 --]]
 respawnable_on_call.ensureUniversalSubmenu_=function()
-	local subMenuName="subMenu"
-	if respawnable_on_call[subMenuName]==nil then--create submenu
-		respawnable_on_call[subMenuName] = 
-			missionCommands.addSubMenu("Other Assets",nil)
-	end		
-	return subMenuName
+
+	local menuNameRoot = "Other Assets"
+	local level = 1
+	local menuName = menuNameRoot .. "_" .. level
+	
+	if respawnable_on_call.commsMenus[menuName]==nil then--create submenu
+		respawnable_on_call.commsMenus[menuName] = {0, missionCommands.addSubMenu(menuNameRoot ,nil)}
+	else 		
+		while respawnable_on_call.commsMenus[menuName][1]>=9 do --create overflow if no space here
+			level = level + 1
+			local newMenuName = menuNameRoot .. "_"..level
+			
+			if respawnable_on_call.commsMenus[newMenuName]==nil then--create submenu of menu at menuName
+				respawnable_on_call.commsMenus[newMenuName] = {0,
+				missionCommands.addSubMenu("Next",respawnable_on_call.commsMenus[menuName][2])}
+			end
+			menuName = newMenuName
+		end
+	end	
+	return menuName
 end
 
 ----------------------------------------------------------------------------------------------------

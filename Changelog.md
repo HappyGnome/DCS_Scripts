@@ -2,6 +2,7 @@
  
 ## v1.3.1a
 * Added ap_utils.makeRocIfNameContains
+* Added overflow paging for comms menus
 ## v1.3a
 * Combined all scripts into one file
 * Fixed ap_utils.generateGroups issue with airbourne spawns
