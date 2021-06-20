@@ -177,16 +177,16 @@ Where
 
 * `<minDelaySeconds>` is the minimum delay for subsequent respawn
 
-* `<maxDelaySeconds>' is the maximum delay for subsequent respawn
+* `<maxDelaySeconds>` is the maximum delay for subsequent respawn
 
-* `<options>' is a table containing further options
+* `<options>` is a table containing further options
 
 **Possible options:**
 
-* `<options>.remainingSpawns' Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
-* `<options>.spawnUntil' (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
-* `<options>.delaySpawnIfPlayerWithin' lateral distance from the group within which red or blue players block spawn temporarily
-* `<options>.retrySpawnDelay' (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+* `<options>.remainingSpawns` Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
+* `<options>.spawnUntil` (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
+* `<options>.delaySpawnIfPlayerWithin` lateral distance from the group within which red or blue players block spawn temporarily
+* `<options>.retrySpawnDelay` (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
 
 **Example:**  `unit_repairman.register("Reaper-1",  300, 600, {delaySpawnIfPlayerWithin = 8000})` respawns the unit *Reaper-1* and will repeatedly respawn it every 5 - 10 minutes, unless there is a non-neutral player within 8km of the active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
 
@@ -203,16 +203,16 @@ Where
 
 * `<minDelaySeconds>` is the minimum delay for subsequent respawn
 
-* `<maxDelaySeconds>' is the maximum delay for subsequent respawn
+* `<maxDelaySeconds>` is the maximum delay for subsequent respawn
 
-* `<options>' is a table containing further options
+* `<options>` is a table containing further options
 
 **Possible options:**
 
-* `<options>.remainingSpawns' Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
-* `<options>.spawnUntil' (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
-* `<options>.delaySpawnIfPlayerWithin' lateral distance from the group within which red or blue players block spawn temporarily
-* `<options>.retrySpawnDelay' (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+* `<options>.remainingSpawns` Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
+* `<options>.spawnUntil` (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
+* `<options>.delaySpawnIfPlayerWithin` lateral distance from the group within which red or blue players block spawn temporarily
+* `<options>.retrySpawnDelay` (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
 
 **Example:**  `unit_repairman.registerRepairmanIfNameContains("repair",  300, 600, {delaySpawnIfPlayerWithin = 8000})` If mission contains *repair-1*,  and *repair-2*, these units will independently respawn every 5 - 10 minutes, unless there is a non-neutral player within 8km of that active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
 
