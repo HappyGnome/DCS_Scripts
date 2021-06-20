@@ -460,6 +460,7 @@ ignores altitude - only lateral coordinates considered
 @param options.unitFilter - (unit)-> boolean returns true if unit should be considered
 		(if this is nil then all units are considered)
 @param options.pickUnit - if true, only one unit in the group will be used for the calculation
+@param options.useGroupStart - if true, the group's starting waypoint will be added as an abstract unit position
 @return dist,playerUnit, closestUnit OR nil,nil,nil if no players found or group empty
 --]]
 ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
@@ -473,17 +474,16 @@ ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
 		for _,player in pairs (coalition.getPlayers(side)) do
 			table.insert(playerUnits,player)
 		end
-	end
+	end	
+	
+	local ret={nil,nil,nil} --default return	
+	
 	local group = Group.getByName(groupName)
-	
-	local ret={nil,nil,nil} --default return
-	
-	
-	
 	local units=group:getUnits()
 	
+	
 	local positions={} -- {x,z},.... Indices correspond to indices in units
-	for i,unit in pairs(units) do
+	for i,unit in ipairs(units) do
 		local location=unit:getPoint()
 		
 		if not unitFilter or unitFilter(unit) then
@@ -492,6 +492,12 @@ ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
 				break
 			end
 		end
+	end
+	
+	if options.useGroupStart then
+		local points = mist.getGroupPoints(groupName)		
+		--ap_utils.log_i:info("group points: "..#points.." for "..groupName)--debug		
+		if points[1] then positions[#units + 1] = {points[1].x,points[1].y} end
 	end
 	
 	local preRet=nil --{best dist,player index,unit index}
@@ -1226,11 +1232,8 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 		
 		if options.delaySpawnIfPlayerWithin then 
 			--check for players nearby
-			local gclpOptions={}
-			local distRed = 0
-			local distBlue = 0
-			gclpOptions["pickUnit"] = true
-			local dist = ap_utils.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
+			local gclpOptions={pickUnit=true, useGroupStart=true}
+			local dist,_,_ = ap_utils.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
 			
 			if(dist ~= nil and dist < options.delaySpawnIfPlayerWithin) then --player too close
 				local delay = 600 --seconds
