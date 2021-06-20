@@ -456,14 +456,24 @@ end
 Find the closest player to any living unit in named group
 ignores altitude - only lateral coordinates considered
 @param groupName - name of the group to check
-@param side - coalition.side of players to check against
-@param unitFilter - (unit)-> boolean returns true if unit should be considered
+@param sides - table of coalition.side of players to check against
+@param options.unitFilter - (unit)-> boolean returns true if unit should be considered
 		(if this is nil then all units are considered)
+@param options.pickUnit - if true, only one unit in the group will be used for the calculation
 @return dist,playerUnit, closestUnit OR nil,nil,nil if no players found or group empty
 --]]
-ap_utils.getClosestLateralPlayer = function(groupName,side, unitFilter)
+ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
 
-	local playerUnits = coalition.getPlayers(side)
+	local playerUnits = {}
+	if options == nil then
+		options = {}
+	end
+	
+	for _,side in pairs(sides) do
+		for _,player in pairs (coalition.getPlayers(side)) do
+			table.insert(playerUnits,player)
+		end
+	end
 	local group = Group.getByName(groupName)
 	
 	local ret={nil,nil,nil} --default return
@@ -478,6 +488,9 @@ ap_utils.getClosestLateralPlayer = function(groupName,side, unitFilter)
 		
 		if not unitFilter or unitFilter(unit) then
 			positions[i]={location.x,location.z}
+			if options.pickUnit then
+				break
+			end
 		end
 	end
 	
@@ -1165,6 +1178,138 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	asset_pools.addPoolToPoll_(instance)
 	
 	return instance
+end
+
+--#######################################################################################################
+-- UNIT_REPAIRMAN
+
+
+--NAMESPACES----------------------------------------------------------------------------------------------
+unit_repairman={}
+----------------------------------------------------------------------------------------------------------
+
+--[[
+Loggers for this module
+--]]
+unit_repairman.log_i=mist.Logger:new("unit_repairman","info")
+unit_repairman.log_e=mist.Logger:new("unit_repairman","error")
+
+--error handler for xpcalls. wraps unit_repairman.log_e:error
+unit_repairman.catchError = function(err)
+	unit_repairman.log_e:error(err)
+end 
+
+--UNIT REPAIRMAN---------------------------------------------------------------------------------------
+
+--[[
+respawn named group and schedule a further respawn after random delay
+
+@param groupName = name of group in ME to respawn (ignored if groupData set)
+@param minDelaySeconds = minimum delay for subsequent respawn
+@param maxDelaySeconds = maximum delay for subsequent respawn
+@param options.remainingSpawns = when this reaches 0 the spawns will stop. Leave nil for no-limit
+@param options.spawnUntil = latest value of timer.getTime() that spawns will occur. Leave nil for no-limit
+@param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
+@param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+--]]
+unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDelaySeconds, options)
+	
+	if options == nil then
+		options = {}
+	end
+	
+	local function action()		
+		local group
+		local now=timer.getTime()
+		local newOptions = {}--options for subsequent respawn
+		
+		
+		if options.delaySpawnIfPlayerWithin then 
+			--check for players nearby
+			local gclpOptions={}
+			local distRed = 0
+			local distBlue = 0
+			gclpOptions["pickUnit"] = true
+			local dist = ap_utils.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
+			
+			if(dist ~= nil and dist < options.delaySpawnIfPlayerWithin) then --player too close
+				local delay = 600 --seconds
+				if options.retrySpawnDelay then
+					delay = options.retrySpawnDelay
+				end
+				
+				mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName, minDelaySeconds, maxDelaySeconds,options},
+					now + delay) -- reschedule with the same options
+					
+				return
+			end
+		end
+		
+		for k,v in pairs(options) do
+			newOptions[k] = v
+		end
+	
+		if options.remainingSpawns then
+			if options.remainingSpawns <= 0 then return end
+			newOptions.remainingSpawns = options.remainingSpawns - 1
+		end
+		
+		if options.spawnUntil then
+			if now > options.spawnUntil then return end
+		end
+		
+		mist.respawnGroup(groupName,true) --respawn with original tasking
+		
+		group = Group.getByName(groupName)
+		
+		if group then
+			trigger.action.activateGroup(group) --ensure group is active
+		end		
+		
+		--schedule next respawn----------------------------------
+		mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName, minDelaySeconds, maxDelaySeconds,newOptions},
+			now + math.random(minDelaySeconds,maxDelaySeconds))
+	
+	end--action
+	
+	
+	xpcall(action,unit_repairman.catchError) -- safely call the respawn action
+end
+
+--API UNIT_REPAIRMAN---------------------------------------------------------------------------------------
+
+--[[
+register group for periodic respawns random delay
+
+@param groupName = name of group in ME to respawn (ignored if groupData set)
+@param minDelaySeconds = minimum delay for subsequent respawn
+@param maxDelaySeconds = maximum delay for subsequent respawn
+@param options.remainingSpawns = when this reaches 0 the spawns will stop. Leave nil for no-limit
+@param options.spawnUntil = latest value of timer.getTime() (mission elapsed time) that spawns will occur. Leave nil for no-limit
+@param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
+@param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+--]]
+unit_repairman.register = function(groupName, minDelaySeconds, maxDelaySeconds, options)
+	unit_repairman.doPeriodicRespawn_(groupName, minDelaySeconds, maxDelaySeconds, options)	
+end
+
+--[[
+	Register a unit_repairman for each group whose name contains a certain substring.
+	
+@param substring = if a substring of a groupname, that group will get a repair scheduled
+@param minDelaySeconds = minimum delay for subsequent respawn
+@param maxDelaySeconds = maximum delay for subsequent respawn
+@param options.remainingSpawns = when this reaches 0 the spawns will stop. Leave nil for no-limit
+@param options.spawnUntil = latest value of timer.getTime() (mission elapsed time) that spawns will occur. Leave nil for no-limit
+@param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
+@param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+--]]
+unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options)
+	for name,v in pairs(mist.DBs.groupsByName) do
+		if string.find(name,substring) ~= nil then
+			unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)	
+		end
+	end
 end
 
 --#######################################################################################################

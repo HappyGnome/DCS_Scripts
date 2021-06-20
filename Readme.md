@@ -164,6 +164,58 @@ where `myROC=respawnable_on_call.new(...`.
 
 **Note** These functions return the calling instance, so they can be chained. E.g. `constant_pressure_set.new(...):setIdlePredicate(myFunc)`	
 
+## Unit Repairman
+
+### Register individual units
+
+`unit_repairman.register` registers a named group to be respawned after a random delay.
+
+Usage: `unit_repairman.register(<groupName>, <minDelaySeconds>, <maxDelaySeconds>, <options>)`
+
+Where
+* `<groupName>` is name of group in ME to respawn (ignored if groupData set)
+
+* `<minDelaySeconds>` is the minimum delay for subsequent respawn
+
+* `<maxDelaySeconds>' is the maximum delay for subsequent respawn
+
+* `<options>' is a table containing further options
+
+**Possible options:**
+
+* `<options>.remainingSpawns' Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
+* `<options>.spawnUntil' (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
+* `<options>.delaySpawnIfPlayerWithin' lateral distance from the group within which red or blue players block spawn temporarily
+* `<options>.retrySpawnDelay' (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+
+**Example:**  `unit_repairman.register("Reaper-1",  300, 600, {delaySpawnIfPlayerWithin = 8000})` respawns the unit *Reaper-1* and will repeatedly respawn it every 5 - 10 minutes, unless there is a non-neutral player within 8km of the active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
+
+
+### Register units by substring name
+unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options)
+
+`unit_repairman.registerRepairmanIfNameContains` Has the effect of calling `unit_repairman.register` on each group whose name contains a certain string.
+
+Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>)`
+
+Where
+* `<substring>` Substring to search for in group name in ME c
+
+* `<minDelaySeconds>` is the minimum delay for subsequent respawn
+
+* `<maxDelaySeconds>' is the maximum delay for subsequent respawn
+
+* `<options>' is a table containing further options
+
+**Possible options:**
+
+* `<options>.remainingSpawns' Maximum number of timer this unit will be respawned, including the first time triggered by this call.  Leave nil for no-limit
+* `<options>.spawnUntil' (s) latest value of mission elapsed time that spawns will occur. Leave nil for no-limit
+* `<options>.delaySpawnIfPlayerWithin' lateral distance from the group within which red or blue players block spawn temporarily
+* `<options>.retrySpawnDelay' (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+
+**Example:**  `unit_repairman.registerRepairmanIfNameContains("repair",  300, 600, {delaySpawnIfPlayerWithin = 8000})` If mission contains *repair-1*,  and *repair-2*, these units will independently respawn every 5 - 10 minutes, unless there is a non-neutral player within 8km of that active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
+
 ## Utilities
 
 ### Generating random groups
@@ -187,12 +239,16 @@ Where
 ### Checking for player proximity
 `ap_utils.getClosestLateralPlayer` can be used to find the closest player (in lateral coordinates, i.e. ignoring altitude) to a unit from a specified group.
 
-Usage: `ap_utils.getClosestLateralPlayer(<groupName>,<side>, <unitFilter>)`
+Usage: `ap_utils.getClosestLateralPlayer(<groupName>,<sides>, <options>)`
 
 Where
 * `<groupName>` is the name of the group for which to calculate separation from players
-* `<side>` is a `coalition.side` for the faction of players to check e.g. `coalition.side.BLUE` will find the closest blue player to any unit in the group
-* `<unitFilter>` a function (unit) -> Boolean, or nil. If set the function should return true if a unit is to be counted. If `nil`, all living units in the group will count
+* `<sides>` a table of `coalition.side` objects for the faction of players to check e.g. `{coalition.side.BLUE}` will find the closest blue player to any unit in the group
+* `<options>` is a table containing further options.
+
+**Possible options:**
+* `<options>.unitFilter` a function (unit) -> Boolean, or nil. If set the function should return true if a unit is to be counted. If `nil`, all living units in the group will count
+* `<options>.pickUnit` - if `true`, only one unit in the group will be used for the calculation (saves time and works just as well if the units are near each other)
  
 **Returns:** `<distance>, <playerUnit>, <closestUnit>`, or `nil,nil,nil` if no matching players or no matching units exist
 Where
@@ -200,4 +256,25 @@ Where
 * `<playerUnit>` (unit) is the player-controlled unit that achieves `<distance>` to the group
 * `<closestUnit>` (unit) is the unit that attains `<distance>` to the `<playerUnit>`
 
-**Example:**  `ap_utils.getClosestLateralPlayer("Raider-1",coalition.side.BLUE, Object.inAir)` returns information about the airbourne unit in the group *Raider-1* that's closest to a blue player.
+**Example:**  `ap_utils.getClosestLateralPlayer("Raider-1",{coalition.side.BLUE}, {unitFilter = Object.inAir})` returns information about the airbourne unit in the group *Raider-1* that's closest to a blue player.
+
+### Make respawnable on-call units by group name
+`ap_utils.makeRocIfNameContains` Create respawn-on-command asset pools for all groups whose name contains a certain substring.
+	Add comms menu commands to trigger them.
+
+Usage:
+`ap_utils.makeRocIfNameContains (<substring>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
+
+Where:
+* `<spawnDelay>` (s) time between request and activation/respawn
+
+* `<delayWhenIdle>` (s) time before respawn requests allowed when unit goes idle
+
+* `<delayWhenDead>` (s) time before respawn requests allowed when unit is dead
+		
+* `<coalitionName>` "red", "blue","neutral" or "all" (anything else counts as "all")
+		is the coalition name that can spawn group and receive updates about them
+		Note: neutral players don't seem to have a dedicated comms menu, so units added with "neutral" will not be spawnable!
+		
+**Example:**		
+`ap_utils.makeRocIfNameContains("%-broc%-" , 60, 180, 600, "Blue")` Makes any group whose name contains "-broc-" respawnable for Blue. (Note that "-" needs to be escaped in lua for substring lookup.)
