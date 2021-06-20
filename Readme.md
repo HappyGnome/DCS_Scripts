@@ -5,7 +5,7 @@ This repository contains some lua scripts for making DCS World missions.
 ## Download
 See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
 
-This readme is for v1.3.1a
+This readme is for v1.4a
 
 ## General Usage
 
@@ -199,7 +199,7 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>)`
 
 Where
-* `<substring>` Substring to search for in group name in ME c
+* `<substring>` Substring to search for in group name in ME
 
 * `<minDelaySeconds>` is the minimum delay for subsequent respawn
 
