@@ -551,7 +551,6 @@ ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, 
 	end
 end
 
---return ap_utils
 
 --#######################################################################################################
 -- RESPAWNABLE_ON_CALL
@@ -1314,6 +1313,8 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 		end
 	end
 end
+
+
 
 --#######################################################################################################
 -- ASSET_POOLS (PART 2)
