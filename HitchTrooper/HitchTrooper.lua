@@ -25,9 +25,8 @@ ht_utils.formatDegMinDec = function(degrees,posPrefix,negPrefix)
 end
 
 ht_utils.pos2LL = function(pos)
-
 	local lat,lon,_ = coord.LOtoLL(pos)
-	return string.format("%s %s",ap_utils.formatDegMinDec(lat,"N","S"),ap_utils.formatDegMinDec(lon,"E","W"))
+	return string.format("%s %s",ht_utils.formatDegMinDec(lat,"N","S"),ht_utils.formatDegMinDec(lon,"E","W"))
 end
 
 --[[
@@ -60,6 +59,22 @@ ht_utils.sideToString = function(side)
 	else
 		return "None"
 	end
+end
+
+--[[
+return (group, unit) for living unit in group of given name
+--]]
+ht_utils.getLivingUnit = function (groupName)	
+	local group = Group.getByName(groupName) 
+	if group ~= nil and Group.isExist(group) then
+		local units = group:getUnits()
+		for i,unit in pairs(units) do
+			if unit:getLife()>1.0 then
+				return group,unit
+			end
+		end
+	end
+	return group,nil
 end
 
 --#######################################################################################################
@@ -105,8 +120,8 @@ hitch_trooper.doPoll_=function()
 	local htInstance = nil
 	
 	local pollGroup = function()
-		local group = Group.getByName(groupName) 
-		if not Group.isExist(group) then
+		local group,unit = ht_utils.getLivingUnit(groupName) 
+		if unit == nil then
 			htInstance:disbandGroup_()
 			hitch_trooper.tracked_groups_[groupName] = nil
 		end
@@ -148,7 +163,7 @@ hitch_trooper.parseMarkCommand = function(text,pos,side)
 		if string.lower(cmd) == "atk" then
 			htInstance:attackPoint_(pos)
 		elseif string.lower(cmd) == "evac" then
-			htInstance:evacPoint_(pos)
+			htInstance:evacPoint_(pos,false)
 		end
 	end
 end
@@ -216,7 +231,10 @@ hitch_trooper.instance_meta_ = {
 			for k,v in pairs(self.commsMenuItems) do
 				missionCommands.removeItemForCoalition(self.side,v)
 			end
-			self.commsMenuItems = {disband = missionCommands.addCommandForCoalition(self.side, "Disband",self.commsMenuRoot,self.disbandGroup_,self)}
+			self.commsMenuItems = {disband = missionCommands.addCommandForCoalition(self.side, "Disband",self.commsMenuRoot,self.disbandGroup_,self),
+			evac = missionCommands.addCommandForCoalition(self.side, "Evac",self.commsMenuRoot,self.evacPoint_,self,nil,true),
+			smoke= missionCommands.addCommandForCoalition(self.side, "Smoke",self.commsMenuRoot,self.smokePosition_,self)}
+			
 		end,
 		
 		initComms_ = function(self)
@@ -231,43 +249,38 @@ hitch_trooper.instance_meta_ = {
 				self.minRespawnTime = -1
 				--delete group if it exists
 				local group = Group.getByName(self.groupName) 
-				if Group.isExist(group) then
+				if group ~= nil and Group.isExist(group) then
 					Group.destroy(group)
 				end
 				--respawn with new name
-				local spawnData = mist.getGroupData(self.groupName , true)
+				local spawnData = mist.getGroupData(self.groupName)
 				self.activeGroupName = string.format("%s (%s)",self.groupName,self.digraph)
-				spawnData.groupName = self.activeGroupName 				
+				spawnData.groupName = self.activeGroupName 	
+				spawnData.route = mist.getGroupRoute(self.groupName,true)
 				spawnData.clone = false
 				mist.dynAdd(spawnData) --respawn with original tasking
 				
 				self:setCommsActiveMode_()
 				hitch_trooper.tracked_groups_[self.activeGroupName] = self
 			else
-				trigger.action.outTextForCoalition(self.side,string.format("%s unavaiable at this time",self.digraph),5)
+				trigger.action.outTextForCoalition(self.side,string.format("%s: unavaiable at this time",self.digraph),5)
 			end
 		end,
 		
 		disbandGroup_ = function(self)
 			local group = Group.getByName(self.activeGroupName) 
-			if Group.isExist(group) then
+			if group ~= nil and Group.isExist(group) then
 				Group.destroy(group)
-				self.minRespawnTime = timer.getTime() + 10800
+				self.minRespawnTime = timer.getTime() + 60--10800
+				hitch_trooper.tracked_groups_[self.activeGroupName] = nil
+				self:setCommsSpawnMode_()
 			end
 		end,
 		
-		attackPoint_ = function(self, pos)
-		
-			local group = Group.getByName(self.activeGroupName) 
-			if Group.isExist(group) then
-				local units = group:getUnits()
-				local startPoint = nil
-				for i,unit in pairs(units) do
-					if unit:getLife()>1.0 then
-						startPoint = unit:getPoint() --position of living unit
-						break
-					end
-				end
+		attackPoint_ = function(self, pos)		
+			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
+			if unit ~= nil then
+				local startPoint = unit:getPoint()
 				if startPoint ~= nil then
 					local missionData = { 
 					   id = 'Mission', 
@@ -277,15 +290,13 @@ hitch_trooper.instance_meta_ = {
 							 [1] = {
 							   action = AI.Task.VehicleFormation.OFF_ROAD,
 							   x = startPoint.x, 
-							   y = startPoint.z,	
-							   type = AI.Task.WaypointType.TURNING_POINT
+							   y = startPoint.z
 							 },
 							 [2] = {
 							   action = AI.Task.VehicleFormation.OFF_ROAD,
 							   x = pos.x, 
 							   y = pos.z,	
-							   speed = 100,
-							   type = AI.Task.WaypointType.TURNING_POINT
+							   speed = 100
 							 }
 						   } 
 						 }
@@ -295,17 +306,98 @@ hitch_trooper.instance_meta_ = {
 					controller:setOnOff(true)
 					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.OPEN_FIRE)				
 					controller:setTask(missionData)
-					trigger.action.outTextForCoalition(self.side,string.format("%s attacking %s",self.digraph,ht_utils.pos2LL(pos)),10)
+					trigger.action.outTextForCoalition(self.side,string.format("%s: attacking %s",self.digraph,ht_utils.pos2LL(pos)),10)
 				end
 			end
 		end,
 		
-		evacPoint_ = function(self, pos)
-			--TODO.
+		--[[
+		Set evac destination if pos not nil. 
+		trigger evac to that or preset point if triggerNow == true
+		--]]
+		evacPoint_ = function(self, pos, triggerNow)
+			if pos ~= nil then
+				self.evac_pos = pos
+			end
+			if self.evac_pos == nil then
+				trigger.action.outTextForCoalition(self.side,string.format("%s: where to?",self.digraph),10)
+				return
+			elseif not triggerNow then
+				return
+			end
+			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
+			if unit ~= nil then
+				local startPoint = unit:getPoint()
+				local arrivalString = string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, ht_utils.pos2LL(self.evac_pos))
+				
+				if startPoint ~= nil then
+					local missionData = { 
+					   id = 'Mission', 
+					   params = { 
+						 route = { 
+						   points = { 
+							 [1] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = startPoint.x, 
+							   y = startPoint.z
+							 },
+							 [2] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = self.evac_pos.x, 
+							   y = self.evac_pos.z,	
+							   speed = 100,
+							   task = {
+									id = "ComboTask",
+									params = {
+										tasks = {
+											[1] = {
+												id = "WrappedAction",
+												params = {
+													action = {
+														id = "Script",
+														params = {
+															command = arrivalString
+														}
+													}
+												}
+											},--wrapped action
+											[2] = {
+												id = "EmbarkToTransport",
+												params = {
+													x = self.evac_pos.x,
+													y = self.evac_pos.z,
+													zoneRadius = 100											
+												}									
+											}--embark
+										}
+									}
+							   }--combotask
+							 }
+						   } 
+						 }
+					   } 
+					}
+					local controller = group:getController()
+					controller:setOnOff(true)
+					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
+					controller:setTask(missionData)
+					trigger.action.outTextForCoalition(self.side,string.format("%s: will evac to %s",self.digraph,ht_utils.pos2LL(self.evac_pos)),10)
+				end
+			end
 		end,
 		
 		smokePosition_ = function(self)
-			--TODO. 
+			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
+			if unit ~= nil then
+				local point = unit:getPoint()
+				point.x = point.x + 100.0 * (math.random() - 0.5)
+				point.z = point.z + 100.0 * (math.random() - 0.5)
+				trigger.action.smoke(point, trigger.smokeColor.Green)
+				
+				hitch_trooper.log_i:info(unit:getDesc())--debug
+				hitch_trooper.log_i:info(group:getController())--debug
+			end
+			
 		end,
 		
 		sitrep_ = function(self)
@@ -327,6 +419,7 @@ hitch_trooper.new = function (groupName)
 		minRespawnTime = 0,
 		side = coa,
 		digraph = hitch_trooper.makeDigraph_(coa),
+		evac_pos = nil,
 		commsMenuItems = {} -- key = item action type, value = path
 	}
 	
@@ -353,43 +446,3 @@ end
 mist.scheduleFunction(hitch_trooper.doPoll_,nil,timer.getTime()+hitch_trooper.poll_interval)
 
 return hitch_trooper
----------------------------------------------------------------------------------------------------------
-
---[[ap_utils.markList = {}
-
-ap_utils.eventHandler = { 
-	onEvent = function(self,event)
-		if(event.id == world.event.S_EVENT_MARK_ADDED) then
-			ap_utils.markList[event.idx] = {
-				coalition = event.coalition, 
-				text = event.text,
-				pos = event.pos
-			}
-			--debug
-			local lat,lon,_ = coord.LOtoLL(event.pos)
-			trigger.action.outText(string.format("%d: %s %s %s",event.idx,ap_utils.formatDegMinDec(lat,"N","S"),ap_utils.formatDegMinDec(lon,"E","W"),event.text),5)
-		elseif (event.id == world.event.S_EVENT_MARK_REMOVED) then
-			ap_utils.markList[event.idx] = nil
-			--debug
-			trigger.action.outText(string.format("%d: deleted",event.idx),5)
-		elseif (event.id == world.event.S_EVENT_MARK_CHANGE) then
-			ap_utils.markList[event.idx] = {
-				coalition = event.coalition, 
-				text = event.text,
-				pos = event.pos
-			}
-			--debug
-			trigger.action.outText(string.format("%d: changed",event.idx),5)
-		end
-	end
-}
-world.addEventHandler(ap_utils.eventHandler)--]]
-
---[[
-ap_utils.printMarks = function()
-	for id,mark in pairs(world.getMarkPanels()) do
-		local lat,lon,_ = coord.LOtoLL(mark.pos)
-		trigger.action.outText(string.format("%d: %s %s %s",mark.idx-0xf000000,ap_utils.formatDegMinDec(lat,"N","S"),ap_utils.formatDegMinDec(lon,"E","W"),mark.text),5)
-	end
-end
-missionCommands.addCommand("Mark list",nil,ap_utils.printMarks,nil)--]]
