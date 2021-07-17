@@ -21,7 +21,7 @@ ht_utils.formatDegMinDec = function(degrees,posPrefix,negPrefix)
 	local whole = math.floor(degrees)
 	local minutes = 60 *(degrees - whole)
 	
-	return string.format("%s %d' %f",prefix,whole,minutes)
+	return string.format("%s %d' %.2f",prefix,whole,minutes)
 end
 
 ht_utils.pos2LL = function(pos)
@@ -64,25 +64,54 @@ end
 --[[
 return (group, unit) for living unit in group of given name
 --]]
-ht_utils.getLivingUnit = function (groupName)	
-	local group = Group.getByName(groupName) 
+ht_utils.getLivingUnits = function (groupName)	
+	local group = Group.getByName(groupName)
+	local retUnits = {}
 	if group ~= nil and Group.isExist(group) then
 		local units = group:getUnits()
 		for i,unit in pairs(units) do
 			if unit:getLife()>1.0 then
-				return group,unit
+				table.insert(retUnits, unit)
 			end
 		end
 	end
-	return group,nil
+	return group,retUnits
 end
 
+
+--[[
+return ETA for following a straight path between two points at a given estimated speed
+--]]
+ht_utils.getETAString = function (point1,point2, estMps)	
+	if estMps == nil or estMps <= 0 then return "unknown" end
+	
+	local ttg = mist.utils.get3DDist(point1,point2)/ estMps
+	local etaAbs = timer.getAbsTime() + ttg	
+	local dhms = mist.time.getDHMS(etaAbs)
+	return string.format("%02d%02dL",dhms["h"],dhms["m"])
+end
+
+--[[
+Get units offroad max speed in mps, or default if this is not available
+--]]
+ht_utils.getUnitSpeed = function(unit,default)
+	if unit == nil then return default end
+	local unitDesc = unit:getDesc()
+	
+	if unitDesc ~= nil and unitDesc["speedMaxOffRoad"] ~= nil then
+		return unitDesc["speedMaxOffRoad"]	
+	end
+	
+	return default
+end
 --#######################################################################################################
 -- HITCH_TROOPER 
 hitch_trooper = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-hitch_trooper.poll_interval=61 --seconds, time between updates of group availability
+hitch_trooper.poll_interval = 61 --seconds, time between updates of group availability
+hitch_trooper.respawn_delay = 10800 --seconds, time between disbanding and respawn becoming available
+hitch_trooper.init_smoke_ammo = 3 --smokes available per group
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -119,16 +148,19 @@ hitch_trooper.doPoll_=function()
 	local groupName = nil
 	local htInstance = nil
 	
+	--hitch_trooper.log_i:info("poll") --debug
+	
 	local pollGroup = function()
-		local group,unit = ht_utils.getLivingUnit(groupName) 
-		if unit == nil then
+		local group,units = ht_utils.getLivingUnits(groupName) 
+		if units[1] == nil then
 			htInstance:disbandGroup_()
-			hitch_trooper.tracked_groups_[groupName] = nil
+		else
+			
 		end
 	end
 	
 	--do group poll
-	for k,v in ipairs(hitch_trooper.tracked_groups_) do
+	for k,v in pairs(hitch_trooper.tracked_groups_) do
 		--parameters for the lambda
 		groupName = k
 		htInstance = v
@@ -137,7 +169,7 @@ hitch_trooper.doPoll_=function()
 	end
 
 	--schedule next poll----------------------------------
-	mist.scheduleFunction(hitch_trooper.doPoll_,nil,now+hitch_trooper.poll_interval)
+	mist.scheduleFunction(hitch_trooper.doPoll_,nil,now + hitch_trooper.poll_interval)
 end
 
 --EVENT HANDLER-------------------------------------------------------------------------------------
@@ -231,9 +263,9 @@ hitch_trooper.instance_meta_ = {
 			for k,v in pairs(self.commsMenuItems) do
 				missionCommands.removeItemForCoalition(self.side,v)
 			end
-			self.commsMenuItems = {disband = missionCommands.addCommandForCoalition(self.side, "Disband",self.commsMenuRoot,self.disbandGroup_,self),
-			evac = missionCommands.addCommandForCoalition(self.side, "Evac",self.commsMenuRoot,self.evacPoint_,self,nil,true),
-			smoke= missionCommands.addCommandForCoalition(self.side, "Smoke",self.commsMenuRoot,self.smokePosition_,self)}
+			self.commsMenuItems = {	evac = missionCommands.addCommandForCoalition(self.side, "Evac",self.commsMenuRoot,self.evacPoint_,self,nil,true),
+			smoke= missionCommands.addCommandForCoalition(self.side, "Smoke",self.commsMenuRoot,self.smokePosition_,self),
+			sitrep = missionCommands.addCommandForCoalition(self.side, "Sitrep",self.commsMenuRoot,self.sitrep_,self)}
 			
 		end,
 		
@@ -247,6 +279,10 @@ hitch_trooper.instance_meta_ = {
 			local now = timer.getTime()
 			if self.minRespawnTime >= 0 and self.minRespawnTime <= now then
 				self.minRespawnTime = -1
+				self.evac_pos = nil --reset per-instance settings
+				self.current_destination = nil
+				self.taskMessage = ""
+				
 				--delete group if it exists
 				local group = Group.getByName(self.groupName) 
 				if group ~= nil and Group.isExist(group) then
@@ -271,16 +307,16 @@ hitch_trooper.instance_meta_ = {
 			local group = Group.getByName(self.activeGroupName) 
 			if group ~= nil and Group.isExist(group) then
 				Group.destroy(group)
-				self.minRespawnTime = timer.getTime() + 60--10800
-				hitch_trooper.tracked_groups_[self.activeGroupName] = nil
-				self:setCommsSpawnMode_()
+				self.minRespawnTime = timer.getTime() + hitch_trooper.respawn_delay
 			end
+			hitch_trooper.tracked_groups_[self.activeGroupName] = nil
+			self:setCommsSpawnMode_()
 		end,
 		
 		attackPoint_ = function(self, pos)		
-			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
-			if unit ~= nil then
-				local startPoint = unit:getPoint()
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			if units[1] ~= nil then
+				local startPoint = units[1]:getPoint()
 				if startPoint ~= nil then
 					local missionData = { 
 					   id = 'Mission', 
@@ -306,6 +342,9 @@ hitch_trooper.instance_meta_ = {
 					controller:setOnOff(true)
 					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.OPEN_FIRE)				
 					controller:setTask(missionData)
+					
+					self.current_destination = pos	
+					self.taskMessage = string.format("Attacking %s",ht_utils.pos2LL(pos))
 					trigger.action.outTextForCoalition(self.side,string.format("%s: attacking %s",self.digraph,ht_utils.pos2LL(pos)),10)
 				end
 			end
@@ -319,17 +358,19 @@ hitch_trooper.instance_meta_ = {
 			if pos ~= nil then
 				self.evac_pos = pos
 			end
-			if self.evac_pos == nil then
-				trigger.action.outTextForCoalition(self.side,string.format("%s: where to?",self.digraph),10)
-				return
-			elseif not triggerNow then
-				return
-			end
-			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
-			if unit ~= nil then
-				local startPoint = unit:getPoint()
-				local arrivalString = string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, ht_utils.pos2LL(self.evac_pos))
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			if units[1] ~= nil then
+				local startPoint = units[1]:getPoint()		
+							
+				if self.evac_pos == nil then
+					trigger.action.outTextForCoalition(self.side,string.format("%s: where to?",self.digraph),10)
+					return
+				elseif not triggerNow then
+					return
+				end
 				
+				local arrivalString = string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, ht_utils.pos2LL(self.evac_pos))
+			
 				if startPoint ~= nil then
 					local missionData = { 
 					   id = 'Mission', 
@@ -381,27 +422,56 @@ hitch_trooper.instance_meta_ = {
 					controller:setOnOff(true)
 					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
 					controller:setTask(missionData)
+					
+					self.current_destination = self.evac_pos				
+					
+					--hitch_trooper.log_i:info(eta)--debug
+					
+					self.taskMessage = string.format("Evac'ing to %s.",ht_utils.pos2LL(self.evac_pos))
 					trigger.action.outTextForCoalition(self.side,string.format("%s: will evac to %s",self.digraph,ht_utils.pos2LL(self.evac_pos)),10)
 				end
 			end
 		end,
 		
 		smokePosition_ = function(self)
-			local group, unit = ht_utils.getLivingUnit(self.activeGroupName) 
-			if unit ~= nil then
-				local point = unit:getPoint()
-				point.x = point.x + 100.0 * (math.random() - 0.5)
-				point.z = point.z + 100.0 * (math.random() - 0.5)
-				trigger.action.smoke(point, trigger.smokeColor.Green)
-				
-				hitch_trooper.log_i:info(unit:getDesc())--debug
-				hitch_trooper.log_i:info(group:getController())--debug
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			if units[1] ~= nil then
+				if self.smoke_ammo <= 0 then
+					trigger.action.outTextForCoalition(self.side,string.format("%s: We're out of smoke!",self.digraph),10)
+					return
+				end
+				local point = units[1]:getPoint()
+				point.x = point.x + 200.0 * (math.random() - 0.5)
+				point.z = point.z + 200.0 * (math.random() - 0.5)
+				mist.scheduleFunction(trigger.action.smoke,{point, trigger.smokeColor.Green},timer.getTime() + 30 + math.random() * 60)
+				self.smoke_ammo = self.smoke_ammo - 1
 			end
 			
 		end,
 		
 		sitrep_ = function(self)
-			--TODO. 
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			if units[1] ~= nil then
+				trigger.action.outTextForCoalition(self.side,string.format("%s: SITREP",self.digraph),10)
+				if self.taskMessage ~= nil and self.taskMessage ~= "" then
+					trigger.action.outTextForCoalition(self.side,self.taskMessage,10)
+					local ETA = self:currentEta_()
+					if ETA ~= nil then trigger.action.outTextForCoalition(self.side,"ETA "..ETA,10) end
+				else	
+					trigger.action.outTextForCoalition(self.side,"Available",10)
+				end
+			end
+		end,
+		
+		currentEta_ = function(self)
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			if units[1] ~= nil and self.current_destination ~= nil then
+				local startPoint = units[1]:getPoint()	
+				if startPoint ~= nil then 
+					return ht_utils.getETAString(self.current_destination, startPoint, ht_utils.getUnitSpeed(units[1],4)*0.8)
+				end
+			end
+			return nil
 		end
 	} --index
 }
@@ -415,11 +485,13 @@ hitch_trooper.new = function (groupName)
 	
 	local instance = {
 		groupName = groupName,
-		statusMessage = "",
+		taskMessage = "",
 		minRespawnTime = 0,
 		side = coa,
 		digraph = hitch_trooper.makeDigraph_(coa),
 		evac_pos = nil,
+		current_destination = nil,
+		smoke_ammo = hitch_trooper.init_smoke_ammo,
 		commsMenuItems = {} -- key = item action type, value = path
 	}
 	
