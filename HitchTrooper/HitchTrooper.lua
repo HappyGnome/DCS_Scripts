@@ -104,6 +104,33 @@ ht_utils.getUnitSpeed = function(unit,default)
 	
 	return default
 end
+
+--[[
+Return: {Rounds,Missiles, Rockets, Bombs}
+--]]
+ht_utils.sumAmmo= function(units)
+	local ret = {}
+	local othertotal = 0
+	for _,unit in pairs(units) do
+		for _,ammo in pairs(unit:getAmmo()) do
+			if ammo.count > 0 then
+				if ammo.desc.displayName == nil then
+					othertotal = othertotal + ammo.count
+				elseif ret[ammo.desc.displayName] == nil then
+					ret[ammo.desc.displayName] = ammo.count
+				else
+					ret[ammo.desc.displayName] = ret[ammo.desc.displayName] + ammo.count
+				end
+			end
+		end
+	end
+	
+	if othertotal > 0 then
+		ret["other"] = othertotal
+	end
+	
+	return ret
+end
 --#######################################################################################################
 -- HITCH_TROOPER 
 hitch_trooper = {}
@@ -452,14 +479,25 @@ hitch_trooper.instance_meta_ = {
 		sitrep_ = function(self)
 			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
-				trigger.action.outTextForCoalition(self.side,string.format("%s: SITREP",self.digraph),10)
+				local message = string.format("%s: SITREP",self.digraph)
 				if self.taskMessage ~= nil and self.taskMessage ~= "" then
-					trigger.action.outTextForCoalition(self.side,self.taskMessage,10)
+					message = message.."\n"..self.taskMessage
 					local ETA = self:currentEta_()
-					if ETA ~= nil then trigger.action.outTextForCoalition(self.side,"ETA "..ETA,10) end
+					if ETA ~= nil then 
+						message = message.."\nETA "..ETA
+					end
 				else	
-					trigger.action.outTextForCoalition(self.side,"Available",10)
+					message = message.."\nStanding by"
 				end
+				local ammoCounts = ht_utils.sumAmmo(units)
+				local linestart= true
+				for k,v in pairs(ammoCounts) do
+						if linestart then message = message.."\nAmmo: "
+						else message = message..", " end
+						linestart = false
+						message = message..v.."*"..k
+				end
+				trigger.action.outTextForCoalition(self.side,message,10)
 			end
 		end,
 		
