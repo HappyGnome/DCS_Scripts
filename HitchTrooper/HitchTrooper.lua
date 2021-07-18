@@ -119,17 +119,24 @@ end
 
 --[[
 return point,name,dist (m) of nearest airbase/farp etc (not ships), checks all permanent airbases and farps from side, if given 
+set friendlyOnly = true to only consider friendly bases
 --]]
-ht_utils.getNearestAirbase = function (point, side)
+ht_utils.getNearestAirbase = function (point, side, friendlyOnly)
 	local basesTemp = world.getAirbases()
 	local bases = {}
 	local closestDist = math.huge
 	local closestBase = nil
-	if side == nil then
+	if side == nil and not friendlyOnly then
 		bases = basesTemp
-	else
+	elseif side ~= nil and friendlyOnly then
 		for k,v in pairs(basesTemp) do	
-			--fixed airbases only (no associated unit), and only friendly farps ('SHIP' category)
+			if not v:getUnit() and v:getCoalition() == side then
+				table.insert(bases,v)
+			end
+		end
+	elseif side ~= nil then
+		for k,v in pairs(basesTemp) do	
+			--fixed airbases only (no associated unit), and only friendly farps 
 			if not v:getUnit() and (v:getCoalition() == side or v:getDesc().category == Airbase.Category.AIRDROME) then
 				table.insert(bases,v)
 			end
@@ -249,7 +256,7 @@ hitch_trooper = {}
 hitch_trooper.poll_interval = 61 --seconds, time between updates of group availability
 hitch_trooper.respawn_delay = 28800 --seconds, time between disbanding and respawn becoming available
 hitch_trooper.init_smoke_ammo = 3 --smokes available per group
-hitch_trooper.recovery_radius = 1500 --smokes available per group
+hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -460,20 +467,20 @@ hitch_trooper.instance_meta_ = {
 			local unitsNotHome = false
 			if units ~= nil then
 				for k,v in pairs(units) do 
-					_,_,dist = ht_utils.getNearestAirbase(v:getPoint(),self.side)
+					_,_,dist = ht_utils.getNearestAirbase(v:getPoint(),self.side,true)
 					if dist ~= nil and dist > hitch_trooper.recovery_radius then
 						unitsNotHome = true
 						break
 					end
 				end
-			end
-			if unitsNotHome then		
-				trigger.action.outTextForCoalition(self.side,string.format("%s: standing down. See ya!",self.digraph),5)
-				mist.scheduleFunction(self.disbandGroup_,{self},timer.getTime() + 300)
-				self:removeComms_()
-				mist.scheduleFunction(hitch_trooper.new,{self.groupName, self.spawnData}, 300)
-			else
-				trigger.action.outTextForCoalition(self.side,string.format("%s: get us back to base first.",self.digraph),5)
+				if unitsNotHome then
+					trigger.action.outTextForCoalition(self.side,string.format("%s: get us back to base first.",self.digraph),5)	
+				else
+					trigger.action.outTextForCoalition(self.side,string.format("%s: standing down. See ya!",self.digraph),5)
+					mist.scheduleFunction(self.disbandGroup_,{self},timer.getTime() + 300)
+					self:removeComms_()
+					mist.scheduleFunction(hitch_trooper.new,{self.groupName, self.spawnData}, 300)
+				end
 			end
 		end,
 		
