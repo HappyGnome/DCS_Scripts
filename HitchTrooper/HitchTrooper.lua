@@ -78,6 +78,99 @@ ht_utils.getLivingUnits = function (groupName)
 	return group,retUnits
 end
 
+--[[
+True heading point A to point B, in degrees
+--]]
+ht_utils.getHeading = function (pointA,pointB)	
+	local north = mist.getNorthCorrection(pointA) -- atan2 for true north at pointA
+	local theta = (math.atan2(pointB.z-pointA.z,pointB.x-pointA.x) - north) * 57.2957795 --degrees
+	local hdg = math.fmod(theta,360)
+	if hdg < 0 then
+		hdg = hdg + 360
+	end
+	return hdg	
+end
+
+--[[
+convert heading to octant string e.g. "North", "Northeast" etc
+hdg must be in the range  0 -360
+--]]
+ht_utils.hdg2Octant = function (hdg)
+	local ret = "North"	
+	if hdg >= 22.5 then
+		if hdg < 67.5 then
+			ret = "Northeast"	
+		elseif hdg < 112.5 then
+			ret = "East"
+		elseif hdg < 157.5 then
+			ret = "Southeast"
+		elseif hdg < 202.5 then
+			ret = "South"
+		elseif hdg < 247.5 then
+			ret = "Southwest"
+		elseif hdg < 292.5 then
+			ret = "West"
+		elseif hdg < 337.5 then
+			ret = "Northwest"
+		end
+	end
+	return ret
+end
+
+--[[
+return point,name,dist (m) of nearest airbase/farp etc (not ships), or the same from a particular side if side is passed
+--]]
+ht_utils.getNearestAirbase = function (point, side)
+	local bases = world.getAirbases()
+	local closestDist = math.huge
+	local closestBase = nil
+	if side then
+		for k,v in pairs(bases) do
+			if v:getCoalition() ~= side then
+				bases[k] = nil
+			end
+		end
+	end
+	for k,v in pairs(bases) do		
+		if not v:getUnit() then --fixed airbases only
+			if math.abs(v:getPoint().x - point.x) < closestDist then --quick filter in just one direction to cut down distance calcs
+				local newDist = mist.utils.get2DDist(v:getPoint(),point)
+				if newDist < closestDist then
+					closestDist = newDist
+					closestBase = v
+				end
+			end
+		end
+	end
+	
+	if closestBase == nil then return nil, nil, nil end
+	
+	return closestBase:getPoint(),closestBase:getName(), closestDist
+end
+
+--[[
+Describe point relative to airbase e.g. "8Km Northeast of Kutaisi"
+side determines whether only one set of bases are used for reference points
+--]]
+ht_utils.MakeAbToPointDescriptor = function (point, side)
+	local abPoint,abName,meters = ht_utils.getNearestAirbase(point,side)
+	if not abPoint then return "??" end
+	return string.format("%s of %s",ht_utils.MakePointToPointDescriptor(abPoint,point),abName)
+end
+
+--[[
+Describe point b from point a with distance and octant e.g. "8km South"
+distance defaults to true. Indicates whether to include distance info
+--]]
+ht_utils.MakePointToPointDescriptor = function (pointA, pointB, distance)
+	local octant = ht_utils.hdg2Octant(ht_utils.getHeading(pointA,pointB))
+	if distance or distance == nil then
+		return string.format("%.0fkm %s",mist.utils.get2DDist(pointA,pointB)/1000,octant)
+	else
+		return string.format("%s",octant)
+	end
+end
+
 
 --[[
 return ETA for following a straight path between two points at a given estimated speed
@@ -112,14 +205,17 @@ ht_utils.sumAmmo= function(units)
 	local ret = {}
 	local othertotal = 0
 	for _,unit in pairs(units) do
-		for _,ammo in pairs(unit:getAmmo()) do
-			if ammo.count > 0 then
-				if ammo.desc.displayName == nil then
-					othertotal = othertotal + ammo.count
-				elseif ret[ammo.desc.displayName] == nil then
-					ret[ammo.desc.displayName] = ammo.count
-				else
-					ret[ammo.desc.displayName] = ret[ammo.desc.displayName] + ammo.count
+		local ammos = unit:getAmmo()
+		if ammos then
+			for _,ammo in pairs(ammos) do
+				if ammo.count > 0 then
+					if ammo.desc.displayName == nil then
+						othertotal = othertotal + ammo.count
+					elseif ret[ammo.desc.displayName] == nil then
+						ret[ammo.desc.displayName] = ammo.count
+					else
+						ret[ammo.desc.displayName] = ret[ammo.desc.displayName] + ammo.count
+					end
 				end
 			end
 		end
@@ -246,12 +342,13 @@ world.addEventHandler(hitch_trooper.eventHandler)
 Add comms submenu for red or blue (side == instance of coalition.side)
 --]]
 hitch_trooper.ensureCoalitionSubmenu_=function(side)
-	local menuNameRoot = "Hitchtroopers"
+	local rootMenuText = "Hitchtroopers"
+	local menuNameRoot = rootMenuText..side
 	local level = 1
 	local menuName = menuNameRoot .. "_" .. level
 	
 	if hitch_trooper.commsMenus[menuName] == nil then--create submenu
-		hitch_trooper.commsMenus[menuName] = {0, missionCommands.addSubMenuForCoalition(side, menuNameRoot ,nil)}
+		hitch_trooper.commsMenus[menuName] = {0, missionCommands.addSubMenuForCoalition(side,rootMenuText,nil)}
 	else 
 		
 		while hitch_trooper.commsMenus[menuName][1] >= 9 do --create overflow if no space here
@@ -479,7 +576,8 @@ hitch_trooper.instance_meta_ = {
 		sitrep_ = function(self)
 			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
-				local message = string.format("%s: SITREP",self.digraph)
+				local message = string.format("__SITREP__ %s",self.digraph)
+				message = message.."\nWe're "..ht_utils.MakeAbToPointDescriptor(units[1]:getPoint(),nil)
 				if self.taskMessage ~= nil and self.taskMessage ~= "" then
 					message = message.."\n"..self.taskMessage
 					local ETA = self:currentEta_()
@@ -496,6 +594,31 @@ hitch_trooper.instance_meta_ = {
 						else message = message..", " end
 						linestart = false
 						message = message..v.."*"..k
+				end
+				
+				local targets = units[1]:getController():getDetectedTargets()
+				local priorityCountdown = 3 -- max number of targets to show
+				local tgtDesc = "\nIn contact with: "
+				local hasTargets = false
+				for k,v in pairs(targets) do					
+					if v.visible and v.object then
+						hasTargets = true
+						tgtDesc = tgtDesc .."\n"
+						if priorityCountdown < 1 then 
+							tgtDesc = tgtDesc .. "...plus company!"
+							break 
+						end
+						priorityCountdown = priorityCountdown - 1
+						if v.type then
+							tgtDesc = tgtDesc .. v.object:getTypeName()
+						else
+							tgtDesc = tgtDesc .. "Unknown"
+						end
+						tgtDesc = tgtDesc .." ".. ht_utils.MakePointToPointDescriptor(units[1]:getPoint(), v.object:getPoint(), v.distance)						
+					end
+				end
+				if hasTargets then 
+					message = message..tgtDesc
 				end
 				trigger.action.outTextForCoalition(self.side,message,10)
 			end
