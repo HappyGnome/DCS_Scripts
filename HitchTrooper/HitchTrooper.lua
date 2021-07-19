@@ -248,6 +248,13 @@ ht_utils.shallow_copy = function(obj)
 	end	
 	return ret
 end
+
+ht_utils.safeCall = function(func,args,errorHandler)
+	local op = function()
+		func(unpack(args))
+	end
+	xpcall(op,errorHandler)
+end
 --#######################################################################################################
 -- HITCH_TROOPER 
 hitch_trooper = {}
@@ -351,14 +358,28 @@ hitch_trooper.parseMarkCommand = function(text,pos,side)
 	end
 end
 
+hitch_trooper.hitHandler = function(obj)
+	if obj and obj:getCategory() == Object.Category.UNIT then
+		local groupName = obj:getGroup():getName()
+		for _,ht in pairs(hitch_trooper.tracked_groups_) do
+			if ht.activeGroupName == groupName then
+				ht:recordHit_()
+				break
+			end
+		end
+	end
+end
+
 hitch_trooper.eventHandler = { 
 	onEvent = function(self,event)
 		if(event.id == world.event.S_EVENT_MARK_ADDED) then
-			xpcall(hitch_trooper.parseMarkCommand (event.text, event.pos, event.coalition),hitch_trooper.catchError)
+			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
 		--[[elseif (event.id == world.event.S_EVENT_MARK_REMOVED) then
 			ap_utils.markList[event.idx] = nil--]]
 		elseif (event.id == world.event.S_EVENT_MARK_CHANGE) then
-			xpcall(hitch_trooper.parseMarkCommand (event.text, event.pos, event.coalition),hitch_trooper.catchError)
+			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
+		elseif (event.id == world.event.S_EVENT_HIT) then
+			ht_utils.safeCall(hitch_trooper.hitHandler,{event.target},hitch_trooper.catchError)
 		end
 	end
 }
@@ -431,6 +452,15 @@ hitch_trooper.instance_meta_ = {
 			end
 			self.commsMenuItems = {spawn = missionCommands.addCommandForCoalition(self.side, "Call in",self.commsMenuRoot,self.spawnGroup_,self)}
 			hitch_trooper.spawnable_groups_[self.activeGroupName] = self
+		end,
+		
+		recordHit_ = function(self)
+			if self.morale >= 0 then
+				self.morale = self.morale - 1
+				if self.morale < 0 then
+					trigger.action.outTextForCoalition(self.side,string.format("%s: Request immediate medevac!",self.digraph),5)
+				end
+			end
 		end,
 		
 		setCommsActiveMode_ = function(self)
@@ -506,6 +536,8 @@ hitch_trooper.instance_meta_ = {
 				
 				self:setCommsActiveMode_()
 				hitch_trooper.tracked_groups_[self.activeGroupName] = self
+				
+				self.morale = math.ceil(#spawnData.units/3.0)
 			else
 				trigger.action.outTextForCoalition(self.side,string.format("%s: unavaiable at this time",self.digraph),5)
 			end
@@ -524,6 +556,10 @@ hitch_trooper.instance_meta_ = {
 		attackPoint_ = function(self, pos)		
 			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
+				if self.morale < 0 then
+					trigger.action.outTextForCoalition(self.side,string.format("%s: Unable",self.digraph),10)
+					return
+				end
 				local startPoint = units[1]:getPoint()
 				if startPoint ~= nil then
 					local missionData = { 
@@ -749,7 +785,8 @@ hitch_trooper.new = function (groupName,spawnData)
 		spawnData = spawnData,
 		current_destination = nil,
 		smoke_ammo = hitch_trooper.init_smoke_ammo,
-		commsMenuItems = {} -- key = item action type, value = path
+		commsMenuItems = {}, -- key = item action type, value = path
+		morale = 0 -- when this hits zero, cannot attack
 	}
 	instance.activeGroupName = string.format("%s (%s)",instance.groupName,instance.digraph)
 	
