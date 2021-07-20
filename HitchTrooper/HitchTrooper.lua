@@ -370,6 +370,18 @@ hitch_trooper.hitHandler = function(obj)
 	end
 end
 
+hitch_trooper.capHandler = function(initiator,place)
+	if initiator and initiator:getCategory() == Object.Category.UNIT then
+		local groupName = initiator:getGroup():getName()
+		for _,ht in pairs(hitch_trooper.tracked_groups_) do
+			if ht.activeGroupName == groupName then
+				ht:recordBaseCap_(place)
+				break
+			end
+		end
+	end
+end
+
 hitch_trooper.eventHandler = { 
 	onEvent = function(self,event)
 		if(event.id == world.event.S_EVENT_MARK_ADDED) then
@@ -380,6 +392,10 @@ hitch_trooper.eventHandler = {
 			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_HIT) then
 			ht_utils.safeCall(hitch_trooper.hitHandler,{event.target},hitch_trooper.catchError)
+		elseif (event.id == world.event.S_EVENT_BASE_CAPTURED) then
+			ht_utils.safeCall(hitch_trooper.capHandler,{event.initiator,event.place},hitch_trooper.catchError)
+		--[[elseif (event.id == world.event.S_EVENT_WEAPON_ADD) then --experimental
+			hitch_trooper.log_i:info(event)	--]]		
 		end
 	end
 }
@@ -459,8 +475,18 @@ hitch_trooper.instance_meta_ = {
 				self.morale = self.morale - 1
 				if self.morale < 0 then
 					trigger.action.outTextForCoalition(self.side,string.format("%s: Request immediate medevac!",self.digraph),5)
+					if self.evac_pos ~= nil then
+						self:evacPoint_(nil,true)
+					end
 				end
 			end
+		end,
+		recordBaseCap_ = function(self,place)
+			local baseName = place:getName()
+			if baseName == nil then
+				baseName = "a base"
+			end
+			trigger.action.outTextForCoalition(self.side,string.format("%s: We captured %s. Huzzah!",self.digraph,baseName),5)
 		end,
 		
 		setCommsActiveMode_ = function(self)
@@ -587,6 +613,11 @@ hitch_trooper.instance_meta_ = {
 					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.OPEN_FIRE)				
 					controller:setTask(missionData)
 					
+					-- default evac point
+					if self.evac_pos == nil then
+						self.evac_pos = startPoint
+					end
+					
 					self.current_destination = pos	
 					self.taskMessage = string.format("Attacking %s",ht_utils.pos2LL(pos))
 					trigger.action.outTextForCoalition(self.side,string.format("%s: attacking %s",self.digraph,ht_utils.pos2LL(pos)),10)
@@ -616,7 +647,6 @@ hitch_trooper.instance_meta_ = {
 				local arrivalString = 
 				string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, ht_utils.pos2LL(self.evac_pos))
 			    ..string.format("\nhitch_trooper.tracked_groups_[\"%s\"].taskMessage = nil",self.activeGroupName)
-				hitch_trooper.log_i:info(arrivalString)
 				if startPoint ~= nil then
 					local missionData = { 
 					   id = 'Mission', 
