@@ -118,42 +118,69 @@ ht_utils.hdg2Octant = function (hdg)
 end
 
 --[[
-return point,name,dist (m) of nearest airbase/farp etc (not ships), checks all permanent airbases and farps from side, if given 
-set friendlyOnly = true to only consider friendly bases
+Get the key of the nearest object in objList to another given point
+return key,dist
 --]]
-ht_utils.getNearestAirbase = function (point, side, friendlyOnly)
-	local basesTemp = world.getAirbases()
-	local bases = {}
+ht_utils.getKeyOfNearest2D = function(objList,point)
 	local closestDist = math.huge
-	local closestBase = nil
-	if side == nil and not friendlyOnly then
-		bases = basesTemp
-	elseif side ~= nil and friendlyOnly then
-		for k,v in pairs(basesTemp) do	
-			if not v:getUnit() and v:getCoalition() == side then
-				table.insert(bases,v)
-			end
-		end
-	elseif side ~= nil then
-		for k,v in pairs(basesTemp) do	
-			--fixed airbases only (no associated unit), and only friendly farps 
-			if not v:getUnit() and (v:getCoalition() == side or v:getDesc().category == Airbase.Category.AIRDROME) then
-				table.insert(bases,v)
-			end
-		end
-	end
-	 
-	for k,v in pairs(bases) do		
+	local closestKey = nil
+	for k,v in pairs(objList) do		
 		if math.abs(v:getPoint().x - point.x) < closestDist then --quick filter in just one direction to cut down distance calcs
 			local newDist = mist.utils.get2DDist(v:getPoint(),point)
 			if newDist < closestDist then
 				closestDist = newDist
-				closestBase = v
+				closestKey = k
+			end
+		end
+	end
+	return closestKey,closestDist
+end
+
+--[[
+Return a table of airbases and farps for the coalition farpSide. If friendlyOnly then farpSide also applies to the fixed airbases returned
+--]]
+ht_utils.getBaseList = function(farpSide,friendlyOnly, shipsAsFarps)
+	local basesTemp = world.getAirbases()
+	local bases = {}
+	
+	if farpSide == nil and not friendlyOnly then
+		for k,v in pairs(basesTemp) do	
+			if (shipsAsFarps or not v:getUnit()) then
+				table.insert(bases,v)
+			end
+		end
+	elseif farpSide ~= nil and friendlyOnly then
+	
+		for k,v in pairs(basesTemp) do	
+			if (shipsAsFarps or not v:getUnit()) and v:getCoalition() == farpSide then
+			
+				table.insert(bases,v)
+			end
+		end
+	elseif farpSide ~= nil then
+		for k,v in pairs(basesTemp) do	
+			--fixed airbases only (no associated unit), and only friendly farps 
+			if (shipsAsFarps or not v:getUnit()) and (v:getCoalition() == farpSide or v:getDesc().category == Airbase.Category.AIRDROME) then
+				table.insert(bases,v)
 			end
 		end
 	end
 	
-	if closestBase == nil then return nil, nil, nil end
+	return bases
+end
+
+
+--[[
+return point,name,dist (m) of nearest airbase/farp etc (not ships), checks all permanent airbases and farps from side, if given 
+set friendlyOnly = true to only consider friendly bases
+--]]
+ht_utils.getNearestAirbase = function (point, side, friendlyOnly)
+	local bases = ht_utils.getBaseList(side,friendlyOnly,false)
+	local closestKey, closestDist = ht_utils.getKeyOfNearest2D(bases,point)
+	
+	if closestKey == nil then return nil, nil, nil end
+	
+	local closestBase = bases[closestKey]
 	
 	return closestBase:getPoint(),closestBase:getName(), closestDist
 end
@@ -263,7 +290,7 @@ hitch_trooper = {}
 hitch_trooper.poll_interval = 61 --seconds, time between updates of group availability
 hitch_trooper.respawn_delay = 28800 --seconds, time between disbanding and respawn becoming available
 hitch_trooper.init_smoke_ammo = 3 --smokes available per group
-hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn
+hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn/resupply
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -301,10 +328,11 @@ end
 --POLL----------------------------------------------------------------------------------------------------
 
 hitch_trooper.doPoll_=function()
-
+--TODO - Fix this!
 	local now=timer.getTime()	
 	local groupName = nil
 	local htInstance = nil
+	local airbasePoints = {[coalition.side.BLUE] = nil, [coalition.side.RED] = nil}
 	
 	--hitch_trooper.log_i:info("poll") --debug
 	
@@ -314,6 +342,14 @@ hitch_trooper.doPoll_=function()
 			htInstance:disbandGroup_()
 		else
 			
+			--check for resupply
+			if airbasePoints[htInstance.side] == nil then
+				airbasePoints[htInstance.side] = ht_utils.getBaseList(htInstance.side,true,true)
+			end
+			local _,dist = ht_utils.getKeyOfNearest2D(airbasePoints[htInstance.side], units[1]:getPoint())	
+			if dist < hitch_trooper.recovery_radius then		
+				htInstance.smoke_ammo = math.max(math.min(htInstance.smoke_ammo + 1,hitch_trooper.init_smoke_ammo), htInstance.smoke_ammo)
+			end
 		end
 	end
 	
@@ -742,11 +778,12 @@ hitch_trooper.instance_meta_ = {
 				local ammoCounts = ht_utils.sumAmmo(units)
 				local linestart= true
 				for k,v in pairs(ammoCounts) do
-						if linestart then message = message.."\nAmmo: "
-						else message = message..", " end
+						if linestart then message = message.."\nAmmo: " end
+						
 						linestart = false
-						message = message..v.."*"..k
+						message = message..v.."*"..k..", "
 				end
+				message = message.."Smoke*"..self.smoke_ammo
 				
 				local targets = units[1]:getController():getDetectedTargets()
 				local priorityCountdown = 3 -- max number of targets to show
