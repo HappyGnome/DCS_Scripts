@@ -390,16 +390,30 @@ hitch_trooper.parseMarkCommand = function(text,pos,side)
 			htInstance:attackPoint_(pos)
 		elseif string.lower(cmd) == "evac" then
 			htInstance:evacPoint_(pos,false)
+		elseif string.lower(cmd) == "rec" then
+			htInstance:reconPoint_(pos)
 		end
 	end
 end
 
-hitch_trooper.hitHandler = function(obj)
+hitch_trooper.hitHandler = function(obj,initiator)
 	if obj and obj:getCategory() == Object.Category.UNIT then
 		local groupName = obj:getGroup():getName()
 		for _,ht in pairs(hitch_trooper.tracked_groups_) do
 			if ht.activeGroupName == groupName then
-				ht:recordHit_()
+				ht:recordHit_(initiator)
+				break
+			end
+		end
+	end
+end
+
+hitch_trooper.shotHandler = function(obj,initiator)
+	if obj and obj:getCategory() == Object.Category.UNIT then
+		local groupName = obj:getGroup():getName()
+		for _,ht in pairs(hitch_trooper.tracked_groups_) do
+			if ht.activeGroupName == groupName then
+				ht:recordShot_(initiator)
 				break
 			end
 		end
@@ -427,7 +441,9 @@ hitch_trooper.eventHandler = {
 		elseif (event.id == world.event.S_EVENT_MARK_CHANGE) then
 			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_HIT) then
-			ht_utils.safeCall(hitch_trooper.hitHandler,{event.target},hitch_trooper.catchError)
+			ht_utils.safeCall(hitch_trooper.hitHandler,{event.target,event.initiator},hitch_trooper.catchError)
+		elseif (event.id == world.event.S_EVENT_SHOT or event.id == world.event.S_EVENT_SHOOTING_START) then
+			ht_utils.safeCall(hitch_trooper.shotHandler,{event.target,event.initiator},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_BASE_CAPTURED) then
 			ht_utils.safeCall(hitch_trooper.capHandler,{event.initiator,event.place},hitch_trooper.catchError)
 		--[[elseif (event.id == world.event.S_EVENT_WEAPON_ADD) then --experimental
@@ -506,7 +522,11 @@ hitch_trooper.instance_meta_ = {
 			hitch_trooper.spawnable_groups_[self.activeGroupName] = self
 		end,
 		
-		recordHit_ = function(self)
+		recordHit_ = function(self,initiator)
+		hitch_trooper.log_i:info("hit")
+			if self.retreatFromFire and initiator ~= nil then
+				self:retreatFromPoint_(initiator:getPoint())
+			end
 			if self.morale >= 0 then
 				self.morale = self.morale - 1
 				if self.morale < 0 then
@@ -515,6 +535,12 @@ hitch_trooper.instance_meta_ = {
 						self:evacPoint_(nil,true)
 					end
 				end
+			end
+		end,
+		recordShot_ = function(self,initiator)
+		hitch_trooper.log_i:info("shot")
+			if self.retreatFromFire and initiator ~= nil then
+				self:retreatFromPoint_(initiator:getPoint())
 			end
 		end,
 		recordBaseCap_ = function(self,place)
@@ -653,6 +679,7 @@ hitch_trooper.instance_meta_ = {
 					if self.evac_pos == nil then
 						self.evac_pos = startPoint
 					end
+					self.retreatFromFire = false
 					
 					self.current_destination = pos	
 					self.taskMessage = string.format("Attacking %s",ht_utils.pos2LL(pos))
@@ -735,12 +762,113 @@ hitch_trooper.instance_meta_ = {
 					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
 					controller:setTask(missionData)
 					
-					self.current_destination = self.evac_pos				
+					self.current_destination = self.evac_pos
+					self.retreatFromFire = true					
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
 					self.taskMessage = string.format("Evac'ing to %s.",ht_utils.pos2LL(self.evac_pos))
 					trigger.action.outTextForCoalition(self.side,string.format("%s: will evac to %s",self.digraph,ht_utils.pos2LL(self.evac_pos)),10)
+				end
+			end
+		end,
+		
+		--[[
+		Set evac destination if pos not nil. 
+		--]]
+		reconPoint_ = function(self, pos)
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			if units[1] ~= nil then
+				local startPoint = units[1]:getPoint()		
+				
+				if startPoint ~= nil then
+					local missionData = { 
+					   id = 'Mission', 
+					   params = { 
+						 route = { 
+						   points = { 
+							 [1] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = startPoint.x, 
+							   y = startPoint.z
+							 },
+							 [2] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = pos.x, 
+							   y = pos.z,	
+							   speed = 100
+							 }
+						   } 
+						 }
+					   } 
+					}
+					local controller = group:getController()
+					controller:setOnOff(true)
+					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
+					controller:setTask(missionData)
+					
+					-- default evac point
+					if self.evac_pos == nil then
+						self.evac_pos = startPoint
+					end
+					self.current_destination = pos	
+					self.retreatFromFire = true
+					
+					--hitch_trooper.log_i:info(eta)--debug
+					
+					self.taskMessage = string.format("Reconnoitring %s.",ht_utils.pos2LL(pos))
+					trigger.action.outTextForCoalition(self.side,string.format("%s: will recon %s",self.digraph,ht_utils.pos2LL(pos)),10)
+				end
+			end
+		end,
+		
+		--[[
+		retreat a short way from a given 3D point
+		--]]
+		retreatFromPoint_ = function(self, pos)
+			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			if units[1] ~= nil then
+				local startPoint = units[1]:getPoint()					
+				local dist = mist.utils.get2DDist(startPoint,pos)
+				local retreatDist = 1000
+				if math.abs(dist) < 1.0 then return end
+				
+				local endPoint = {} --3D point
+				endPoint["x"] = startPoint.x + retreatDist*(startPoint.x - pos.x)/dist
+				endPoint["y"] = startPoint.y
+				endPoint["z"] = startPoint.z + retreatDist*(startPoint.z - pos.z)/dist
+
+				if startPoint ~= nil then
+					local missionData = { 
+					   id = 'Mission', 
+					   params = { 
+						 route = { 
+						   points = { 
+							 [1] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = startPoint.x, 
+							   y = startPoint.z
+							 },
+							 [2] = {
+							   action = AI.Task.VehicleFormation.OFF_ROAD,
+							   x = endPoint.x, 
+							   y = endPoint.z,	
+							   speed = 100
+							 }
+						   } 
+						 }
+					   } 
+					}
+					local controller = group:getController()
+					controller:setOnOff(true)				
+					controller:setTask(missionData)	
+
+					self.current_destination = endPoint		
+					self.evac_pos = endPoint	--TODO a smarter choice?
+					
+					--hitch_trooper.log_i:info(eta)--debug
+					
+					self.taskMessage = string.format("Retreating to %s.",ht_utils.pos2LL(endPoint))
 				end
 			end
 		end,
@@ -849,6 +977,7 @@ hitch_trooper.new = function (groupName,spawnData)
 		side = coa,
 		digraph = hitch_trooper.makeDigraph_(coa),
 		evac_pos = nil,
+		retreatFromFire = true,
 		spawnData = spawnData,
 		current_destination = nil,
 		smoke_ammo = hitch_trooper.init_smoke_ammo,

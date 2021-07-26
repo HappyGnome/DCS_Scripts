@@ -371,6 +371,20 @@ ap_utils.groupHasActiveUnit=function(groupName)
 	return false
 end
 
+--[[
+	Get list of group names containing a substring
+	
+	substring - substring to search for
+--]]
+ap_utils.getNamesContaining = function(substring)
+	local ret = {}
+	for name,v in pairs(mist.DBs.groupsByName) do
+		if string.find(name,substring) ~= nil then
+			table.insert(ret, name)
+		end
+	end
+	return ret
+end
 
 --[[
 Make random groups
