@@ -64,7 +64,7 @@ Where
 #### Commands
 
 |Comms Command|Description|
-|---|---|---|
+|---|---|
 |Call in|Spawn/respawn the group|
 |Evac|Switch ROE to return fire and retreat to evac point if designated. Once there the group will await transport|
 |Smoke|Drop a smoke near the groups location (subject to an ammo constraint). Ammo can be replenished at bases (but not trucks).|
