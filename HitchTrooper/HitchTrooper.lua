@@ -864,7 +864,7 @@ hitch_trooper.instance_meta_ = {
 					controller:setTask(missionData)	
 
 					self.current_destination = endPoint		
-					self.evac_pos = endPoint	--TODO a smarter choice?
+					self.evac_pos = endPoint
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
