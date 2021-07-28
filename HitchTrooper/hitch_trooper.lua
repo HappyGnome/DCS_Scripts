@@ -996,7 +996,7 @@ hitch_trooper.new = function (groupName,spawnData)
 end
 
 --Search for groups with name containing
-hitch_trooper.init = function(substring)
+hitch_trooper.newIfNameContains = function(substring)
 
 	for name,v in pairs(mist.DBs.groupsByName) do
 		if string.find(name,substring) ~= nil then					

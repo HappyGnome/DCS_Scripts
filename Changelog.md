@@ -1,5 +1,7 @@
 # Changelog
  
+## 1.5a
+* Added HitchTroopers
 ## 1.4.1a
 * Restriction on unit_repairman for nearby player units applies to start point as well as current position.
 ## 1.4a
