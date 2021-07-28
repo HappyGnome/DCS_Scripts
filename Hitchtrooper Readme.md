@@ -81,4 +81,5 @@ For directing a group use their digraph followed by a short command word in a ma
 **Responding to events**
 * If hit too many times the group will attempt to return to an evac point and request medevac
 * If fired upon when not attacking, the group will attempt to retreat from the threat.
+* If entire group is KIA, respawn will be possible only after a long delay (hence it can be worth completing the medevac if requested).
 
