@@ -68,7 +68,6 @@ end
 
 --GLOBAL POLL---------------------------------------------------------------------------------------
 
-
 --[[
 Add a pool to poll list, assign it its index as an id
 --]]
@@ -493,7 +492,11 @@ ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
 	local ret={nil,nil,nil} --default return	
 	
 	local group = Group.getByName(groupName)
-	local units=group:getUnits()
+	local units={}
+	
+	if group ~= nil then 
+		units = group:getUnits() 
+	end
 	
 	
 	local positions={} -- {x,z},.... Indices correspond to indices in units
@@ -565,6 +568,37 @@ ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, 
 	end
 end
 
+--[[
+return (group, unit) for living unit in group of given name
+--]]
+ap_utils.getLivingUnits = function (groupName)	
+	local group = Group.getByName(groupName)
+	local retUnits = {}
+	if group ~= nil and Group.isExist(group) then
+		local units = group:getUnits()
+		for i,unit in pairs(units) do
+			if unit:getLife()>1.0 then
+				table.insert(retUnits, unit)
+			end
+		end
+	end
+	return group,retUnits
+end
+
+
+ap_utils.safeCall = function(func,args,errorHandler)
+	local op = function()
+		func(unpack(args))
+	end
+	xpcall(op,errorHandler)
+end
+
+ap_utils.getGroupStartPoint2D = function(groupName)
+	local spawnData = mist.getGroupData(groupName)
+	if spawnData and spawnData.units and spawnData.units[1] then
+		return {x = spawnData.units[1].x,y=0,z = spawnData.units[1].y}
+	end
+end
 
 --#######################################################################################################
 -- RESPAWNABLE_ON_CALL
@@ -1207,11 +1241,15 @@ end
 unit_repairman={}
 ----------------------------------------------------------------------------------------------------------
 
+-- MODULE OPTIONS:----------------------------------------------------------------------------------------
+unit_repairman.poll_interval = 67 --seconds, time between updates of group availability
+----------------------------------------------------------------------------------------------------------
+
 --[[
 Loggers for this module
 --]]
-unit_repairman.log_i=mist.Logger:new("unit_repairman","info")
-unit_repairman.log_e=mist.Logger:new("unit_repairman","error")
+unit_repairman.log_i = mist.Logger:new("unit_repairman","info")
+unit_repairman.log_e = mist.Logger:new("unit_repairman","error")
 
 --error handler for xpcalls. wraps unit_repairman.log_e:error
 unit_repairman.catchError = function(err)
@@ -1219,6 +1257,63 @@ unit_repairman.catchError = function(err)
 end 
 
 --UNIT REPAIRMAN---------------------------------------------------------------------------------------
+
+--[[
+key = group name in mission
+value = {groupName, minDelaySeconds, maxDelaySeconds, options}
+--]]
+unit_repairman.tracked_groups_={}
+
+
+--POLL----------------------------------------------------------------------------------------------------
+
+unit_repairman.doPoll_=function()
+	local now=timer.getTime()	
+	local groupName = nil
+	local urData = nil
+	local repairedGroups = {}
+	
+	local pollGroup = function()
+		local group,units = ap_utils.getLivingUnits(groupName) 
+		local doRepair = false
+		
+		if group == nil or #units < group:getSize() then --compare to initial group size
+			doRepair = true
+		else
+			for k,v in pairs(units) do
+				if v:getLife() < v:getLife0() then
+					doRepair = true
+					break
+				end
+			end
+		end
+			
+		if doRepair then
+			table.insert(repairedGroups, groupName)
+			--schedule next respawn----------------------------------
+			mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{urData.groupName,  urData.minDelaySeconds, urData.maxDelaySeconds,urData.options},
+				now + math.random(urData.minDelaySeconds,urData.maxDelaySeconds))
+		end
+
+	end
+	
+	--do group poll
+	for k,v in pairs(unit_repairman.tracked_groups_) do
+		--parameters for the lambda
+		groupName = k
+		urData = v
+		
+		xpcall(pollGroup,unit_repairman.catchError) --safely do work of polling the group
+	end
+	
+	--remove groups from further polling who have been scheduled to respawn
+	for k,v in pairs(repairedGroups) do
+		unit_repairman.tracked_groups_[v] = nil
+	end
+
+	--schedule next poll----------------------------------
+	mist.scheduleFunction(unit_repairman.doPoll_,nil,now + unit_repairman.poll_interval)
+end
 
 --[[
 respawn named group and schedule a further respawn after random delay
@@ -1236,7 +1331,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 	if options == nil then
 		options = {}
 	end
-	
+			
 	local function action()		
 		local group
 		local now=timer.getTime()
@@ -1246,6 +1341,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 		if options.delaySpawnIfPlayerWithin then 
 			--check for players nearby
 			local gclpOptions={pickUnit=true, useGroupStart=true}
+			local startPoint = ap_utils.getGroupStartPoint2D(groupName)
 			local dist,_,_ = ap_utils.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
 			
 			if(dist ~= nil and dist < options.delaySpawnIfPlayerWithin) then --player too close
@@ -1254,8 +1350,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 					delay = options.retrySpawnDelay
 				end
 				
-				mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName, minDelaySeconds, maxDelaySeconds,options},
-					now + delay) -- reschedule with the same options
+				mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName,  minDelaySeconds, maxDelaySeconds,options}, now + delay) -- reschedule with the same options
 					
 				return
 			end
@@ -1282,10 +1377,10 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 			trigger.action.activateGroup(group) --ensure group is active
 		end		
 		
-		--schedule next respawn----------------------------------
-		mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName, minDelaySeconds, maxDelaySeconds,newOptions},
-			now + math.random(minDelaySeconds,maxDelaySeconds))
-	
+		unit_repairman.tracked_groups_[groupName]= {groupName = groupName,
+			minDelaySeconds = minDelaySeconds,
+			maxDelaySeconds = maxDelaySeconds,
+			options = newOptions}
 	end--action
 	
 	
@@ -1306,7 +1401,10 @@ register group for periodic respawns random delay
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
 --]]
 unit_repairman.register = function(groupName, minDelaySeconds, maxDelaySeconds, options)
-	unit_repairman.doPeriodicRespawn_(groupName, minDelaySeconds, maxDelaySeconds, options)	
+	unit_repairman.tracked_groups_[groupName] = {groupName = groupName,
+	minDelaySeconds = minDelaySeconds,
+	maxDelaySeconds = maxDelaySeconds,
+	options = options}
 end
 
 --[[
@@ -1328,7 +1426,7 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 	end
 end
 
-
+mist.scheduleFunction(unit_repairman.doPoll_,nil,timer.getTime() + unit_repairman.poll_interval)
 
 --#######################################################################################################
 -- ASSET_POOLS (PART 2)
