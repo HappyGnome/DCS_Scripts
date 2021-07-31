@@ -1318,7 +1318,7 @@ end
 --[[
 respawn named group and schedule a further respawn after random delay
 
-@param groupName = name of group in ME to respawn (ignored if groupData set)
+@param groupName = name of group in ME to respawn
 @param minDelaySeconds = minimum delay for subsequent respawn
 @param maxDelaySeconds = maximum delay for subsequent respawn
 @param options.remainingSpawns = when this reaches 0 the spawns will stop. Leave nil for no-limit

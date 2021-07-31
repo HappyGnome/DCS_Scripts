@@ -1,5 +1,7 @@
 # Changelog
  
+## 1.5.1a
+* Unit repairman: added poll so that respawns are only scheduled once group is damaged/destroyed
 ## 1.5a
 * Added HitchTroopers
 ## 1.4.1a

@@ -168,7 +168,7 @@ where `myROC=respawnable_on_call.new(...`.
 
 ### Register individual units
 
-`unit_repairman.register` registers a named group to be respawned after a random delay.
+`unit_repairman.register` registers a named group to be respawned if it is damaged after a random delay.
 
 Usage: `unit_repairman.register(<groupName>, <minDelaySeconds>, <maxDelaySeconds>, <options>)`
 
@@ -214,7 +214,7 @@ Where
 * `<options>.delaySpawnIfPlayerWithin` lateral distance from the group within which red or blue players block spawn temporarily
 * `<options>.retrySpawnDelay` (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
 
-**Example:**  `unit_repairman.registerRepairmanIfNameContains("repair",  300, 600, {delaySpawnIfPlayerWithin = 8000})` If mission contains *repair-1*,  and *repair-2*, these units will independently respawn every 5 - 10 minutes, unless there is a non-neutral player within 8km of that active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
+**Example:**  `unit_repairman.registerRepairmanIfNameContains("repair",  300, 600, {delaySpawnIfPlayerWithin = 8000})` If mission contains *repair-1*,  and *repair-2*, these units will independently respawn 5 - 10 minutes after being damaged/destroyed, unless there is a non-neutral player within 8km of that active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default).
 
 ## Utilities
 
