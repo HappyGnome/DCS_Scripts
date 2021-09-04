@@ -158,7 +158,7 @@ The functions in the table below should can be called on an instance returned fr
 where `myROC=respawnable_on_call.new(...`.
 
 |Method|Args|Callback Args|Desc|Example|
-|---|---|---|---|
+|---|---|---|---|---|
 |`setIdlePredicate`|`predicate` - `function(groupName) -> Boolean`|`groupName` - name of the monitored group<br> **Returns** true to allow group to go idle |Sets an additional condition for a group to be considered idle. E.g. check whether a player is nearby one of the units in the group (see `ap_utils.getClosestLateralPlayer`)||
 |`setDeathPctPredicate`|`percent` - `number`||If a group from a constant pressure set goes idle, but the average health of units in the group (including dead ones) is less than the given percentage, then the group is subject to the death cooldown instead of the idle one.|`constant_pressure_set.new(...):setDeathPctPredicate(60)` - if a group starts with three units but at the end of its mission the two surviving units are at 100% and 50% health then the group will be treated as a dead group for cooldown (avg. health is only 50%)|
 
