@@ -31,6 +31,11 @@ N.B. a group can only belong to one pool at a time. Adding it to multiple pools 
 --]]
 asset_pools.tracked_groups_={} 
 
+--[[
+key=group name, value = number of units at spawn
+]]--
+asset_pools.initial_group_sizes={} 
+
 
 --[[
 Table of pool objects. Each should be instances a class implementing:
@@ -41,7 +46,7 @@ groupDead=function(self,groupName, now), --> called when group despawns or dies
 												now == Mission time at death detection
 											return true to keep polling this group, or false to stop
 
-groupIdle=function(self,groupName, now) --> called when group no-longer has a task
+groupIdle=function(self,groupName, now, initialSize) --> called when group no-longer has a task
 												now == Mission time at idle detection
 											return true to keep polling this group, or false to stop
 
@@ -99,23 +104,27 @@ respawn named group and add it to poll associated to given pool
 		This is a table that will be accepted by mist.dynAdd
 --]]
 asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
-	local group 
-	
-	if groupData then
-		groupName=groupData.groupName
-		mist.dynAdd(groupData)
-	else
+
+	local op = function()
+		local group 
+		
+		if groupData then
+			groupName=groupData.groupName
+			mist.dynAdd(mist.utils.deepCopy(groupData)) -- MIST can sometimes change the data, so pass a copy just in case
+		else
+			group = Group.getByName(groupName)
+			
+			mist.respawnGroup(groupName,true) --respawn with original tasking
+		end
 		group = Group.getByName(groupName)
 		
-		mist.respawnGroup(groupName,true) --respawn with original tasking
+		if group then
+			trigger.action.activateGroup(group) --ensure group is active
+			asset_pools.initial_group_sizes[groupName] = group:getSize()
+		end
 	end
-	group = Group.getByName(groupName)
-	
-	if group then
-		trigger.action.activateGroup(group) --ensure group is active
-	end
-	
-	asset_pools.addGroupToPoll_(pool,groupName)
+	ap_utils.safeCall(op,{},asset_pools.catchError)
+	asset_pools.addGroupToPoll_(pool,groupName)	
 end
 
 --[[
@@ -203,7 +212,7 @@ asset_pools.doPoll_=function()
 				asset_pools.tracked_groups_[groupName]=nil
 			end 
 		elseif not isActive then
-			if not pool:groupIdle(groupName,now) then -- if pool requests to stop polling this group
+			if not pool:groupIdle(groupName,now, asset_pools.initial_group_sizes[groupName]) then -- if pool requests to stop polling this group
 				asset_pools.tracked_groups_[groupName]=nil
 			end
 		end
@@ -585,6 +594,26 @@ ap_utils.getLivingUnits = function (groupName)
 	return group,retUnits
 end
 
+--[[
+return a float between 0 and 1 representing groups strength vs initial strength
+--]]
+ap_utils.getNormalisedGroupHealth = function (groupName, initialSize)	
+	local group = Group.getByName(groupName)	
+	
+	if group ~= nil and Group.isExist(group) then
+	group:getSize()--TODO debug
+		if initialSize == nil then  initialSize = group:getSize() end
+		local accum = 0.0;
+		local units = group:getUnits()
+		for i,unit in pairs(units) do
+			accum = accum + (unit:getLife()/math.max(1.0,unit:getLife0()))
+		end
+		--constant_pressure_set.log_i:info("Calc:".. accum .." " .. initialSize .. " "..groupName )--TODO debug
+		return accum / math.max(1.0,initialSize)
+	end
+	return 0.0
+end
+
 
 ap_utils.safeCall = function(func,args,errorHandler)
 	local op = function()
@@ -656,7 +685,7 @@ respawnable_on_call.instance_meta_={
 		end,
 
 		--Asset pool override
-		groupIdle=function(self, groupName, now)			
+		groupIdle=function(self, groupName, now, initialSize)			
 			self.canRequestAt
 				= now + self.delayWhenIdle
 				
@@ -1012,12 +1041,18 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		end,
 
 		--Asset pool override
-		groupIdle=function(self, groupName, now)
+		groupIdle=function(self, groupName, now, initialSize)
 		
 			--check optional predicate if set
 			if self.idlePredicate_ and not self.idlePredicate_(groupName) then
 				return true -- not idle if predicate returns false
 			end
+			
+			if self.deathPredicate_ and self.deathPredicate_(groupName, initialSize) then
+				--constant_pressure_set.log_i:info(groupName .. " dead")--debug
+				--constant_pressure_set.log_i:info("Pct:"..ap_utils.getNormalisedGroupHealth(groupName, initialSize))
+				return self:groupDead(groupName,now)
+			end			
 			
 			local cooldownTime=now+self.cooldownOnIdle
 			self:putGroupOnCooldown_(groupName,cooldownTime)		
@@ -1124,10 +1159,26 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		-- predicate=function(groupName) -> Boolean
 		-- predicate should return true if group allowed to go idle
 		setIdlePredicate =function(self,predicate) 
-			self.idlePredicate_=predicate
+			self.idlePredicate_ = predicate
+			return self
+		end,
+		
+		-- Set a predicate to downgrade from idle to dead
+		-- predicate=function(groupName,initialSize) -> Boolean
+		-- predicate should return true if idle group counts as dead
+		setDeathPredicate =function(self,predicate) 
+			self.deathPredicate_ = predicate
+			return self
+		end,
+		
+		-- Short for setDeathPredicate with life percentage predicate
+		setDeathPctPredicate =function(self,percent) 
+			local pred = function(groupName, initialSize)
+				return ap_utils.getNormalisedGroupHealth(groupName,initialSize) < percent/100
+			end
+			self:setDeathPredicate(pred)
 			return self
 		end
-		
 		
 	}--index
 }--meta_,		
@@ -1171,6 +1222,10 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	-- Optional predicate (groupName)->Boolean
 	-- if set it must return true for group to go idle
 	instance.idlePredicate_=nil
+	
+	-- Optional predicate (groupName)->Boolean
+	-- An idle group satisfying this will count as dead for the cooldown
+	instance.deathPredicate_=nil
 	
 	--List of times at which cooldowns will happen
 	--key=time(s)

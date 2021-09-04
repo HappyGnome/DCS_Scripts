@@ -1,5 +1,9 @@
 # Changelog
- 
+
+## 1.5.2a
+* Exception handling when spawning a group in a pool is improved
+* Fixed error with repeated spawning of a group
+* Added setDeathPredicate and setDeathPctPredicate
 ## 1.5.1a
 * Unit repairman: added poll so that respawns are only scheduled once group is damaged/destroyed
 ## 1.5a
