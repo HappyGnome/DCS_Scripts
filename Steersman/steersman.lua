@@ -97,6 +97,14 @@ sm_utils.dot2D = function(u,v)
 	return u.x*v.x + uy*vy
 end
 
+sm_utils.lin2D = function(u,a,v,b)
+	local uy = u.z
+	local vy = v.z
+	if uy == nil then uy = u.y end
+	if vy == nil then vy = v.y end
+	return {x = a*u.x + b*v.x, y= a*uy+b*vy}
+end
+
 --return {x,y} unit vector in direction from a to b
 sm_utils.unitVector = function(A,B)
 	local Ay = A.z
@@ -137,7 +145,8 @@ steersman = {}
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 steersman.poll_interval = 59 --seconds, time between updates of group availability
 steersman.ops_radius = 93000 -- m switch to flight ops mode if player is inbound in this radius
-steersman.pre_ops_radius_seconds = 600
+steersman.pre_ops_radius_seconds = 360
+steersman.update_rest_cooldown = 600 --seconds
 steersman.ops_radius_inner = 65000 -- m switch to flight ops mode if player is within in this radius
 steersman.teardrop_dist = 1800 -- (m) distance behind ship to put turning point for expedited turnaround
 steersman.deck_height = 20 -- m height at which to measure wind
@@ -219,21 +228,22 @@ steersman.instance_meta_ = {
 				local inbound = sm_utils.dot2D(playerUnit:getVelocity(),
 					playerToBoat)
 			
-				wantOpsMode = playerUnit:inAir()
-					and (dist < steersman.ops_radius_inner
-					or (steersman.pre_ops_radius_seconds * inbound > dist - steersman.ops_radius 
-						and inbound > 0.01))
+				wantOpsMode = dist < steersman.ops_radius_inner
+					or (playerUnit:inAir() and steersman.pre_ops_radius_seconds * inbound > dist - steersman.ops_radius 
+						and inbound > 0.01)
 			end
 			
-			if not wantOpsMode then	
-				self:GoToPoint_(self:GetDownwind_(),100,false)
+			if not wantOpsMode and (self.opsMode_ or self.lastUpdatedRestPos == nil
+									or self.lastUpdatedRestPos + steersman.update_rest_cooldown < timer.getTime())then	
+				self:GoOnPath_(self:GetDownwindZigZag_(),100)
+				self.lastUpdatedRestPos = timer.getTime()
 				if self.opsMode_ and steersman.enable_messages then
 					trigger.action.outTextForCoalition(self.side_,string.format("%s ceasing flight ops",self.groupName_),10)
 				end
 				self.opsMode_ = false
 			elseif not self.opsMode_ and wantOpsMode then
 				local pointSpeed = self:GetUpwind_()
-				self:GoToPoint_(pointSpeed,pointSpeed.speed,true)
+				self:GoToPoint_(pointSpeed,pointSpeed.speed,false)
 				if steersman.enable_messages then
 					trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
 				end
@@ -276,6 +286,48 @@ steersman.instance_meta_ = {
 								   y = pointTo.y,	
 								   speed = speed
 								 })
+						
+						local missionData = { 
+						   id = 'Mission', 
+						   params = { 
+							 route = { 
+							   points = points
+							 }
+						   } 
+						}
+						local controller = group:getController()
+						controller:setOnOff(true)			
+						controller:setTask(missionData)
+					end
+				end
+			end
+		end,
+		
+		--give the tracked group a mission to head for pointTo , using position of unit as a starting point
+		--add extra waypoint 1km towards the destination to improve angular accuracy
+		--point to is vec2
+		--speed is in mps
+		GoOnPath_ = function(self, path, speed)		
+			local group = Group.getByName(self.groupName_) 
+			if group ~= nil then
+				local unit = group:getUnits()[1]
+				if unit ~= nil then
+					local startPoint = unit:getPoint()
+					if startPoint ~= nil then
+						local points = { }
+						table.insert(points,{
+								   action = AI.Task.VehicleFormation.OFF_ROAD,
+								   x = startPoint.x,
+								   y = startPoint.z
+								 })		
+						for _,point in pairs(path) do
+							table.insert(points,{
+									   action = AI.Task.VehicleFormation.OFF_ROAD,
+									   x = point.x, 
+									   y = point.y,	
+									   speed = speed
+									 })
+						end
 						
 						local missionData = { 
 						   id = 'Mission', 
@@ -341,21 +393,58 @@ steersman.instance_meta_ = {
 		
 		-- return coords of the downwind position from zone centre of the group at the edge of the zone, based on winds at zone centre,
 		--accounts for angled deck
-		--return {x,y}
-		GetDownwind_ = function(self)
-			
+		--return list of points {x,y} zig-zagging to the downwind point
+		GetDownwindZigZag_ = function(self)			
 			local windspeed, downwindTheta = self:GetWindsZoneCentre()
 			local speed =0
 			local theta = 0 --theta for the downwind position, accounting for deck angle
 			
 			speed,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
-			steersman.log_i:info("Down "..windspeed.." "..downwindTheta.." "..speed.." "..theta)
-			
+						
 			if windspeed < 0.4 then --for light winds choose a random direction instead
 				theta = math.random()*2*math.pi
+				return { [1] = {x = self.zoneCentre_.x + math.cos(theta)*self.zoneRadius_, y = self.zoneCentre_.y + math.sin(theta)*self.zoneRadius_} }
 			end
 			
-			return { x = self.zoneCentre_.x + math.cos(theta)*self.zoneRadius_, y = self.zoneCentre_.y + math.sin(theta)*self.zoneRadius_}
+			local downwindDir = {x = math.cos(theta), y = math.sin(theta)}	
+			local crosswindDir = {x = -downwindDir.y, y = downwindDir.x}	
+			local downwindPoint = sm_utils.lin2D(self.zoneCentre_,1,downwindDir,self.zoneRadius_)
+			
+			local preRet = {[1] = downwindPoint} -- default return
+			local unitPoint  = self:GetUnitPoint_()
+			if unitPoint == nil then return preRet end	
+			
+			local unitToDownwind = sm_utils.lin2D(unitPoint,-1,downwindPoint,1)
+			local zagQuot = math.floor(sm_utils.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
+			
+			steersman.log_i:info(zagQuot)--TODO
+			local i=1
+			local sign = 1
+			while i<zagQuot do
+				
+				table.insert(preRet,sm_utils.lin2D(sm_utils.lin2D(downwindDir,i*self.zagSize_,crosswindDir,sign*self.zagSize_),-1,downwindPoint,1))
+				
+				sign = -1*sign
+				i = i+2
+			end
+			
+			local ret = {}
+			for i=1,#preRet do
+				table.insert(ret, preRet[#preRet - i + 1])
+			end
+			steersman.log_i:info(#ret)--TODO
+			return ret
+		end,
+		
+		GetUnitPoint_ = function(self)
+					
+			local group = Group.getByName(self.groupName_) 
+			
+			if group == nil then return nil end
+			local unit = group:getUnits()[1]		
+			
+			if unit == nil then return nil end
+			return unit:getPoint()
 		end,
 		
 		-- return coords of the upwind position at zone edge from the given unit , based on wind at zone centre
@@ -364,14 +453,8 @@ steersman.instance_meta_ = {
 		-- return {x,y,speed}
 		GetUpwind_ = function(self)
 			
-			local ret = {} -- default return			
-			local group = Group.getByName(self.groupName_) 
-			
-			if group == nil then return ret end
-			local unit = group:getUnits()[1]			
-			
-			if unit == nil then return ret end
-			local unitPoint = unit:getPoint()
+			local ret = {} -- default return
+			local unitPoint  = self:GetUnitPoint_()
 			if unitPoint == nil then return ret end
 			
 			--unit from centre
@@ -383,7 +466,6 @@ steersman.instance_meta_ = {
 			local theta = 0 --theta for the downwind position, accounting for deck angle
 			
 			speed,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
-			steersman.log_i:info("Up "..windspeed.." "..downwindTheta.." "..speed.." "..theta)
 			
 			if windspeed < 0.4 then --for calm winds default to crossing the zone
 				theta = math.atan2(u.y, u.x)
@@ -424,9 +506,11 @@ steersman.new = function (groupName, zoneName)
 		side_ = group:getCoalition(),
 		deckAngleCCWDeg_ = 10, -- -90 - +90
 		desiredHeadwindMps_ = 16, -- >=0
-		minBoatSpeed_ = 6, -- >=0
+		minBoatSpeed_ = 7, -- >=0
+		zagSize_ = 1000,
 		zoneCentre_ = {x = zone.point.x, y = zone.point.z},
 		zoneRadius_ = zone.radius,
+		lastUpdatedRestPos = nil,
 		opsMode_ = false
 	}	
 	
