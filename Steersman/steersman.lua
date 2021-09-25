@@ -135,9 +135,13 @@ end
 steersman = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-steersman.poll_interval = 301 --seconds, time between updates of group availability
-steersman.ops_radius = 140000 -- m switch to flight ops mode if players in this radius
+steersman.poll_interval = 59 --seconds, time between updates of group availability
+steersman.ops_radius = 93000 -- m switch to flight ops mode if player is inbound in this radius
+steersman.pre_ops_radius_seconds = 600
+steersman.ops_radius_inner = 65000 -- m switch to flight ops mode if player is within in this radius
+steersman.teardrop_dist = 1800 -- (m) distance behind ship to put turning point for expedited turnaround
 steersman.deck_height = 20 -- m height at which to measure wind
+steersman.enable_messages = false
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -206,20 +210,33 @@ steersman.instance_meta_ = {
 			
 			local options = {pickUnit=true}
 			
-			local dist,playerUnit,closestUnit = sm_utils.getClosestLateralPlayer(self.groupName_,{self.side}, options)
+			local dist,playerUnit,closestUnit = sm_utils.getClosestLateralPlayer(self.groupName_,{self.side_}, options)	
 			
-			steersman.log_i:info(dist)
-			steersman.log_i:info(playerUnit)
-			steersman.log_i:info(closestUnit)--TODO debug		
+			local wantOpsMode = false
 			
-			local wantOpsMode = dist ~= nil and dist < steersman.ops_radius
+			if dist ~= nil then 
+				local playerToBoat = sm_utils.unitVector(playerUnit:getPoint(),			   closestUnit:getPoint() )
+				local inbound = sm_utils.dot2D(playerUnit:getVelocity(),
+					playerToBoat)
+			
+				wantOpsMode = playerUnit:inAir()
+					and (dist < steersman.ops_radius_inner
+					or (steersman.pre_ops_radius_seconds * inbound > dist - steersman.ops_radius 
+						and inbound > 0.01))
+			end
 			
 			if not wantOpsMode then	
-				self:GoToPoint_(self:GetDownwind_(),100)
+				self:GoToPoint_(self:GetDownwind_(),100,false)
+				if self.opsMode_ and steersman.enable_messages then
+					trigger.action.outTextForCoalition(self.side_,string.format("%s ceasing flight ops",self.groupName_),10)
+				end
 				self.opsMode_ = false
 			elseif not self.opsMode_ and wantOpsMode then
 				local pointSpeed = self:GetUpwind_()
-				self:GoToPoint_(pointSpeed,pointSpeed.speed)
+				self:GoToPoint_(pointSpeed,pointSpeed.speed,true)
+				if steersman.enable_messages then
+					trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
+				end
 				self.opsMode_ = true
 			end
 			
@@ -230,7 +247,7 @@ steersman.instance_meta_ = {
 		--add extra waypoint 1km towards the destination to improve angular accuracy
 		--point to is vec2
 		--speed is in mps
-		GoToPoint_ = function(self, pointTo, speed)		
+		GoToPoint_ = function(self, pointTo, speed, expediteTurn)		
 			local group = Group.getByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
@@ -238,30 +255,33 @@ steersman.instance_meta_ = {
 					local startPoint = unit:getPoint()
 					if startPoint ~= nil then
 						local dir = sm_utils.unitVector(startPoint, pointTo)
-						steersman.log_i:info(dir)--TODO debug
-						local missionData = { 
-						   id = 'Mission', 
-						   params = { 
-							 route = { 
-							   points = { 
-								[1] = {
+						local points = { }
+						table.insert(points,{
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
 								   x = startPoint.x,
 								   y = startPoint.z
-								 },
-								 --[[[2] = {
+								 })
+						if expediteTurn then
+							table.insert(points,{
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
-								   x = startPoint.x + 1000 * dir.x, 
-								   y = startPoint.z + 1000 * dir.y
-								 },
-								 [3] = {--]]
-								 [2]={
+								   x = startPoint.x + steersman.teardrop_dist * dir.x, 
+								   y = startPoint.z + steersman.teardrop_dist * dir.y,
+								   speed = 100
+								 })
+						end
+						
+						table.insert(points,{
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
 								   x = pointTo.x, 
 								   y = pointTo.y,	
 								   speed = speed
-								 }
-							   } 
+								 })
+						
+						local missionData = { 
+						   id = 'Mission', 
+						   params = { 
+							 route = { 
+							   points = points
 							 }
 						   } 
 						}
@@ -401,13 +421,13 @@ steersman.new = function (groupName, zoneName)
 	if zone == nil or group == nil then return nil end
 	local instance = {
 		groupName_ = groupName,
-		side = group:getCoalition(),
+		side_ = group:getCoalition(),
 		deckAngleCCWDeg_ = 10, -- -90 - +90
-		desiredHeadwindMps_ = 15, -- >=0
-		minBoatSpeed_ = 2, -- >=0
+		desiredHeadwindMps_ = 16, -- >=0
+		minBoatSpeed_ = 6, -- >=0
 		zoneCentre_ = {x = zone.point.x, y = zone.point.z},
 		zoneRadius_ = zone.radius,
-		opsMode_ = true
+		opsMode_ = false
 	}	
 	
 	setmetatable(instance,steersman.instance_meta_)
