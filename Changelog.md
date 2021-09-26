@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.5.3a
+* Added Steersman
 ## 1.5.2a
 * Exception handling when spawning a group in a pool is improved
 * Fixed error with repeated spawning of a group

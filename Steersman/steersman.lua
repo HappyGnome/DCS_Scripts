@@ -97,6 +97,14 @@ sm_utils.dot2D = function(u,v)
 	return u.x*v.x + uy*vy
 end
 
+sm_utils.wedge2D = function(u,v)
+	local uy = u.z
+	local vy = v.z
+	if uy == nil then uy = u.y end
+	if vy == nil then vy = v.y end
+	return u.x*vy - uy*v.x
+end
+
 sm_utils.lin2D = function(u,a,v,b)
 	local uy = u.z
 	local vy = v.z
@@ -116,6 +124,14 @@ sm_utils.unitVector = function(A,B)
 	
 	if r < 0.001 then return {x=0, y=0} end
 	return {x = C.x/r, y = C.y/r}
+end
+
+--[[
+Return the angle between velocity/heading X and the line from points A to B
+--]]
+sm_utils.thetaToDest = function (X,A,B)
+	local toDest = sm_utils.lin2D(B,1,A,-1)
+	return math.atan2(sm_utils.wedge2D(X,toDest),sm_utils.dot2D(X,toDest))
 end
 
 sm_utils.deg2rad = 0.01745329
@@ -145,7 +161,7 @@ steersman = {}
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 steersman.poll_interval = 59 --seconds, time between updates of group availability
 steersman.ops_radius = 93000 -- m switch to flight ops mode if player is inbound in this radius
-steersman.pre_ops_radius_seconds = 360
+steersman.pre_ops_radius_seconds = 240
 steersman.update_rest_cooldown = 600 --seconds
 steersman.ops_radius_inner = 65000 -- m switch to flight ops mode if player is within in this radius
 steersman.teardrop_dist = 1800 -- (m) distance behind ship to put turning point for expedited turnaround
@@ -215,6 +231,11 @@ steersman.instance_meta_ = {
 			return self
 		end,
 		
+		setMinCruiseSpeedKts = function(self,kts)
+			self.minBoatSpeed_  = math.max(0, kts * sm_utils.kts2mps)
+			return self
+		end,
+		
 		pollStep_ = function(self)
 			
 			local options = {pickUnit=true}
@@ -241,13 +262,25 @@ steersman.instance_meta_ = {
 					trigger.action.outTextForCoalition(self.side_,string.format("%s ceasing flight ops",self.groupName_),10)
 				end
 				self.opsMode_ = false
-			elseif not self.opsMode_ and wantOpsMode then
-				local pointSpeed = self:GetUpwind_()
-				self:GoToPoint_(pointSpeed,pointSpeed.speed,false)
-				if steersman.enable_messages then
-					trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
+				self.turnMode_ = false
+			elseif wantOpsMode then
+				if not self.opsMode_ then --switch to ops mode/ turn mode
+					local pointSpeed = self:GetUpwind_()
+					self:GoToPoint_(pointSpeed,100,false) -- Go at full speed to speed up the turns
+					if steersman.enable_messages then
+						trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
+					end
+					self.opsMode_ = true
+					self.turnMode_ = true
+					self.currentDestPoint_ = pointSpeed
+				elseif self.turnMode_ and self.currentDestPoint_ ~= nil then -- check whether we're approximately on track to exit turn mode
+					local position = closestUnit:getPosition()
+					if math.abs(sm_utils.thetaToDest(position.x,position.p,self.currentDestPoint_)) < 0.35 then --~20 degrees
+						local pointSpeed = self:GetUpwind_()
+						self:GoToPoint_(pointSpeed,pointSpeed.speed,false)
+						self.turnMode_ = false
+					end
 				end
-				self.opsMode_ = true
 			end
 			
 			return true -- keep polling
@@ -511,7 +544,9 @@ steersman.new = function (groupName, zoneName)
 		zoneCentre_ = {x = zone.point.x, y = zone.point.z},
 		zoneRadius_ = zone.radius,
 		lastUpdatedRestPos = nil,
-		opsMode_ = false
+		opsMode_ = false,
+		turnMode_ = false,
+		currentDestPoint_ = nil
 	}	
 	
 	setmetatable(instance,steersman.instance_meta_)
