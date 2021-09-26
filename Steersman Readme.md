@@ -59,7 +59,7 @@ where `myCVN=steersman.new(...)`.
 
 
 
-**Note** These functions return the calling instance, so they can be chained. E.g. `constant_pressure_set.new(...):setIdlePredicate(myFunc)`	
+**Note** These functions return the calling instance, so they can be chained. E.g. `steersman.new(...):setMinCruiseSpeedKts(13):setDesiredHeadwindKts(25)`	
 
 ### Usage
 * Once created as above, the carrier's route will periodically update. 
