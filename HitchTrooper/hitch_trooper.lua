@@ -202,7 +202,14 @@ distance defaults to true. Indicates whether to include distance info
 ht_utils.MakePointToPointDescriptor = function (pointA, pointB, distance)
 	local octant = ht_utils.hdg2Octant(ht_utils.getHeading(pointA,pointB))
 	if distance or distance == nil then
-		return string.format("%.0fkm %s",mist.utils.get2DDist(pointA,pointB)/1000,octant)
+		local meters = mist.utils.get2DDist(pointA,pointB)
+		if meters >= 10000 then 
+			return string.format("%.0fkm %s",meters/1000,octant)
+		elseif meters >= 1000 then
+			return string.format("%.1fkm %s",meters/1000,octant)
+		else
+			return string.format("%.0fm %s",meters,octant)
+		end
 	else
 		return string.format("%s",octant)
 	end

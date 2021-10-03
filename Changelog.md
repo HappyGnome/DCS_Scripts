@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.5.4a
+* Added meters for short distances in hitchtrooper sitrep
 ## 1.5.3a
 * Added Steersman
 ## 1.5.2a
