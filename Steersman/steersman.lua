@@ -266,7 +266,7 @@ steersman.instance_meta_ = {
 			elseif wantOpsMode then
 				if not self.opsMode_ then --switch to ops mode/ turn mode
 					local pointSpeed = self:GetUpwind_()
-					self:GoToPoint_(pointSpeed,100,false) -- Go at full speed to speed up the turns
+					self:GoToPoint_(pointSpeed,100,false, self.activationTasks) -- Go at full speed to speed up the turns
 					if steersman.enable_messages then
 						trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
 					end
@@ -288,9 +288,10 @@ steersman.instance_meta_ = {
 		
 		--give the tracked group a mission to head for pointTo , using position of unit as a starting point
 		--add extra waypoint 1km towards the destination to improve angular accuracy
+		-- if spTasks is provided these will be added to the unit tasking
 		--point to is vec2
 		--speed is in mps
-		GoToPoint_ = function(self, pointTo, speed, expediteTurn)		
+		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks)		
 			local group = Group.getByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
@@ -299,11 +300,15 @@ steersman.instance_meta_ = {
 					if startPoint ~= nil then
 						local dir = sm_utils.unitVector(startPoint, pointTo)
 						local points = { }
-						table.insert(points,{
+						local wp1 = {
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
 								   x = startPoint.x,
 								   y = startPoint.z
-								 })
+								 }
+						if spTasks ~= nil then
+							wp1.task = { id = "ComboTask", params = {tasks = spTasks} }
+						end
+						table.insert(points,wp1)
 						if expediteTurn then
 							table.insert(points,{
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
@@ -450,7 +455,7 @@ steersman.instance_meta_ = {
 			local unitToDownwind = sm_utils.lin2D(unitPoint,-1,downwindPoint,1)
 			local zagQuot = math.floor(sm_utils.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
 			
-			steersman.log_i:info(zagQuot)--TODO
+			--steersman.log_i:info(zagQuot)--TODO
 			local i=1
 			local sign = 1
 			while i<zagQuot do
@@ -465,7 +470,7 @@ steersman.instance_meta_ = {
 			for i=1,#preRet do
 				table.insert(ret, preRet[#preRet - i + 1])
 			end
-			steersman.log_i:info(#ret)--TODO
+			--steersman.log_i:info(#ret)--TODO
 			return ret
 		end,
 		
@@ -534,6 +539,18 @@ steersman.new = function (groupName, zoneName)
 	local group = Group.getByName(groupName)
 	
 	if zone == nil or group == nil then return nil end
+	
+	local task = mist.getGroupRoute(groupName,true);
+	local activationTasks = nil
+	if task ~= nil and task[1] ~= nil then
+		if task[1].task.id == "ComboTask"  and task[1].task.params ~= nil then
+			activationTasks = task[1].task.params.tasks
+		else 
+			activationTasks = {[1] = task[1].task}
+		end
+		
+	end
+	
 	local instance = {
 		groupName_ = groupName,
 		side_ = group:getCoalition(),
@@ -546,6 +563,7 @@ steersman.new = function (groupName, zoneName)
 		lastUpdatedRestPos = nil,
 		opsMode_ = false,
 		turnMode_ = false,
+		activationTasks = activationTasks,
 		currentDestPoint_ = nil
 	}	
 	

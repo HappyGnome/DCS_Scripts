@@ -67,4 +67,4 @@ where `myCVN=steersman.new(...)`.
 * When entering ops mode the carrier will start a turn to achieve the desired wind over the deck as accurately as possible. 
 * Out of ops mode, the carrier will zig-zag downwind to make space to run upwind again. (Zig-zagging helps to reduce the time to turn back upwind).
 * The carrier will not set waypoints outside of its allocated zone, so it will stop when reaching the edge of the zone.
-
+* Any tasks given to the steersman group in its initial waypoint in the ME will be repeated whenever ops mode commences.
