@@ -3,9 +3,7 @@
 Steersman allows automation of a carrier group to maintain a certain wind over it's angled deck, while staying within a zone and recovering downwind when players are not near
 
 ## Download
-See [tagged versions](https://github.com/HappyGnome/DCS_Scripts/tags) of this repository. 
-
-This readme is for v1.5.3a of my DCS scripts.
+This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scripts/releases/tag/Latest), including untagged changes. Other tagged versions are available [here](https://github.com/HappyGnome/DCS_Scripts/tags).
 
 ## General Usage
 

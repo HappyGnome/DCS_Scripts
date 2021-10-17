@@ -3,7 +3,7 @@
 Hitchtrooper provides some simple commands for respawnable ground units, aimed at making transporting troops more useful.
 
 ## Download
-This readme is for the [latest versions] https://github.com/HappyGnome/DCS_Scripts/releases/tag/Latest, including untagged changes. Other tagged versions are available [here](https://github.com/HappyGnome/DCS_Scripts/tags).
+This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scripts/releases/tag/Latest), including untagged changes. Other tagged versions are available [here](https://github.com/HappyGnome/DCS_Scripts/tags).
 
 ## General Usage
 
