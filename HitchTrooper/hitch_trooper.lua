@@ -298,6 +298,7 @@ hitch_trooper.poll_interval = 61 --seconds, time between updates of group availa
 hitch_trooper.respawn_delay = 28800 --seconds, time between disbanding and respawn becoming available
 hitch_trooper.init_smoke_ammo = 3 --smokes available per group
 hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn/resupply
+hitch_trooper.next_mark_id = 1000
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -337,6 +338,9 @@ end
 hitch_trooper.doPoll_=function()
 --TODO - Fix this!
 	local now=timer.getTime()	
+	local dhms = mist.time.getDHMS(timer.getAbsTime())
+	local nowString = string.format("%02d%02dL",dhms["h"],dhms["m"])
+	
 	local groupName = nil
 	local htInstance = nil
 	local airbasePoints = {[coalition.side.BLUE] = nil, [coalition.side.RED] = nil}
@@ -348,6 +352,23 @@ hitch_trooper.doPoll_=function()
 		if units[1] == nil then
 			htInstance:disbandGroup_()
 		else
+			--check detection
+			local targets = units[1]:getController():getDetectedTargets()
+			--{timestamp:..., point3D:..., comment:..., rectId:..., uncertaintyDist:...}
+			for _,target in pairs(targets) do
+				local obj = target.object
+				if target.visible and obj ~= nil then				
+					local tgtDesc
+					if target.type then
+						tgtDesc = obj:getTypeName()
+					else
+						tgtDesc = "Unknown"
+					end	
+					local rectId
+					if htInstance.detectedTargets[obj:getName()] ~= nil then rectId = htInstance.detectedTargets[obj:getName()].rectId end 
+					htInstance.detectedTargets[obj:getName()] = {timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc .. " at " .. nowString ,uncertaintyDist = 100, rectId =rectId}
+				end
+			end
 			
 			--check for resupply
 			if airbasePoints[htInstance.side] == nil then
@@ -920,6 +941,8 @@ hitch_trooper.instance_meta_ = {
 				end
 				message = message.."Smoke*"..self.smoke_ammo
 				
+
+				
 				local targets = units[1]:getController():getDetectedTargets()
 				local priorityCountdown = 3 -- max number of targets to show
 				local tgtDesc = "\nIn contact with: "
@@ -944,8 +967,38 @@ hitch_trooper.instance_meta_ = {
 				if hasTargets then 
 					message = message..tgtDesc
 				end
+				
+				if self:printMapMarks_() == true then
+					message = message.."\nMap updated"
+				end
+				
 				trigger.action.outTextForCoalition(self.side,message,10)
 			end
+		end,
+		
+		--{timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc,uncertaintyDist = 100}
+		printMapMarks_ = function(self)
+			local ret = false
+			for k,v in pairs(self.detectedTargets) do
+				if v.point and v.distKnown then 
+					if v.rectId ~= nil then
+						trigger.action.removeMark(v.rectId)					
+					end
+					v.rectId = hitch_trooper.next_mark_id
+					
+					--local point1 = {x = v.point.x - (v.uncertaintyDist * math.random()/2), y = v.point.y, z = v.point.z - (v.uncertaintyDist * math.random() / 2)}
+					--local point2 = {x = point1.x + v.uncertaintyDist, y = point1.y, z = point1.z + v.uncertaintyDist}
+					
+					local point = {x = v.point.x - (v.uncertaintyDist * (math.random() -0.5)), y = v.point.y, z = v.point.z - (v.uncertaintyDist * (math.random() -0.5))}
+					
+					--trigger.action.rectToAll(self.side , v.rectId , point2 , point1 , {r=1, g=0, b=0, a=0.5}, {r=1, g=0, b=0, a=0.5} , 1)
+					trigger.action.markToCoalition(v.rectId , v.comment, point,self.side )
+					
+					hitch_trooper.next_mark_id = hitch_trooper.next_mark_id + 1
+					ret = true
+				end
+			end
+			return ret
 		end,
 		
 		currentEta_ = function(self)
@@ -989,7 +1042,8 @@ hitch_trooper.new = function (groupName,spawnData)
 		current_destination = nil,
 		smoke_ammo = hitch_trooper.init_smoke_ammo,
 		commsMenuItems = {}, -- key = item action type, value = path
-		morale = 0 -- when this hits zero, cannot attack
+		morale = 0, -- when this hits zero, cannot attack
+		detectedTargets = {} --index = object name, value ={timestamp:..., point:..., comment:..., rectId:..., uncertaintyDist:...}
 	}
 	instance.activeGroupName = string.format("%s (%s)",instance.groupName,instance.digraph)
 	
