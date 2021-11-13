@@ -272,6 +272,11 @@ ht_utils.sumAmmo= function(units)
 	return ret
 end
 
+ht_utils.getNowString = function()
+    local dhms = mist.time.getDHMS(timer.getAbsTime())
+	return string.format("%02d%02dL",dhms["h"],dhms["m"])
+end
+
 ht_utils.shallow_copy = function(obj)
 	local ret = obj	
 	if type(obj) == 'table' then
@@ -299,6 +304,7 @@ hitch_trooper.respawn_delay = 28800 --seconds, time between disbanding and respa
 hitch_trooper.init_smoke_ammo = 3 --smokes available per group
 hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn/resupply
 hitch_trooper.next_mark_id = 1000
+hitch_trooper.allow_map_marks = true
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -338,8 +344,7 @@ end
 hitch_trooper.doPoll_=function()
 --TODO - Fix this!
 	local now=timer.getTime()	
-	local dhms = mist.time.getDHMS(timer.getAbsTime())
-	local nowString = string.format("%02d%02dL",dhms["h"],dhms["m"])
+	local nowString = ht_utils.getNowString()
 	
 	local groupName = nil
 	local htInstance = nil
@@ -352,23 +357,8 @@ hitch_trooper.doPoll_=function()
 		if units[1] == nil then
 			htInstance:disbandGroup_()
 		else
-			--check detection
-			local targets = units[1]:getController():getDetectedTargets()
-			--{timestamp:..., point3D:..., comment:..., rectId:..., uncertaintyDist:...}
-			for _,target in pairs(targets) do
-				local obj = target.object
-				if target.visible and obj ~= nil then				
-					local tgtDesc
-					if target.type then
-						tgtDesc = obj:getTypeName()
-					else
-						tgtDesc = "Unknown"
-					end	
-					local rectId
-					if htInstance.detectedTargets[obj:getName()] ~= nil then rectId = htInstance.detectedTargets[obj:getName()].rectId end 
-					htInstance.detectedTargets[obj:getName()] = {timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc .. " at " .. nowString ,uncertaintyDist = 100, rectId =rectId}
-				end
-			end
+			
+			htInstance:updateDetectedList_(units[1],nowString)
 			
 			--check for resupply
 			if airbasePoints[htInstance.side] == nil then
@@ -968,6 +958,7 @@ hitch_trooper.instance_meta_ = {
 					message = message..tgtDesc
 				end
 				
+				self:updateDetectedList_(units[1],nil)
 				if self:printMapMarks_() == true then
 					message = message.."\nMap updated"
 				end
@@ -978,7 +969,11 @@ hitch_trooper.instance_meta_ = {
 		
 		--{timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc,uncertaintyDist = 100}
 		printMapMarks_ = function(self)
-			local ret = false
+			if not hitch_trooper.allow_map_marks then 
+				return false
+			end
+			
+			local ret = false			
 			for k,v in pairs(self.detectedTargets) do
 				if v.point and v.distKnown then 
 					if v.rectId ~= nil then
@@ -1010,6 +1005,42 @@ hitch_trooper.instance_meta_ = {
 				end
 			end
 			return nil
+		end,
+		
+		--[[
+		unit should be a unit from this instance
+		--]]
+		updateDetectedList_ = function(self,unit, nowString)
+			if nowString == nil then
+				nowString = ht_utils.getNowString()
+			end
+			--check detection
+			local targets = unit:getController():getDetectedTargets()
+			local groupsUpdated ={}
+			--{timestamp:..., point3D:..., comment:..., rectId:..., uncertaintyDist:...}
+			for _,target in pairs(targets) do
+				local obj = target.object
+				if target.visible and obj ~= nil and obj:getCategory() == Object.Category.UNIT then	
+					local groupName = obj:getGroup():getName()
+					
+					if not groupsUpdated[groupName] then
+						local tgtDesc
+						if target.type then
+							tgtDesc = obj:getTypeName()
+						else
+							tgtDesc = "Unknown"
+						end	
+						local rectId
+						if self.detectedTargets[groupName] ~= nil then 
+							rectId = self.detectedTargets[groupName].rectId 
+						end 
+						self.detectedTargets[groupName] = {timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc .. " at " .. nowString ,uncertaintyDist = 100, rectId =rectId}
+						
+						groupsUpdated[groupName] = true
+					end
+				end
+				
+			end
 		end
 	} --index
 }
