@@ -36,6 +36,11 @@ key=group name, value = number of units at spawn
 ]]--
 asset_pools.initial_group_sizes={} 
 
+--[[
+key=group name, value = SetFrequency command for unit at spawn
+]]--
+asset_pools.initial_group_freq_commands={} 
+
 
 --[[
 Table of pool objects. Each should be instances a class implementing:
@@ -111,9 +116,7 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 		if groupData then
 			groupName=groupData.groupName
 			mist.dynAdd(mist.utils.deepCopy(groupData)) -- MIST can sometimes change the data, so pass a copy just in case
-		else
-			group = Group.getByName(groupName)
-			
+		else			
 			mist.respawnGroup(groupName,true) --respawn with original tasking
 		end
 		group = Group.getByName(groupName)
@@ -121,6 +124,27 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 		if group then
 			trigger.action.activateGroup(group) --ensure group is active
 			asset_pools.initial_group_sizes[groupName] = group:getSize()
+			local freqCommand = asset_pools.initial_group_freq_commands[groupName]
+			
+			if freqCommand == nil then
+				local groupME_Data = mist.DBs.groupsByName[groupName]
+				
+				if groupME_Data ~= nil and groupME_Data.frequency ~= nil and 	groupME_Data.modulation ~= nil then
+					freqCommand = {
+						id = 'SetFrequency',
+						params = {
+							frequency = groupME_Data.frequency * 1000000,
+							modulation = groupME_Data.modulation
+						}
+					}
+					asset_pools.initial_group_freq_commands[groupName] = freqCommand
+				end
+			end
+			
+			local controller = group:getController()
+			if controller ~= nil and freqCommand ~= nil then						
+				controller:setCommand(freqCommand)
+			end
 		end
 	end
 	ap_utils.safeCall(op,{},asset_pools.catchError)

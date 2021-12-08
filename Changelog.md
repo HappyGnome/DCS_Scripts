@@ -3,6 +3,7 @@
 ## Latest
 * Added waypoint 1 task copying for steersman
 * Added map mark generation for hitch troopers
+* Added default frequencies for asset pool groups
 ## 1.5.4a
 * Added meters for short distances in hitchtrooper sitrep
 ## 1.5.3a
