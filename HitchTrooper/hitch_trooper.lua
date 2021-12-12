@@ -320,6 +320,12 @@ value = hitch_trooper
 hitch_trooper.spawnable_groups_={} 
 
 --[[
+key = group name in mission
+value = hitch_trooper
+--]]
+hitch_trooper.author_spawnable_groups_={} 
+
+--[[
 Menu item counts for submenus
 key = menu name
 value = {item count,path}
@@ -342,7 +348,7 @@ end
 --POLL----------------------------------------------------------------------------------------------------
 
 hitch_trooper.doPoll_=function()
---TODO - Fix this!
+
 	local now=timer.getTime()	
 	local nowString = ht_utils.getNowString()
 	
@@ -450,6 +456,21 @@ hitch_trooper.capHandler = function(initiator,place)
 	end
 end
 
+hitch_trooper.birthHandler = function(initiator)
+	if initiator and initiator:getCategory() == Object.Category.UNIT then
+		local group = initiator:getGroup()
+		if group then
+			local groupName = group:getName()
+			local ht = hitch_trooper.author_spawnable_groups_[groupName]
+			if ht then
+				hitch_trooper.author_spawnable_groups_[groupName] = nil
+				group:destroy()--prevent spawn of raw group
+				mist.scheduleFunction(ht.spawnGroup_,{ht},timer.getTime() + 2)	--spawn the hitchtroopers after small delay (else it crashes!)	
+			end
+		end
+	end
+end
+
 hitch_trooper.eventHandler = { 
 	onEvent = function(self,event)
 		if(event.id == world.event.S_EVENT_MARK_ADDED) then
@@ -465,7 +486,9 @@ hitch_trooper.eventHandler = {
 		elseif (event.id == world.event.S_EVENT_BASE_CAPTURED) then
 			ht_utils.safeCall(hitch_trooper.capHandler,{event.initiator,event.place},hitch_trooper.catchError)
 		--[[elseif (event.id == world.event.S_EVENT_WEAPON_ADD) then --experimental
-			hitch_trooper.log_i:info(event)	--]]		
+			hitch_trooper.log_i:info(event)	--]]	
+		elseif (event.id == world.event.S_EVENT_BIRTH) then --experimental
+			ht_utils.safeCall(hitch_trooper.birthHandler,{event.initiator},hitch_trooper.catchError)
 		end
 	end
 }
@@ -483,8 +506,9 @@ hitch_trooper.ensureCoalitionSubmenu_=function(side)
 	local menuName = menuNameRoot .. "_" .. level
 	
 	if hitch_trooper.commsMenus[menuName] == nil then--create submenu
-		hitch_trooper.commsMenus[menuName] = {1, missionCommands.addSubMenuForCoalition(side,rootMenuText,nil)}
+		hitch_trooper.commsMenus[menuName] = {2, missionCommands.addSubMenuForCoalition(side,rootMenuText,nil)}
 		missionCommands.addCommandForCoalition(side, "Available", hitch_trooper.commsMenus[menuName][2], hitch_trooper.listForSide,side)
+		missionCommands.addCommandForCoalition(side, "Help", hitch_trooper.commsMenus[menuName][2], hitch_trooper.help,side)
 	else  
 		
 		while hitch_trooper.commsMenus[menuName][1] >= 9 do --create overflow if no space here
@@ -520,6 +544,11 @@ hitch_trooper.listForSide = function(side)
 	end
 end
 
+hitch_trooper.help = function(side)
+	local text = "HITCHTROOPER F10 MAP MARKER HELP\nFor hitchtroopers with symbol \"AA\" use mark label:\n\"aa evac\" - sets extraction point\n\"aa rec\" - start recon towards point\n\"aa atk\" - start attack towards point"
+	trigger.action.outTextForCoalition(side,text,10)
+end
+
 hitch_trooper.digraphCounters_ = {[coalition.side.BLUE] = 27, [coalition.side.RED] = 27} --start at AA
 
 hitch_trooper.makeDigraph_ = function(side)
@@ -536,12 +565,12 @@ hitch_trooper.instance_meta_ = {
 			for k,v in pairs(self.commsMenuItems) do
 				missionCommands.removeItemForCoalition(self.side,v)
 			end
+			self:ensureGroupCommsRoot_()
 			self.commsMenuItems = {spawn = missionCommands.addCommandForCoalition(self.side, "Call in",self.commsMenuRoot,self.spawnGroup_,self)}
 			hitch_trooper.spawnable_groups_[self.activeGroupName] = self
 		end,
 		
 		recordHit_ = function(self,initiator)
-		hitch_trooper.log_i:info("hit")
 			if self.retreatFromFire and initiator ~= nil then
 				self:retreatFromPoint_(initiator:getPoint())
 			end
@@ -556,7 +585,6 @@ hitch_trooper.instance_meta_ = {
 			end
 		end,
 		recordShot_ = function(self,initiator)
-		hitch_trooper.log_i:info("shot")
 			if self.retreatFromFire and initiator ~= nil then
 				self:retreatFromPoint_(initiator:getPoint())
 			end
@@ -573,6 +601,7 @@ hitch_trooper.instance_meta_ = {
 			for k,v in pairs(self.commsMenuItems) do
 				missionCommands.removeItemForCoalition(self.side,v)
 			end
+			self:ensureGroupCommsRoot_()
 			self.commsMenuItems = {	evac = missionCommands.addCommandForCoalition(self.side, "Evac",self.commsMenuRoot,self.evacPoint_,self,nil,true),
 			smoke= missionCommands.addCommandForCoalition(self.side, "Smoke",self.commsMenuRoot,self.smokePosition_,self),
 			sitrep = missionCommands.addCommandForCoalition(self.side, "Sitrep",self.commsMenuRoot,self.sitrep_,self),
@@ -581,20 +610,29 @@ hitch_trooper.instance_meta_ = {
 		end,
 		
 		initComms_ = function(self)
-			self.htCommsPage = hitch_trooper.ensureCoalitionSubmenu_(self.side)
-			self.commsMenuRoot =  
-				missionCommands.addSubMenuForCoalition(self.side, self.digraph,hitch_trooper.commsMenus[self.htCommsPage][2])
-			hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] + 1
+			self:ensureGroupCommsRoot_()
 			self:setCommsSpawnMode_()			
 		end,
 		
+		ensureGroupCommsRoot_ = function(self)
+			if self.commsMenuRoot == nil then
+				self.htCommsPage = hitch_trooper.ensureCoalitionSubmenu_(self.side)
+				self.commsMenuRoot =  
+					missionCommands.addSubMenuForCoalition(self.side, self.digraph,hitch_trooper.commsMenus[self.htCommsPage][2])
+				hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] + 1
+			end
+		end,
+		
 		removeComms_ = function(self)
-			--remove menu options
-			missionCommands.removeItemForCoalition(self.side,self.commsMenuRoot)
-			
-			--update submenu item count
-			if self.htCommsPage then
-				hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] - 1
+			if self.commsMenuRoot ~= nil then
+				--remove menu options
+				missionCommands.removeItemForCoalition(self.side,self.commsMenuRoot)
+				self.commsMenuRoot = nil
+				
+				--update submenu item count
+				if self.htCommsPage then
+					hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] - 1
+				end
 			end
 		end,
 		
@@ -615,7 +653,7 @@ hitch_trooper.instance_meta_ = {
 					trigger.action.outTextForCoalition(self.side,string.format("%s: standing down. See ya!",self.digraph),5)
 					mist.scheduleFunction(self.disbandGroup_,{self},timer.getTime() + 300)
 					self:removeComms_()
-					mist.scheduleFunction(hitch_trooper.new,{self.groupName, self.spawnData}, 300)
+					mist.scheduleFunction(hitch_trooper.new,{self.groupName, self.spawnData, self.playersCanSpawn}, 300)
 				end
 			end
 		end,
@@ -713,16 +751,17 @@ hitch_trooper.instance_meta_ = {
 		evacPoint_ = function(self, pos, triggerNow)
 			if pos ~= nil then
 				self.evac_pos = pos
-			end
+			end			
+			if not triggerNow then
+					return
+			end					
 			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil then
-				local startPoint = units[1]:getPoint()		
-							
+				local startPoint = units[1]:getPoint()				
+				
 				if self.evac_pos == nil then
-					trigger.action.outTextForCoalition(self.side,string.format("%s: where to?",self.digraph),10)
-					return
-				elseif not triggerNow then
-					return
+					--trigger.action.outTextForCoalition(self.side,string.format("%s: where to?",self.digraph),10)
+					self.evac_pos = startPoint
 				end
 				
 				local arrivalString = 
@@ -1048,11 +1087,16 @@ hitch_trooper.instance_meta_ = {
 --API--------------------------------------------------------------------------------------
 
 --spawn data overrrides obtaining data by group name
-hitch_trooper.new = function (groupName,spawnData)
+hitch_trooper.new = function (groupName,spawnData, playersCanSpawn)
 	
 	if spawnData == nil then
 		spawnData = mist.getGroupData(groupName)
 	end
+	
+	if playersCanSpawn == nil then
+		playersCanSpawn = true
+	end
+	
 	--local countryId = spawnData.country
 	--if type(countryId) == "string" then
 		--countryId = country.id[string.upper(countryId)]
@@ -1060,6 +1104,11 @@ hitch_trooper.new = function (groupName,spawnData)
 	--hitch_trooper.log_i:info(countryId) --debug
 	--hitch_trooper.log_i:info(country.id) --debug
 	local coa = coalition.getCountryCoalition(spawnData.countryId)
+	local group = Group.getByName(groupName)
+	local unit = nil
+	if group ~= nil then
+		unit = group:getUnits()[1]
+	end
 	
 	local instance = {
 		groupName = groupName,
@@ -1074,13 +1123,22 @@ hitch_trooper.new = function (groupName,spawnData)
 		smoke_ammo = hitch_trooper.init_smoke_ammo,
 		commsMenuItems = {}, -- key = item action type, value = path
 		morale = 0, -- when this hits zero, cannot attack
-		detectedTargets = {} --index = object name, value ={timestamp:..., point:..., comment:..., rectId:..., uncertaintyDist:...}
+		detectedTargets = {}, --index = object name, value ={timestamp:..., point:..., comment:..., rectId:..., uncertaintyDist:...}
+		playersCanSpawn = playersCanSpawn
 	}
 	instance.activeGroupName = string.format("%s (%s)",instance.groupName,instance.digraph)
 	
 	setmetatable(instance,hitch_trooper.instance_meta_)
 	
-	instance:initComms_()
+	if playersCanSpawn == true then
+		instance:initComms_()
+	end
+	
+	if unit ~= nil and unit:isActive() == true then --activate at mission start/spawn
+		instance:spawnGroup_()
+	elseif playersCanSpawn == false then --if inactive and mission author controlling spawn mark to listen for activation
+		hitch_trooper.author_spawnable_groups_[groupName] = instance
+	end
 	
 	trigger.action.outTextForCoalition(instance.side,string.format("%s: Now available for call in",instance.digraph),5)
 	
@@ -1088,11 +1146,11 @@ hitch_trooper.new = function (groupName,spawnData)
 end
 
 --Search for groups with name containing
-hitch_trooper.newIfNameContains = function(substring)
+hitch_trooper.newIfNameContains = function(substring, playersCanSpawn)
 
 	for name,v in pairs(mist.DBs.groupsByName) do
 		if string.find(name,substring) ~= nil then					
-			hitch_trooper.new(name)
+			hitch_trooper.new(name,nil, playersCanSpawn)
 		end
 	end
 end

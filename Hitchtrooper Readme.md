@@ -26,10 +26,11 @@ Before using any of the methods detailed below trigger `DO SCRIPT FILE -> hitch_
 
 #### Add an asset
 
-At any point in the mission after initialization, a group made a respawnable hitchtrooper group for their corresponding coalition as follows `DO SCRIPT -> hitch_trooper.new(<groupName>)`
+At any point in the mission after initialization, a group made a respawnable hitchtrooper group for their corresponding coalition as follows `DO SCRIPT -> hitch_trooper.new(<groupName>, <playersCanSpawn>)`
 
 Where
 * `<groupName>` is the name of the group to make spawnable (in quotes)
+* `<playersCanSpawn>` (optional, default **true**) If false, the players will not be able to (re)spawn this group, or see it as available. The group can be active at the start of the mission or spawns instead of the named group being activated.
 
 **Return:** a new `hitch_trooper` instance
 
@@ -48,11 +49,11 @@ In a mission with a group called `Squad-1` set up the triggers:
 At any point, usually mission start, any units can be made into hitchtroopers by looking for a substring in the group name as follows:
 `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>)'
 
-Usage: `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>)`
+Usage: `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>, <playersCanSpawn>)`
 
 Where
 * `<substring>` Substring to search for in group name in ME
-
+* `<playersCanSpawn>` (optional, default **true**) See above.
 **Example:**  `hitch_trooper.newIfNameContains("%-hitch%-")` If mission contains *-hitch-1*, and *-hitch-2*, these units willbecome independent hitchtrooper units.
 
 ### Usage
