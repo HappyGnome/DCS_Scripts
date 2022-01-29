@@ -305,6 +305,7 @@ hitch_trooper.init_smoke_ammo = 3 --smokes available per group
 hitch_trooper.recovery_radius = 1500 --distance from friendly base to allow despawn/resupply
 hitch_trooper.next_mark_id = 1000
 hitch_trooper.allow_map_marks = true
+hitch_trooper.triggeredDetectCooldown = 60 -- Min time between impromptu target intel updates
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -364,7 +365,8 @@ hitch_trooper.doPoll_=function()
 			htInstance:disbandGroup_()
 		else
 			
-			htInstance:updateDetectedList_(units[1],nowString)
+			htInstance:updateDetectedList_(units[1],nowString,false)
+			htInstance:onTick_(group)
 			
 			--check for resupply
 			if airbasePoints[htInstance.side] == nil then
@@ -560,7 +562,25 @@ end
 
 hitch_trooper.instance_meta_ = {
 	__index = {
-	
+		
+		--Misc poll updates
+		onTick_ = function (self, group)
+			-- Update alarm state
+			if self.alarmStateNextPoll ~= nil then
+				local controller = group:getController()
+				controller:setOption(AI.Option.Ground.id.ALARM_STATE, self.alarmStateNextPoll)
+			end		
+			if self.reconAlarmState == true then -- keep alternating
+				if self.alarmStateNextPoll == AI.Option.Ground.val.ALARM_STATE.GREEN then
+					self.alarmStateNextPoll = AI.Option.Ground.val.ALARM_STATE.AUTO
+				else 
+					self.alarmStateNextPoll = AI.Option.Ground.val.ALARM_STATE.GREEN
+				end
+			else	-- stop alternating
+				self.alarmStateNextPoll = nil
+			end	
+		end,
+		
 		setCommsSpawnMode_ = function(self)
 			for k,v in pairs(self.commsMenuItems) do
 				missionCommands.removeItemForCoalition(self.side,v)
@@ -573,6 +593,7 @@ hitch_trooper.instance_meta_ = {
 		recordHit_ = function(self,initiator)
 			if self.retreatFromFire and initiator ~= nil then
 				self:retreatFromPoint_(initiator:getPoint())
+				self:updateDetectedList_(nil,nil,true)
 			end
 			if self.morale >= 0 then
 				self.morale = self.morale - 1
@@ -580,6 +601,7 @@ hitch_trooper.instance_meta_ = {
 					trigger.action.outTextForCoalition(self.side,string.format("%s: Request immediate medevac!",self.digraph),5)
 					if self.evac_pos ~= nil then
 						self:evacPoint_(nil,true)
+						self:updateDetectedList_(nil,nil,true)
 					end
 				end
 			end
@@ -587,6 +609,7 @@ hitch_trooper.instance_meta_ = {
 		recordShot_ = function(self,initiator)
 			if self.retreatFromFire and initiator ~= nil then
 				self:retreatFromPoint_(initiator:getPoint())
+				self:updateDetectedList_(nil,nil,true)
 			end
 		end,
 		recordBaseCap_ = function(self,place)
@@ -728,8 +751,11 @@ hitch_trooper.instance_meta_ = {
 					}
 					local controller = group:getController()
 					controller:setOnOff(true)
-					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.OPEN_FIRE)				
+					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.OPEN_FIRE)
+					controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.AUTO)						
 					controller:setTask(missionData)
+					
+					self.alarmStateNextPoll = nil
 					
 					-- default evac point
 					if self.evac_pos == nil then
@@ -816,8 +842,11 @@ hitch_trooper.instance_meta_ = {
 					}
 					local controller = group:getController()
 					controller:setOnOff(true)
-					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
+					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)	
+					controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.GREEN)						
 					controller:setTask(missionData)
+					
+					self.alarmStateNextPoll = nil
 					
 					self.current_destination = self.evac_pos
 					self.retreatFromFire = true					
@@ -836,6 +865,7 @@ hitch_trooper.instance_meta_ = {
 		reconPoint_ = function(self, pos)
 			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil then
+			
 				local startPoint = units[1]:getPoint()		
 				
 				if startPoint ~= nil then
@@ -861,8 +891,12 @@ hitch_trooper.instance_meta_ = {
 					}
 					local controller = group:getController()
 					controller:setOnOff(true)
-					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)				
+					controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.RETURN_FIRE)	
+					controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.GREEN)						
 					controller:setTask(missionData)
+					
+					self.reconAlarmState = true
+					self.alarmStateNextPoll = AI.Option.Ground.val.ALARM_STATE.AUTO
 					
 					-- default evac point
 					if self.evac_pos == nil then
@@ -919,9 +953,11 @@ hitch_trooper.instance_meta_ = {
 					local controller = group:getController()
 					controller:setOnOff(true)				
 					controller:setTask(missionData)	
-
+					controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.GREEN)
+					self.alarmStateNextPoll = AI.Option.Ground.val.ALARM_STATE.AUTO -- switch to auto after retreating a little
+					
 					self.current_destination = endPoint		
-					self.evac_pos = endPoint
+					self.evac_pos = endPoint			
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
@@ -997,7 +1033,7 @@ hitch_trooper.instance_meta_ = {
 					message = message..tgtDesc
 				end
 				
-				self:updateDetectedList_(units[1],nil)
+				self:updateDetectedList_(units[1],nil,false)
 				if self:printMapMarks_() == true then
 					message = message.."\nMap updated"
 				end
@@ -1048,11 +1084,26 @@ hitch_trooper.instance_meta_ = {
 		
 		--[[
 		unit should be a unit from this instance
+		If unit == nil or nowString == nil, a living unit form this group and the current time will be used, respectively
 		--]]
-		updateDetectedList_ = function(self,unit, nowString)
+		updateDetectedList_ = function(self,unit, nowString, triggered)
 			if nowString == nil then
 				nowString = ht_utils.getNowString()
 			end
+			if unit == nil then
+				local group, units = ht_utils.getLivingUnits(self.activeGroupName)
+				if units == nil or units[1] == nil then return end
+				unit = units[1]
+			end
+			
+			if triggered then
+				local now = timer.getTime()
+				if self.triggeredDetectCooldown ~= nil and self.triggeredDetectCooldown > now then return
+				else
+					self.triggeredDetectCooldown = now + hitch_trooper.triggeredDetectCooldown
+				end
+			end
+			
 			--check detection
 			local targets = unit:getController():getDetectedTargets()
 			local groupsUpdated ={}
@@ -1124,7 +1175,10 @@ hitch_trooper.new = function (groupName,spawnData, playersCanSpawn)
 		commsMenuItems = {}, -- key = item action type, value = path
 		morale = 0, -- when this hits zero, cannot attack
 		detectedTargets = {}, --index = object name, value ={timestamp:..., point:..., comment:..., rectId:..., uncertaintyDist:...}
-		playersCanSpawn = playersCanSpawn
+		playersCanSpawn = playersCanSpawn,
+		alarmStateNextPoll = nil, -- for switching/alternating alarm state
+		reconAlarmState = false, -- set true to alternate alarm state
+		triggeredDetectCooldown = nil
 	}
 	instance.activeGroupName = string.format("%s (%s)",instance.groupName,instance.digraph)
 	

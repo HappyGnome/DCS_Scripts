@@ -4,6 +4,8 @@
 * Added evac for hitchtroopers without an evac point set
 * Added one-time hitchtroopers that can be activated by mission triggers rather than the comms menus
 * Added instruction hints in the hitchtroopers 'Available' comms item
+* Added alternation of alarm state for hitchtroopers in recon mode
+* Improved target intel from hitchtroopers added upon task change
 ##1.5.5a
 * Added waypoint 1 task copying for steersman
 * Added map mark generation for hitch troopers

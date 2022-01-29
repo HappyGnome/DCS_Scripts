@@ -67,7 +67,7 @@ Where
 |Call in|Spawn/respawn the group|
 |Evac|Switch ROE to return fire and retreat to evac point if designated. Once there the group will await transport|
 |Smoke|Drop a smoke near the groups location (subject to an ammo constraint). Ammo can be replenished at bases (but not trucks).|
-|Sitrep|Print info about group status and actions|
+|Sitrep|Print info about group status and actions, any target intel gathered is also plotted on the f10 map. Plot locations are approximate!|
 |Stand down|If a friendly base is nearby the group despawns after a delay, and will shortly be available for respawn.|
 
 For directing a group use their digraph followed by a short command word in a mark label on the f10 map:
@@ -78,7 +78,9 @@ For directing a group use their digraph followed by a short command word in a ma
 |rec|`aa rec`|Switch ROE to return fire and move to point (practically similar to evac for now).|
 
 **Responding to events**
-* If hit too many times the group will attempt to return to an evac point and request medevac
+* If hit too many times the group will attempt to return to an evac point and request medevac.
+* After requesting medevac, commands to attack are disabled (but you can still force the group to recon).
+* Intel about nearby targets is gathered periodically, and on certain events.
 * If fired upon when not attacking, the group will attempt to retreat from the threat.
 * If entire group is KIA, respawn will be possible only after a long delay (hence it can be worth completing the medevac if requested).
 
