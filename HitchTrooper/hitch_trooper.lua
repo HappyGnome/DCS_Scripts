@@ -272,6 +272,83 @@ ht_utils.sumAmmo= function(units)
 	return ret
 end
 
+--[[
+Add unit info to the groupInfo structure and return groupInfo. If groupInfo is nil, a new groupInfo object is created
+--]]
+ht_utils.addUnitToGroupInfo = function(unit,groupInfo, knowType)
+	if not unit then return groupInfo end
+	
+	if groupInfo == nil then
+		groupInfo = {counts = {}}
+	end
+	
+	
+	local category = ht_utils.getUnitCategoryDesc(unit, knowType)
+
+	
+	if knowType then
+		if unit:hasAttribute("SAM related") then
+			groupInfo.suspectSAMs = true
+		elseif unit:hasAttribute("Air Defence") then
+			groupInfo.otherAD = true
+		end
+	end
+	 
+	if not groupInfo.counts[category] then 
+		groupInfo.counts[category] = 1
+	else
+		groupInfo.counts[category] = groupInfo.counts[category] + 1
+	end
+	
+	return groupInfo
+end
+
+ht_utils.getUnitCategoryDesc = function(unit, knowType)
+	local category = "Unknown"
+	if not unit then return category end
+	
+	if unit:hasAttribute("Planes") then
+		category = "Aircraft"
+	elseif unit:hasAttribute("Helicopters") then
+		category = "Helos"
+	elseif knowType and unit:hasAttribute("Heavy armed ships") then
+		category = "Warships"
+	elseif unit:hasAttribute("Ships") then
+		category = "Vessels"
+	elseif unit:hasAttribute("Infantry") then
+		category = "Infantry"
+	elseif knowType and unit:hasAttribute("Armored vehicles") then
+		category = "Armour"
+	elseif unit:hasAttribute("Vehicles") then
+		category = "Vehicles"
+	end
+	return category
+end
+
+--[[
+Create string for intel report on group info as created by addUnitToGroupInfo
+--]]
+ht_utils.describeGroupInfo = function(groupInfo)
+	if not groupInfo then return "??" end
+	
+	local desc = ""
+	local sep = ""
+	
+	for cat,count in pairs(groupInfo.counts) do
+		desc = desc .. sep .. cat .. " x ".. count
+		sep = "\n"
+	end
+	
+	if groupInfo.suspectSAMs then
+		desc = desc .. sep .. "Caution SAMs"
+	elseif groupInfo.otherAD then
+		desc = desc .. sep .. "Caution AD"
+	end
+	
+	return desc
+end
+
+
 ht_utils.getNowString = function()
     local dhms = mist.time.getDHMS(timer.getAbsTime())
 	return string.format("%02d%02dL",dhms["h"],dhms["m"])
@@ -1021,11 +1098,7 @@ hitch_trooper.instance_meta_ = {
 							break 
 						end
 						priorityCountdown = priorityCountdown - 1
-						if v.type then
-							tgtDesc = tgtDesc .. v.object:getTypeName()
-						else
-							tgtDesc = tgtDesc .. "Unknown"
-						end
+						tgtDesc = tgtDesc .. ht_utils.getUnitCategoryDesc (v.object,v.type)
 						tgtDesc = tgtDesc .." ".. ht_utils.MakePointToPointDescriptor(units[1]:getPoint(), v.object:getPoint(), v.distance)						
 					end
 				end
@@ -1106,7 +1179,7 @@ hitch_trooper.instance_meta_ = {
 			
 			--check detection
 			local targets = unit:getController():getDetectedTargets()
-			local groupsUpdated ={}
+			local groupsUpdated = {} -- unit category counts for detected groups
 			--{timestamp:..., point3D:..., comment:..., rectId:..., uncertaintyDist:...}
 			for _,target in pairs(targets) do
 				local obj = target.object
@@ -1115,21 +1188,22 @@ hitch_trooper.instance_meta_ = {
 					
 					if not groupsUpdated[groupName] then
 						local tgtDesc
-						if target.type then
-							tgtDesc = obj:getTypeName()
-						else
-							tgtDesc = "Unknown"
-						end	
+						groupsUpdated[groupName] = ht_utils.addUnitToGroupInfo(obj,nil,target.type)	
 						local rectId
 						if self.detectedTargets[groupName] ~= nil then 
 							rectId = self.detectedTargets[groupName].rectId 
 						end 
-						self.detectedTargets[groupName] = {timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = tgtDesc .. " at " .. nowString ,uncertaintyDist = 100, rectId =rectId}
-						
-						groupsUpdated[groupName] = true
+						self.detectedTargets[groupName] = {timestamp = now, point = obj:getPoint(),distKnown = target.distance,comment = "Contact" ,uncertaintyDist = 100, rectId = rectId}
+					else
+						groupsUpdated[groupName] = ht_utils.addUnitToGroupInfo(obj,groupsUpdated[groupName],target.type)
 					end
 				end
 				
+			end
+			
+			-- create group descriptions
+			for groupName,groupInfo in pairs(groupsUpdated) do				
+				self.detectedTargets[groupName].comment = ht_utils.describeGroupInfo(groupInfo) .. " at " .. nowString
 			end
 		end
 	} --index

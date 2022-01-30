@@ -6,6 +6,7 @@
 * Added instruction hints in the hitchtroopers 'Available' comms item
 * Added alternation of alarm state for hitchtroopers in recon mode
 * Improved target intel from hitchtroopers added upon task change
+* Improved target intel descriptors
 ##1.5.5a
 * Added waypoint 1 task copying for steersman
 * Added map mark generation for hitch troopers
