@@ -536,7 +536,7 @@ ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
 	for i,unit in ipairs(units) do
 		local location=unit:getPoint()
 		
-		if not unitFilter or unitFilter(unit) then
+		if not options.unitFilter or options.unitFilter(unit) then
 			positions[i]={location.x,location.z}
 			if options.pickUnit then
 				break
@@ -726,7 +726,7 @@ respawnable_on_call.instance_meta_={
 
 		--Asset pool override
 		onTick=function(self, now)	
-			return not killSwitch -- keep polling
+			return not self.killSwitch -- keep polling
 		end,
 
 
