@@ -63,6 +63,6 @@ where `myCVN=steersman.new(...)`.
 * Once created as above, the carrier's route will periodically update. 
 * If there are friendly players nearby, or on an inbound course with an ETA to within ~50nm of the carrier less than a few minutes, the carrier will enter or maintain ops mode
 * When entering ops mode the carrier will start a turn to achieve the desired wind over the deck as accurately as possible. 
-* Out of ops mode, the carrier will zig-zag downwind to make space to run upwind again. (Zig-zagging helps to reduce the time to turn back upwind).
-* The carrier will not set waypoints outside of its allocated zone, so it will stop when reaching the edge of the zone.
+* Out of ops mode, the carrier will sometimes zig-zag downwind to make space to run upwind again. (Zig-zagging helps to reduce the time to turn back upwind).
+* The carrier will not set waypoints outside of its allocated zone, so it will stop or reposition when reaching the edge of the zone.
 * Any tasks given to the steersman group in its initial waypoint in the ME will be repeated whenever ops mode commences.

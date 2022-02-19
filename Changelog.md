@@ -1,6 +1,8 @@
 # Changelog
 
 ## Latest
+* Improved steersman logic
+## 1.5.6a
 * Added evac for hitchtroopers without an evac point set
 * Added one-time hitchtroopers that can be activated by mission triggers rather than the comms menus
 * Added instruction hints in the hitchtroopers 'Available' comms item
