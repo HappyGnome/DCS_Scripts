@@ -51,7 +51,7 @@ sm_utils.getClosestLateralPlayer = function(groupName,sides, options)
 	for i,unit in ipairs(units) do
 		local location=unit:getPoint()
 		
-		if not unitFilter or unitFilter(unit) then
+		if not options.unitFilter or options.unitFilter(unit) then
 			positions[i]={location.x,location.z}
 			if options.pickUnit then
 				break
@@ -87,6 +87,22 @@ sm_utils.getClosestLateralPlayer = function(groupName,sides, options)
 	
 	return unpack(ret)
 	
+end
+
+sm_utils.as2D = function(u)
+	local uy = u.z
+	if uy == nil then uy = u.y end
+	return {x = u.x, y= uy}
+end
+
+sm_utils.as3D = function(u)
+	local uz = u.z
+	local uy = u.y
+	if uz == nil then
+		uz = u.y
+		uy = 0
+	end
+	return {x = u.x, y= uy,z = uz}
 end
 
 sm_utils.dot2D = function(u,v)
@@ -132,6 +148,25 @@ Return the angle between velocity/heading X and the line from points A to B
 sm_utils.thetaToDest = function (X,A,B)
 	local toDest = sm_utils.lin2D(B,1,A,-1)
 	return math.atan2(sm_utils.wedge2D(X,toDest),sm_utils.dot2D(X,toDest))
+end
+
+sm_utils.stringsToScriptTasks = function(strings)
+	local tasks = {};
+	for _,string in pairs(strings) do
+		table.insert(tasks,
+			{
+				id = "WrappedAction",
+				params = {
+					action = {
+						id = "Script",
+						params = {
+							command = string
+						}
+					}
+				}
+			})
+	end
+	return tasks;
 end
 
 sm_utils.deg2rad = 0.01745329
@@ -194,6 +229,7 @@ steersman.doPoll_=function()
 
 	local now=timer.getTime()	
 	local smInstance = nil
+	local groupName = nil
 	
 	--hitch_trooper.log_i:info("poll") --debug
 	
@@ -254,9 +290,12 @@ steersman.instance_meta_ = {
 						and inbound > 0.01)
 			end
 			
-			if not wantOpsMode and (self.opsMode_ or self.lastUpdatedRestPos == nil
-									or self.lastUpdatedRestPos + steersman.update_rest_cooldown < timer.getTime())then	
-				self:GoOnPath_(self:GetDownwindZigZag_(),100)
+			if not wantOpsMode and (self.opsMode_ 
+									or self.lastUpdatedRestPos == nil
+									or self.lastUpdatedRestPos + steersman.update_rest_cooldown < timer.getTime()) then
+				local path = self:GetRepositionRoute_()
+				self:GoOnPath_(path,100)
+				self.currentDestPoint_ = path[-1]
 				self.lastUpdatedRestPos = timer.getTime()
 				if self.opsMode_ and steersman.enable_messages then
 					trigger.action.outTextForCoalition(self.side_,string.format("%s ceasing flight ops",self.groupName_),10)
@@ -265,19 +304,25 @@ steersman.instance_meta_ = {
 				self.turnMode_ = false
 			elseif wantOpsMode then
 				if not self.opsMode_ then --switch to ops mode/ turn mode
-					local pointSpeed = self:GetUpwind_()
-					self:GoToPoint_(pointSpeed,100,false, self.activationTasks) -- Go at full speed to speed up the turns
-					if steersman.enable_messages then
-						trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
+					if self:NotUpwind_() then -- only if not in upwind half of zone already
+						local pointSpeed = self:GetUpwind_()
+						self:GoToPoint_(pointSpeed,100,false, self.activationTasks) -- Go at full speed to speed up the turns
+						if steersman.enable_messages then
+							trigger.action.outTextForCoalition(self.side_,string.format("%s commencing flight ops",self.groupName_),10)
+						end
+						self.opsMode_ = true
+						self.turnMode_ = true
+						self.currentDestPoint_ = pointSpeed
+					elseif not self:NotUpwind_(self.currentDestPoint_) then -- we're upwind and so is destination!
+						local path = self:GetRepositionRoute_()
+						self:GoOnPath_(path,100)
+						self.currentDestPoint_ = path[-1]
 					end
-					self.opsMode_ = true
-					self.turnMode_ = true
-					self.currentDestPoint_ = pointSpeed
 				elseif self.turnMode_ and self.currentDestPoint_ ~= nil then -- check whether we're approximately on track to exit turn mode
 					local position = closestUnit:getPosition()
 					if math.abs(sm_utils.thetaToDest(position.x,position.p,self.currentDestPoint_)) < 0.35 then --~20 degrees
 						local pointSpeed = self:GetUpwind_()
-						self:GoToPoint_(pointSpeed,pointSpeed.speed,false)
+						self:GoToPoint_(pointSpeed,pointSpeed.speed,false, nil,sm_utils.stringsToScriptTasks({self:MakeEndOfOpsRunScript()}))
 						self.turnMode_ = false
 					end
 				end
@@ -291,7 +336,7 @@ steersman.instance_meta_ = {
 		-- if spTasks is provided these will be added to the unit tasking
 		--point to is vec2
 		--speed is in mps
-		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks)		
+		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks,dpTasks)		
 			local group = Group.getByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
@@ -318,13 +363,16 @@ steersman.instance_meta_ = {
 								 })
 						end
 						
-						table.insert(points,{
+						local wp2 = {
 								   action = AI.Task.VehicleFormation.OFF_ROAD,
-								   x = pointTo.x, 
-								   y = pointTo.y,	
+								   x = pointTo.x,
+								   y = pointTo.y,
 								   speed = speed
-								 })
-						
+								 }
+						if dpTasks ~= nil then
+							wp2.task = { id = "ComboTask", params = {tasks = dpTasks} }
+						end
+						table.insert(points,wp2)
 						local missionData = { 
 						   id = 'Mission', 
 						   params = { 
@@ -400,7 +448,7 @@ steersman.instance_meta_ = {
 		--[[
 		Return S,Theta
 			Theta = (radians CCW in x,z coordinates system) of the reciprocal of the required heading for optimal wind
-			S = speed in upwing direction for optimal winds (mps)
+			S = speed in upwind direction for optimal winds (mps)
 		Windtheta =  'xz angle' in radians of downwind direction 
 		windSpeed  (mps)
 		--]]
@@ -428,18 +476,53 @@ steersman.instance_meta_ = {
 			
 			return unpack({speed, windTheta + zeta + alpha})
 		end,
+
+		-- Return true if winds are light or the boat is in the downwind part of the zone
+		-- point = point to assess for being upwind, or nil to use unit position
+		NotUpwind_ = function(self,point)
+			local wind = atmosphere.getWind({x = self.zoneCentre_.x, y = steersman.deck_height ,z = self.zoneCentre_.y})
+			
+			if math.sqrt(sm_utils.dot2D(wind,wind)) < self.lightWindCuttoff then
+				return true
+			end
+			
+			local here
+			if point ~= nil then
+				here = sm_utils.as3D(point)
+			else
+				here = self:GetUnitPoint_()
+			end
+			 
+			--unit from centre
+			local u = { x = here.x - self.zoneCentre_.x, 
+						y = here.z - self.zoneCentre_.y}
+
+			return sm_utils.dot2D(wind,u) >= 0
+
+		end,
+
+
+		GetRepositionRoute_ = function (self)
+			if self:NotUpwind_() then
+				return self:GetDownwindZigZag_(nil)
+			else
+				local ret = self:GetDownwindZigZag_(sm_utils.as3D(self.zoneCentre_))
+				table.insert(ret,0,self.zoneCentre_)
+				return ret
+			end	
+		end,
 		
 		-- return coords of the downwind position from zone centre of the group at the edge of the zone, based on winds at zone centre,
 		--accounts for angled deck
 		--return list of points {x,y} zig-zagging to the downwind point
-		GetDownwindZigZag_ = function(self)			
+		-- Uses current unit position as start of the route unless startPoint (3D) is passed
+		GetDownwindZigZag_ = function(self,startPoint)
 			local windspeed, downwindTheta = self:GetWindsZoneCentre()
-			local speed =0
 			local theta = 0 --theta for the downwind position, accounting for deck angle
 			
-			speed,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
+			_,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
 						
-			if windspeed < 0.4 then --for light winds choose a random direction instead
+			if windspeed < self.lightWindCuttoff then --for light winds choose a random direction instead
 				theta = math.random()*2*math.pi
 				return { [1] = {x = self.zoneCentre_.x + math.cos(theta)*self.zoneRadius_, y = self.zoneCentre_.y + math.sin(theta)*self.zoneRadius_} }
 			end
@@ -449,8 +532,9 @@ steersman.instance_meta_ = {
 			local downwindPoint = sm_utils.lin2D(self.zoneCentre_,1,downwindDir,self.zoneRadius_)
 			
 			local preRet = {[1] = downwindPoint} -- default return
-			local unitPoint  = self:GetUnitPoint_()
-			if unitPoint == nil then return preRet end	
+			local unitPoint  = startPoint
+			if unitPoint == nil then unitPoint = self:GetUnitPoint_() end
+			if unitPoint == nil then return preRet end
 			
 			local unitToDownwind = sm_utils.lin2D(unitPoint,-1,downwindPoint,1)
 			local zagQuot = math.floor(sm_utils.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
@@ -467,8 +551,8 @@ steersman.instance_meta_ = {
 			end
 			
 			local ret = {}
-			for i=1,#preRet do
-				table.insert(ret, preRet[#preRet - i + 1])
+			for j=1,#preRet do
+				table.insert(ret, preRet[#preRet - j + 1])
 			end
 			--steersman.log_i:info(#ret)--TODO
 			return ret
@@ -505,7 +589,7 @@ steersman.instance_meta_ = {
 			
 			speed,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
 			
-			if windspeed < 0.4 then --for calm winds default to crossing the zone
+			if windspeed < self.lightWindCuttoff then --for calm winds default to crossing the zone
 				theta = math.atan2(u.y, u.x)
 			end			
 			
@@ -524,8 +608,14 @@ steersman.instance_meta_ = {
 			ret.speed = speed
 			
 			return ret
+		end,
+
+		MakeEndOfOpsRunScript = function(self)
+			return string.format("steersman.tracked_groups_[\"%s\"].opsMode_ = false\n if steersman.enable_messages then trigger.action.outTextForCoalition(%s,\"%s ceasing flight ops\",10) end",
+			self.groupName_,
+			self.side_,
+			self.groupName_)
 		end
-		
 		
 	} --index
 }
@@ -558,6 +648,7 @@ steersman.new = function (groupName, zoneName)
 		desiredHeadwindMps_ = 16, -- >=0
 		minBoatSpeed_ = 7, -- >=0
 		zagSize_ = 1000,
+		lightWindCuttoff = 0.4,--mps
 		zoneCentre_ = {x = zone.point.x, y = zone.point.z},
 		zoneRadius_ = zone.radius,
 		lastUpdatedRestPos = nil,
