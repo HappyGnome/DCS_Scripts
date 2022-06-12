@@ -1,4 +1,4 @@
-# Readme
+# Steersman Readme
 
 Steersman allows automation of a carrier group to maintain a certain wind over it's angled deck, while staying within a zone and recovering downwind when players are not near
 
@@ -7,18 +7,14 @@ This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scrip
 
 ## General Usage
 
-### Prerequisites
-All scripts assume the use of the [mist helper library for DCS](https://github.com/mrSkortch/MissionScriptingTools/releases)
-
-Add the trigger `MISSION START -> DO SCRIPT FILE -> mist_*_*_*.lua`
+### HeLMS
+Add the trigger `MISSION START -> DO SCRIPT FILE -> helms.lua`
 **Before** calls to any of these scripts
 \* `MISSION START` can be replaced by another event, as long as it will happen before using any of these scripts
 
-Currently tested with Mist version 4.4.90
-
 ### Initialization
 
-Before using any of the methods detailed below trigger `DO SCRIPT FILE -> steersman.lua` in your mission. The easiest time for this is immediately after initializsing MIST.
+Before using any of the methods detailed below trigger `DO SCRIPT FILE -> steersman.lua` in your mission. The easiest time for this is immediately after initializsing HeLMS.
 
 ## Steersman
 
@@ -40,7 +36,7 @@ In a mission with a carrier group called `CV-1`, and a circular zone called `CV-
 
 |Trigger|Action|Action Detail|
 |---|---|---|
-|MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
+|MISSION START|DO SCRIPT FILE|helms.lua|
 |MISSION START|DO SCRIPT FILE|steersman.lua|
 |MISSION START|DO SCRIPT|`steersman.new("CV-1", "CV-1-AO")`|
 

@@ -1,6 +1,6 @@
 --#######################################################################################################
 -- HITCH_TROOPER 
--- Run once at mission start after initializing MIST (Tested with Mist 4.4.90)
+-- Run once at mission start after initializing HeLMS
 -- 
 -- Adds functionality to spawn squads to transport and command around the map using markpoints
 --
@@ -11,235 +11,10 @@
 
 ht_utils = {}
 
---[[
-	Format decimal angle in tegrees to deg, decimal minutes format
---]]
-ht_utils.formatDegMinDec = function(degrees,posPrefix,negPrefix)
-	local prefix = posPrefix
-	if(degrees < 0) then prefix = negPrefix end
-	degrees = math.abs(degrees)
-	local whole = math.floor(degrees)
-	local minutes = 60 *(degrees - whole)
-	
-	return string.format("%s %d°%.2f'",prefix,whole,minutes)
-end
 
-ht_utils.pos2LL = function(pos)
-	local lat,lon,_ = coord.LOtoLL(pos)
-	return string.format("%s %s",ht_utils.formatDegMinDec(lat,"N","S"),ht_utils.formatDegMinDec(lon,"E","W"))
-end
-
---[[
-	positive int to "base 26" conversion
---]]
-ht_utils.toAlpha = function(n)
-	local lookup = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"}
-	local ret = ""
-	while (n > 0) do
-		local digit = n%26
-		if digit == 0 then
-			digit = 26
-		end
-		ret = lookup[digit]..ret
-		n = (n-digit)/26
-	end
-	return ret
-end
-
---[[
-Convert coalition to "Red", "Blue", "Neutral", or "None"
---]]
-ht_utils.sideToString = function(side)
-	if side == coalition.side.RED then
-		return "Red"
-	elseif side == coalition.side.BLUE then
-		return "Blue"
-	elseif side == coalition.side.NEUTRAL then
-		return "Neutral"
-	else
-		return "None"
-	end
-end
-
---[[
-return (group, unit) for living unit in group of given name
---]]
-ht_utils.getLivingUnits = function (groupName)	
-	local group = Group.getByName(groupName)
-	local retUnits = {}
-	if group ~= nil and Group.isExist(group) then
-		local units = group:getUnits()
-		for i,unit in pairs(units) do
-			if unit:getLife()>1.0 then
-				table.insert(retUnits, unit)
-			end
-		end
-	end
-	return group,retUnits
-end
-
---[[
-True heading point A to point B, in degrees
---]]
-ht_utils.getHeading = function (pointA,pointB)	
-	local north = mist.getNorthCorrection(pointA) -- atan2 for true north at pointA
-	local theta = (math.atan2(pointB.z-pointA.z,pointB.x-pointA.x) - north) * 57.2957795 --degrees
-	local hdg = math.fmod(theta,360)
-	if hdg < 0 then
-		hdg = hdg + 360
-	end
-	return hdg	
-end
-
---[[
-convert heading to octant string e.g. "North", "Northeast" etc
-hdg must be in the range  0 -360
---]]
-ht_utils.hdg2Octant = function (hdg)
-	local ret = "North"	
-	if hdg >= 22.5 then
-		if hdg < 67.5 then
-			ret = "Northeast"	
-		elseif hdg < 112.5 then
-			ret = "East"
-		elseif hdg < 157.5 then
-			ret = "Southeast"
-		elseif hdg < 202.5 then
-			ret = "South"
-		elseif hdg < 247.5 then
-			ret = "Southwest"
-		elseif hdg < 292.5 then
-			ret = "West"
-		elseif hdg < 337.5 then
-			ret = "Northwest"
-		end
-	end
-	return ret
-end
-
---[[
-Get the key of the nearest object in objList to another given point
-return key,dist
---]]
-ht_utils.getKeyOfNearest2D = function(objList,point)
-	local closestDist = math.huge
-	local closestKey = nil
-	for k,v in pairs(objList) do		
-		if math.abs(v:getPoint().x - point.x) < closestDist then --quick filter in just one direction to cut down distance calcs
-			local newDist = mist.utils.get2DDist(v:getPoint(),point)
-			if newDist < closestDist then
-				closestDist = newDist
-				closestKey = k
-			end
-		end
-	end
-	return closestKey,closestDist
-end
-
---[[
-Return a table of airbases and farps for the coalition farpSide. If friendlyOnly then farpSide also applies to the fixed airbases returned
---]]
-ht_utils.getBaseList = function(farpSide,friendlyOnly, shipsAsFarps)
-	local basesTemp = world.getAirbases()
-	local bases = {}
-	
-	if farpSide == nil and not friendlyOnly then
-		for k,v in pairs(basesTemp) do	
-			if (shipsAsFarps or not v:getUnit()) then
-				table.insert(bases,v)
-			end
-		end
-	elseif farpSide ~= nil and friendlyOnly then
-	
-		for k,v in pairs(basesTemp) do	
-			if (shipsAsFarps or not v:getUnit()) and v:getCoalition() == farpSide then
-			
-				table.insert(bases,v)
-			end
-		end
-	elseif farpSide ~= nil then
-		for k,v in pairs(basesTemp) do	
-			--fixed airbases only (no associated unit), and only friendly farps 
-			if (shipsAsFarps or not v:getUnit()) and (v:getCoalition() == farpSide or v:getDesc().category == Airbase.Category.AIRDROME) then
-				table.insert(bases,v)
-			end
-		end
-	end
-	
-	return bases
-end
-
-
---[[
-return point,name,dist (m) of nearest airbase/farp etc (not ships), checks all permanent airbases and farps from side, if given 
-set friendlyOnly = true to only consider friendly bases
---]]
-ht_utils.getNearestAirbase = function (point, side, friendlyOnly)
-	local bases = ht_utils.getBaseList(side,friendlyOnly,false)
-	local closestKey, closestDist = ht_utils.getKeyOfNearest2D(bases,point)
-	
-	if closestKey == nil then return nil, nil, nil end
-	
-	local closestBase = bases[closestKey]
-	
-	return closestBase:getPoint(),closestBase:getName(), closestDist
-end
-
---[[
-Describe point relative to airbase e.g. "8Km Northeast of Kutaisi"
-side determines whether only one set of bases are used for reference points
---]]
-ht_utils.MakeAbToPointDescriptor = function (point, side)
-	local abPoint,abName,meters = ht_utils.getNearestAirbase(point,side)
-	if not abPoint then return "??" end
-	return string.format("%s of %s",ht_utils.MakePointToPointDescriptor(abPoint,point),abName)
-end
-
---[[
-Describe point b from point a with distance and octant e.g. "8km South"
-distance defaults to true. Indicates whether to include distance info
---]]
-ht_utils.MakePointToPointDescriptor = function (pointA, pointB, distance)
-	local octant = ht_utils.hdg2Octant(ht_utils.getHeading(pointA,pointB))
-	if distance or distance == nil then
-		local meters = mist.utils.get2DDist(pointA,pointB)
-		if meters >= 10000 then 
-			return string.format("%.0fkm %s",meters/1000,octant)
-		elseif meters >= 1000 then
-			return string.format("%.1fkm %s",meters/1000,octant)
-		else
-			return string.format("%.0fm %s",meters,octant)
-		end
-	else
-		return string.format("%s",octant)
-	end
-end
-
-
---[[
-return ETA for following a straight path between two points at a given estimated speed
---]]
-ht_utils.getETAString = function (point1,point2, estMps)	
-	if estMps == nil or estMps <= 0 then return "unknown" end
-	
-	local ttg = mist.utils.get3DDist(point1,point2)/ estMps
-	local etaAbs = timer.getAbsTime() + ttg	
-	local dhms = mist.time.getDHMS(etaAbs)
-	return string.format("%02d%02dL",dhms["h"],dhms["m"])
-end
-
---[[
-Get units offroad max speed in mps, or default if this is not available
---]]
-ht_utils.getUnitSpeed = function(unit,default)
-	if unit == nil then return default end
-	local unitDesc = unit:getDesc()
-	
-	if unitDesc ~= nil and unitDesc["speedMaxOffRoad"] ~= nil then
-		return unitDesc["speedMaxOffRoad"]	
-	end
-	
-	return default
+if not helms then return end
+if helms.version < 1 then 
+	helms.log_e.log("Invalid HeLMS version for Hitch_Trooper")
 end
 
 --[[
@@ -347,30 +122,6 @@ ht_utils.describeGroupInfo = function(groupInfo)
 	
 	return desc
 end
-
-
-ht_utils.getNowString = function()
-    local dhms = mist.time.getDHMS(timer.getAbsTime())
-	return string.format("%02d%02dL",dhms["h"],dhms["m"])
-end
-
-ht_utils.shallow_copy = function(obj)
-	local ret = obj	
-	if type(obj) == 'table' then
-		ret = {}
-		for k,v in pairs(obj) do
-			ret[k] = v
-		end
-	end	
-	return ret
-end
-
-ht_utils.safeCall = function(func,args,errorHandler)
-	local op = function()
-		func(unpack(args))
-	end
-	xpcall(op,errorHandler)
-end
 --#######################################################################################################
 -- HITCH_TROOPER 
 hitch_trooper = {}
@@ -415,8 +166,8 @@ hitch_trooper.commsMenus = {}
 --[[
 Loggers for this module
 --]]
-hitch_trooper.log_i=mist.Logger:new("hitch_trooper","info")
-hitch_trooper.log_e=mist.Logger:new("hitch_trooper","error")
+hitch_trooper.log_i=helms.logger.new("hitch_trooper","info")
+hitch_trooper.log_e=helms.logger.new("hitch_trooper","error")
 
 --error handler for xpcalls. wraps hitch_trooper.log_e:error
 hitch_trooper.catchError=function(err)
@@ -428,7 +179,7 @@ end
 hitch_trooper.doPoll_=function()
 
 	local now=timer.getTime()	
-	local nowString = ht_utils.getNowString()
+	local nowString = helms.ui.convert.getNowString()
 	
 	local groupName = nil
 	local htInstance = nil
@@ -437,7 +188,7 @@ hitch_trooper.doPoll_=function()
 	--hitch_trooper.log_i:info("poll") --debug
 	
 	local pollGroup = function()
-		local group,units = ht_utils.getLivingUnits(groupName) 
+		local group,units = helms.dynamic.getLivingUnits(groupName) 
 		if units[1] == nil then
 			htInstance:disbandGroup_()
 		else
@@ -447,9 +198,9 @@ hitch_trooper.doPoll_=function()
 			
 			--check for resupply
 			if airbasePoints[htInstance.side] == nil then
-				airbasePoints[htInstance.side] = ht_utils.getBaseList(htInstance.side,true,true)
+				airbasePoints[htInstance.side] = helms.dynamic.getBaseList(htInstance.side,true,true)
 			end
-			local _,dist = ht_utils.getKeyOfNearest2D(airbasePoints[htInstance.side], units[1]:getPoint())	
+			local _,dist = helms.dynamic.getKeyOfNearest2D(airbasePoints[htInstance.side], units[1]:getPoint())	
 			if dist < hitch_trooper.recovery_radius then		
 				htInstance.smoke_ammo = math.max(math.min(htInstance.smoke_ammo + 1,hitch_trooper.init_smoke_ammo), htInstance.smoke_ammo)
 			end
@@ -466,7 +217,7 @@ hitch_trooper.doPoll_=function()
 	end
 
 	--schedule next poll----------------------------------
-	mist.scheduleFunction(hitch_trooper.doPoll_,nil,now + hitch_trooper.poll_interval)
+	return now + hitch_trooper.poll_interval
 end
 
 --EVENT HANDLER-------------------------------------------------------------------------------------
@@ -544,7 +295,7 @@ hitch_trooper.birthHandler = function(initiator)
 			if ht then
 				hitch_trooper.author_spawnable_groups_[groupName] = nil
 				group:destroy()--prevent spawn of raw group
-				mist.scheduleFunction(ht.spawnGroup_,{ht},timer.getTime() + 2)	--spawn the hitchtroopers after small delay (else it crashes!)	
+				helms.dynamic.scheduleFunction(ht.spawnGroup_,{ht},timer.getTime() + 2,true)	--spawn the hitchtroopers after small delay (else it crashes!)	
 			end
 		end
 	end
@@ -553,21 +304,21 @@ end
 hitch_trooper.eventHandler = { 
 	onEvent = function(self,event)
 		if(event.id == world.event.S_EVENT_MARK_ADDED) then
-			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
 		--[[elseif (event.id == world.event.S_EVENT_MARK_REMOVED) then
 			ap_utils.markList[event.idx] = nil--]]
 		elseif (event.id == world.event.S_EVENT_MARK_CHANGE) then
-			ht_utils.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.parseMarkCommand, {event.text, event.pos, event.coalition},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_HIT) then
-			ht_utils.safeCall(hitch_trooper.hitHandler,{event.target,event.initiator},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.hitHandler,{event.target,event.initiator},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_SHOT or event.id == world.event.S_EVENT_SHOOTING_START) then
-			ht_utils.safeCall(hitch_trooper.shotHandler,{event.target,event.initiator},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.shotHandler,{event.target,event.initiator},hitch_trooper.catchError)
 		elseif (event.id == world.event.S_EVENT_BASE_CAPTURED) then
-			ht_utils.safeCall(hitch_trooper.capHandler,{event.initiator,event.place},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.capHandler,{event.initiator,event.place},hitch_trooper.catchError)
 		--[[elseif (event.id == world.event.S_EVENT_WEAPON_ADD) then --experimental
 			hitch_trooper.log_i:info(event)	--]]	
 		elseif (event.id == world.event.S_EVENT_BIRTH) then --experimental
-			ht_utils.safeCall(hitch_trooper.birthHandler,{event.initiator},hitch_trooper.catchError)
+			helms.util.safeCall(hitch_trooper.birthHandler,{event.initiator},hitch_trooper.catchError)
 		end
 	end
 }
@@ -609,8 +360,10 @@ hitch_trooper.listForSide = function(side)
 	for k,v in pairs(hitch_trooper.spawnable_groups_) do
 		if v.side == side then
 			local point = ""
-			if v.spawnData and v.spawnData.units and v.spawnData.units[1] then
-				point = ht_utils.MakeAbToPointDescriptor({x = v.spawnData.units[1].x,y=0,z = v.spawnData.units[1].y}, side)
+			if v.spawnData and v.spawnData.groupData 
+				and v.spawnData.groupData.units 
+				and v.spawnData.groupData.units[1] then
+				point = helms.ui.convert.MakeAbToPointDescriptor({x = v.spawnData.groupData.units[1].x,y=0,z = v.spawnData.groupData.units[1].y}, side)
 			end
 			text = text .. string.format("%s %s\n",v.digraph,point)
 		end
@@ -632,7 +385,7 @@ hitch_trooper.digraphCounters_ = {[coalition.side.BLUE] = 27, [coalition.side.RE
 
 hitch_trooper.makeDigraph_ = function(side)
 	if not hitch_trooper.digraphCounters_[side] then return "??" end
-	local ret = ht_utils.toAlpha(hitch_trooper.digraphCounters_[side])
+	local ret = helms.ui.convert.toAlpha(hitch_trooper.digraphCounters_[side])
 	hitch_trooper.digraphCounters_[side] = hitch_trooper.digraphCounters_[side] + 1
 	return ret
 end
@@ -737,12 +490,13 @@ hitch_trooper.instance_meta_ = {
 		end,
 		
 		recover_ = function(self)
-			local _, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			local _, units = helms.dynamic.getLivingUnits(self.activeGroupName) 
 			local unitsNotHome = false
 			if units ~= nil then
 				for k,v in pairs(units) do 
-					_,_,dist = ht_utils.getNearestAirbase(v:getPoint(),self.side,true)
-					if dist ~= nil and dist > hitch_trooper.recovery_radius then
+					_,_,dist = helms.dynamic.getNearestAirbase(v:getPoint(),self.side,true)
+					--hitch_trooper.log_i.log(helms.dynamic.getNearestAirbase(v:getPoint(),self.side,true))--debug
+					if dist == nil or dist > hitch_trooper.recovery_radius then
 						unitsNotHome = true
 						break
 					end
@@ -751,9 +505,9 @@ hitch_trooper.instance_meta_ = {
 					trigger.action.outTextForCoalition(self.side,string.format("%s: get us back to base first.",self.digraph),5)	
 				else
 					trigger.action.outTextForCoalition(self.side,string.format("%s: standing down. See ya!",self.digraph),5)
-					mist.scheduleFunction(self.disbandGroup_,{self},timer.getTime() + 300)
+					helms.dynamic.scheduleFunction(self.disbandGroup_,{self}, timer.getTime() + 300,true)
 					self:removeComms_()
-					mist.scheduleFunction(hitch_trooper.new,{self.groupName, self.spawnData, self.playersCanSpawn}, 300)
+					helms.dynamic.scheduleFunction(hitch_trooper.new,{self.groupName, self.playersCanSpawn, self.spawnData}, timer.getTime() + 300, true)
 				end
 			end
 		end,
@@ -772,16 +526,16 @@ hitch_trooper.instance_meta_ = {
 					Group.destroy(group)
 				end
 				--respawn with new name
-				local spawnData = ht_utils.shallow_copy(self.spawnData)
-				spawnData.groupName = self.activeGroupName 	
-				spawnData.route = mist.getGroupRoute(self.groupName,true)
-				spawnData.clone = false
-				mist.dynAdd(spawnData) --respawn with original tasking
+				local spawnData = helms.util.shallow_copy(self.spawnData)
+				spawnData.groupData.name = self.activeGroupName
+				--hitch_trooper.log_i.log(spawnData.groupData)--debug
+				--hitch_trooper.log_i.log(spawnData.keys)--debug
+				helms.dynamic.spawnGroup(spawnData.groupData,spawnData.keys)
 				
 				self:setCommsActiveMode_()
 				hitch_trooper.tracked_groups_[self.activeGroupName] = self
 				
-				self.morale = math.ceil(#spawnData.units/3.0)
+				self.morale = math.ceil(#spawnData.groupData.units/3.0)
 			else
 				trigger.action.outTextForCoalition(self.side,string.format("%s: unavaiable at this time",self.digraph),5)
 			end
@@ -798,7 +552,7 @@ hitch_trooper.instance_meta_ = {
 		end,
 		
 		attackPoint_ = function(self, pos)		
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
 				if self.morale < 0 then
 					trigger.action.outTextForCoalition(self.side,string.format("%s: Unable",self.digraph),10)
@@ -841,8 +595,8 @@ hitch_trooper.instance_meta_ = {
 					self.retreatFromFire = false
 					
 					self.current_destination = pos	
-					self.taskMessage = string.format("Attacking %s",ht_utils.pos2LL(pos))
-					trigger.action.outTextForCoalition(self.side,string.format("%s: attacking %s",self.digraph,ht_utils.pos2LL(pos)),10)
+					self.taskMessage = string.format("Attacking %s",helms.ui.convert.pos2LL(pos))
+					trigger.action.outTextForCoalition(self.side,string.format("%s: attacking %s",self.digraph,helms.ui.convert.pos2LL(pos)),10)
 				end
 			end
 		end,
@@ -858,7 +612,7 @@ hitch_trooper.instance_meta_ = {
 			if not triggerNow then
 					return
 			end					
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil then
 				local startPoint = units[1]:getPoint()				
 				
@@ -868,7 +622,7 @@ hitch_trooper.instance_meta_ = {
 				end
 				
 				local arrivalString = 
-				string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, ht_utils.pos2LL(self.evac_pos))
+				string.format("trigger.action.outTextForCoalition(%d,\"%s: Awaiting evac at %s\",10)", self.side, self.digraph, helms.ui.convert.pos2LL(self.evac_pos))
 			    ..string.format("\nhitch_trooper.tracked_groups_[\"%s\"].taskMessage = nil",self.activeGroupName)
 				if startPoint ~= nil then
 					local missionData = { 
@@ -930,8 +684,8 @@ hitch_trooper.instance_meta_ = {
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
-					self.taskMessage = string.format("Evac'ing to %s.",ht_utils.pos2LL(self.evac_pos))
-					trigger.action.outTextForCoalition(self.side,string.format("%s: will evac to %s",self.digraph,ht_utils.pos2LL(self.evac_pos)),10)
+					self.taskMessage = string.format("Evac'ing to %s.",helms.ui.convert.pos2LL(self.evac_pos))
+					trigger.action.outTextForCoalition(self.side,string.format("%s: will evac to %s",self.digraph,helms.ui.convert.pos2LL(self.evac_pos)),10)
 				end
 			end
 		end,
@@ -940,7 +694,7 @@ hitch_trooper.instance_meta_ = {
 		Set evac destination if pos not nil. 
 		--]]
 		reconPoint_ = function(self, pos)
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil then
 			
 				local startPoint = units[1]:getPoint()		
@@ -984,8 +738,8 @@ hitch_trooper.instance_meta_ = {
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
-					self.taskMessage = string.format("Reconnoitring %s.",ht_utils.pos2LL(pos))
-					trigger.action.outTextForCoalition(self.side,string.format("%s: will recon %s",self.digraph,ht_utils.pos2LL(pos)),10)
+					self.taskMessage = string.format("Reconnoitring %s.",helms.ui.convert.pos2LL(pos))
+					trigger.action.outTextForCoalition(self.side,string.format("%s: will recon %s",self.digraph,helms.ui.convert.pos2LL(pos)),10)
 				end
 			end
 		end,
@@ -994,10 +748,10 @@ hitch_trooper.instance_meta_ = {
 		retreat a short way from a given 3D point
 		--]]
 		retreatFromPoint_ = function(self, pos)
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil then
 				local startPoint = units[1]:getPoint()					
-				local dist = mist.utils.get2DDist(startPoint,pos)
+				local dist = helms.maths.get2DDist(startPoint,pos)
 				local retreatDist = 1000
 				if math.abs(dist) < 1.0 then return end
 				
@@ -1038,13 +792,13 @@ hitch_trooper.instance_meta_ = {
 					
 					--hitch_trooper.log_i:info(eta)--debug
 					
-					self.taskMessage = string.format("Retreating to %s.",ht_utils.pos2LL(endPoint))
+					self.taskMessage = string.format("Retreating to %s.",helms.ui.convert.pos2LL(endPoint))
 				end
 			end
 		end,
 		
 		smokePosition_ = function(self)
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
 				if self.smoke_ammo <= 0 then
 					trigger.action.outTextForCoalition(self.side,string.format("%s: We're out of smoke!",self.digraph),10)
@@ -1053,17 +807,17 @@ hitch_trooper.instance_meta_ = {
 				local point = units[1]:getPoint()
 				point.x = point.x + 200.0 * (math.random() - 0.5)
 				point.z = point.z + 200.0 * (math.random() - 0.5)
-				mist.scheduleFunction(trigger.action.smoke,{point, trigger.smokeColor.Green},timer.getTime() + 30 + math.random() * 60)
+				helms.dynamic.scheduleFunction(trigger.action.smoke,{point, trigger.smokeColor.Green},timer.getTime() + 30 + math.random() * 60,true)
 				self.smoke_ammo = self.smoke_ammo - 1
 			end
 			
 		end,
 		
 		sitrep_ = function(self)
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 
 			if units[1] ~= nil then
 				local message = string.format("__SITREP__ %s",self.digraph)
-				message = message.."\nWe're "..ht_utils.MakeAbToPointDescriptor(units[1]:getPoint(),self.side)
+				message = message.."\nWe're "..helms.ui.convert.MakeAbToPointDescriptor(units[1]:getPoint(),self.side)
 				if self.taskMessage ~= nil and self.taskMessage ~= "" then
 					message = message.."\n"..self.taskMessage
 					local ETA = self:currentEta_()
@@ -1099,7 +853,7 @@ hitch_trooper.instance_meta_ = {
 						end
 						priorityCountdown = priorityCountdown - 1
 						tgtDesc = tgtDesc .. ht_utils.getUnitCategoryDesc (v.object,v.type)
-						tgtDesc = tgtDesc .." ".. ht_utils.MakePointToPointDescriptor(units[1]:getPoint(), v.object:getPoint(), v.distance)						
+						tgtDesc = tgtDesc .." ".. helms.ui.convert.MakeAbToPointDescriptor(units[1]:getPoint(), v.object:getPoint(), v.distance)						
 					end
 				end
 				if hasTargets then 
@@ -1145,11 +899,11 @@ hitch_trooper.instance_meta_ = {
 		end,
 		
 		currentEta_ = function(self)
-			local group, units = ht_utils.getLivingUnits(self.activeGroupName) 	
+			local group, units = helms.dynamic.getLivingUnits(self.activeGroupName) 	
 			if units[1] ~= nil and self.current_destination ~= nil then
 				local startPoint = units[1]:getPoint()	
 				if startPoint ~= nil then 
-					return ht_utils.getETAString(self.current_destination, startPoint, ht_utils.getUnitSpeed(units[1],4)*0.8)
+					return helms.ui.convert.getETAString(self.current_destination, startPoint, helms.mission.getUnitSpeed(units[1],4)*0.8)
 				end
 			end
 			return nil
@@ -1161,10 +915,10 @@ hitch_trooper.instance_meta_ = {
 		--]]
 		updateDetectedList_ = function(self,unit, nowString, triggered)
 			if nowString == nil then
-				nowString = ht_utils.getNowString()
+				nowString = helms.ui.convert.getNowString()
 			end
 			if unit == nil then
-				local group, units = ht_utils.getLivingUnits(self.activeGroupName)
+				local group, units = helms.dynamic.getLivingUnits(self.activeGroupName)
 				if units == nil or units[1] == nil then return end
 				unit = units[1]
 			end
@@ -1212,10 +966,11 @@ hitch_trooper.instance_meta_ = {
 --API--------------------------------------------------------------------------------------
 
 --spawn data overrrides obtaining data by group name
-hitch_trooper.new = function (groupName,spawnData, playersCanSpawn)
+hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 	
 	if spawnData == nil then
-		spawnData = mist.getGroupData(groupName)
+		spawnData = {groupData = helms.mission.getMEGroupDataByName(groupName),
+		keys = helms.mission.getKeysByName(groupName)}
 	end
 	
 	if playersCanSpawn == nil then
@@ -1227,8 +982,8 @@ hitch_trooper.new = function (groupName,spawnData, playersCanSpawn)
 		--countryId = country.id[string.upper(countryId)]
 	--end	
 	--hitch_trooper.log_i:info(countryId) --debug
-	--hitch_trooper.log_i:info(country.id) --debug
-	local coa = coalition.getCountryCoalition(spawnData.countryId)
+	--hitch_trooper.log_i.log(spawnData.keys.ctryId) --debug
+	local coa = coalition.getCountryCoalition(spawnData.keys.ctryId)
 	local group = Group.getByName(groupName)
 	local unit = nil
 	if group ~= nil then
@@ -1275,17 +1030,15 @@ end
 
 --Search for groups with name containing
 hitch_trooper.newIfNameContains = function(substring, playersCanSpawn)
-
-	for name,v in pairs(mist.DBs.groupsByName) do
-		if string.find(name,substring) ~= nil then					
-			hitch_trooper.new(name,nil, playersCanSpawn)
-		end
+	local names = helms.mission.getNamesContaining(substring)
+	for k,name in pairs(names) do				
+		hitch_trooper.new(name, playersCanSpawn)
 	end
 end
 
 --#######################################################################################################
 -- HITCH TROOPER(PART 2)
 
-mist.scheduleFunction(hitch_trooper.doPoll_,nil,timer.getTime()+hitch_trooper.poll_interval)
+helms.dynamic.scheduleFunction(hitch_trooper.doPoll_,nil,timer.getTime()+hitch_trooper.poll_interval)
 
 return hitch_trooper

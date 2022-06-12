@@ -1,6 +1,8 @@
 # Changelog
-
-## Latest
+## 1.6a
+* Replaced MIST with HeLMS
+* Added idle detection for asset pools based on fuel state
+## 1.5.7
 * Improved steersman logic
 ## 1.5.6a
 * Added evac for hitchtroopers without an evac point set

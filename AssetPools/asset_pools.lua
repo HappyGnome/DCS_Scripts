@@ -1,6 +1,6 @@
 --#######################################################################################################
 -- ASSET_POOLS (PART 1)
--- Run once at mission start after initializing MIST (Tested with Mist 4.4.90)
+-- Run once at mission start after initializing HeLMS
 -- 
 -- Adds functionality based on pools of groups, tracking availability
 -- And allowing availability-dependent respawing based on various triggers
@@ -12,12 +12,20 @@ if asset_pools then
 	return asset_pools
 end
 
+if not helms then return end
+if helms.version < 1 then 
+	helms.log_e.log("Invalid HeLMS version for Asset_Pools")
+end
 
 --NAMESPACES----------------------------------------------------------------------------------------------
 asset_pools={}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 asset_pools.poll_interval=60 --seconds, time between updates of group availability
+asset_pools.ai_bingo_fuel=0.2 --fraction of internal fuel for ending ai missions
+asset_pools.ai_despawn_exclusion_air = 157000 -- 85 nm
+asset_pools.ai_despawn_exclusion_ground = 60000 -- 60km
+asset_pools.ai_despawn_exclusion_sea = 200000 --200km
 ----------------------------------------------------------------------------------------------------------
 --TODO expose these options to mission makers
 
@@ -66,12 +74,12 @@ asset_pools.next_pool_id_=0 --id of next item to add
 --[[
 Loggers for this module
 --]]
-asset_pools.log_i=mist.Logger:new("asset_pools","info")
-asset_pools.log_e=mist.Logger:new("asset_pools","error")
+asset_pools.log_i=helms.logger.new("asset_pools","info")
+asset_pools.log_e=helms.logger.new("asset_pools","error")
 
---error handler for xpcalls. wraps asset_pools.log_e:error
+--error handler for xpcalls. wraps asset_pools.log_e.log
 asset_pools.catchError=function(err)
-	asset_pools.log_e:error(err)
+	asset_pools.log_e.log(err)
 end 
 
 
@@ -106,18 +114,20 @@ respawn named group and add it to poll associated to given pool
 
 @param groupName = name of group in ME to respawn (ignored if groupData set)
 @param groupData = nil if named group exists in ME, or override named group with dynamic group Data
-		This is a table that will be accepted by mist.dynAdd
+@return nil (no rescheduling)
 --]]
 asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 
 	local op = function()
-		local group 
+		local group
 		
-		if groupData then
-			groupName=groupData.groupName
-			mist.dynAdd(mist.utils.deepCopy(groupData)) -- MIST can sometimes change the data, so pass a copy just in case
-		else			
-			mist.respawnGroup(groupName,true) --respawn with original tasking
+		if groupData and groupData.data and groupData.keys then
+			groupName=groupData.data.name
+			--asset_pools.log_i.log("data:"..helms.util.obj2str(groupData))--debug
+			helms.dynamic.spawnGroup(helms.util.deep_copy(groupData.data),helms.util.deep_copy(groupData.keys))
+		else		
+			--asset_pools.log_i.log("name:"..groupName)--debug	
+			helms.dynamic.respawnMEGroupByName(groupName) --respawn with original tasking
 		end
 		group = Group.getByName(groupName)
 		
@@ -127,7 +137,7 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 			local freqCommand = asset_pools.initial_group_freq_commands[groupName]
 			
 			if freqCommand == nil then
-				local groupME_Data = mist.DBs.groupsByName[groupName]
+				local groupME_Data = helms.mission.getMEGroupDataByName(groupName)
 				
 				if groupME_Data ~= nil and groupME_Data.frequency ~= nil and 	groupME_Data.modulation ~= nil then
 					freqCommand = {
@@ -147,17 +157,17 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 			end
 		end
 	end
-	ap_utils.safeCall(op,{},asset_pools.catchError)
+	helms.util.safeCall(op,{},asset_pools.catchError)
 	asset_pools.addGroupToPoll_(pool,groupName)	
 end
 
 --[[
 Private: do poll of groups and pools
 --]]
-asset_pools.doPoll_=function()
-
-	local now=timer.getTime()
+asset_pools.doPoll_ = function()
 	
+	local now = timer.getTime()
+
 	--Update pools------------------------------------------------------
 	local tickPool--parameter for the lambda - pool to update
 	
@@ -217,16 +227,33 @@ asset_pools.doPoll_=function()
 				
 				--check whether group or unit have a controller with active task
 				
-				local controller=unit:getController()
-				
+				local controller=unit:getController()				
 				
 				--if controller then trigger.action.outText("DB2",5)end--DEBUG
 				--if groupController then trigger.action.outText("DB3",5)end--DEBUG
+
+				if unit:getFuel() < asset_pools.ai_bingo_fuel then
+					groupController:popTask()
+					controller:popTask()
+				else
 				
-				local unitHasTask = controller and controller:hasTask()
-				
-				
-				isActive = isActive or (unit:isActive() and (unitHasTask or groupHasTask))					
+					if pool.exclude_despawn_near then 
+						local d,_,u=helms.dynamic.getClosestLateralPlayer(groupName, pool.exclude_despawn_near)
+						if d and u then
+							local landType = landTypeUnderUnit(u);
+							isActive = isActive or u:inAir() and d<asset_pools.ai_despawn_exclusion_air 
+							isActive = isActive or (landType == land.SurfaceType.WATER
+												or landType == land.SurfaceType.SHALLOW_WATER) and 
+									d<asset_pools.ai_despawn_exclusion_water
+							isActive = isActive or d<asset_pools.ai_despawn_exclusion_ground
+						end
+					end
+
+					local unitHasTask = controller and controller:hasTask()
+					--asset_pools.log_i.log({groupName,unitHasTask,groupHasTask})--debug
+					isActive = isActive or unit:isActive() and (unitHasTask or groupHasTask)
+		
+				end
 			end
 			--trigger.action.outText("DB1",5)--DEBUG
 		end
@@ -252,8 +279,10 @@ asset_pools.doPoll_=function()
 		xpcall(pollGroup,asset_pools.catchError) --safely do work of polling the group
 	end
 
+	--asset_pools.log_i.log("ap_poll") --debug
+
 	--schedule next poll----------------------------------
-	mist.scheduleFunction(asset_pools.doPoll_,nil,now+asset_pools.poll_interval)
+	return now+asset_pools.poll_interval
 end
 
 --#######################################################################################################
@@ -272,308 +301,12 @@ ap_utils={}
 --[[
 Loggers for this module
 --]]
-ap_utils.log_i=mist.Logger:new("ap_utils","info")
-ap_utils.log_e=mist.Logger:new("ap_utils","error")
+ap_utils.log_i=helms.logger.new("ap_utils","info")
+ap_utils.log_e=helms.logger.new("ap_utils","error")
 
 
 --UTILS------------------------------------------------------------------------------------------------
---[[
-Convert coalition name to coalition.side
 
-return coalition.side, or nil if none recognised 
-name is not case sensitive, but otherwise should be "red", "blue" or "neutral" to name a particular faction
---]]
-ap_utils.stringToSide = function(name)
-	name=string.lower(name) --remove case sensitivity
-	if name == "red" then
-		return coalition.side.RED
-	elseif name == "blue" then
-		return coalition.side.BLUE
-	elseif name == "neutral" then
-		return coalition.side.NEUTRAL
-	end--else nil
-end
-
---[[
-Convert coalition to "Red", "Blue", "Neutral", or "None"
---]]
-ap_utils.sideToString = function(side)
-	if side == coalition.side.RED then
-		return "Red"
-	elseif side == coalition.side.BLUE then
-		return "Blue"
-	elseif side == coalition.side.NEUTRAL then
-		return "Neutral"
-	else
-		return "None"
-	end
-end
-
---[[
-Print message to the given coalition.side, or to all players if side==nil
---]]
-ap_utils.messageForCoalitionOrAll = function(side,message,delay)
-	if side then
-		trigger.action.outTextForCoalition(side,message,delay)
-	else
-		trigger.action.outText(message,5)
-	end
-end
-
---[[
-Print message to the given coalition.side, or to all players if side==nil
---]]
-ap_utils.messageForCoalitionOrAll = function(side,message,delay)
-	if side then
-		trigger.action.outTextForCoalition(side,message,delay)
-	else
-		trigger.action.outText(message,5)
-	end
-end
-
---[[
-Randomly remove N elements from a table and return removed elements (key,value)
---]]
-ap_utils.removeRandom=function(t,N)
-	local ret={}
-	local count=0
-	
-	for k in pairs(t) do
-		count=count+1
-	end
-	
-	N=math.min(N,count)
-	
-	local n=0
-	while(n<N) do
-		local toRemove=math.random(count-n)
-			
-		local i=0
-
-		for k,v in pairs(t) do
-			i=i+1
-			if i==toRemove then
-				t[k]=nil
-				ret[k]=v
-			end
-		end
-		n=n+1
-	end
-	
-	return ret
-end
-
---[[
-Given a set s with multiplicity (key = Any, value= multiplicity)
-Remove any for which pred(key)==true
-Return the number removed counting multiplicity
---]]
-ap_utils.eraseByPredicate=function(s,pred)
-	local ret=0
-	
-	
-	
-	for k,v in pairs(s) do
-		if pred(k) then
-			ret=ret+v
-			s[k]=nil
-		end
-	end
-	
-	return ret
-end
-
-
---[[
-Return = Boolean: Does named group have a living active unit in-play
---]]
-ap_utils.groupHasActiveUnit=function(groupName)
-	local group=Group.getByName(groupName)
-	
-	
-	if group then
-		local units = Group.getUnits(group)
-		if units then
-			local unit=units[1]
-			if unit then
-				return Unit.isActive(unit)
-			end
-		end				
-	end	
-	return false
-end
-
---[[
-	Get list of group names containing a substring
-	
-	substring - substring to search for
---]]
-ap_utils.getNamesContaining = function(substring)
-	local ret = {}
-	for name,v in pairs(mist.DBs.groupsByName) do
-		if string.find(name,substring) ~= nil then
-			table.insert(ret, name)
-		end
-	end
-	return ret
-end
-
---[[
-Make random groups
-
-param nameRoot = base group name e.g. "dread" generates "dread-1", "dread-2",...
-param count = number of groups to generate
-param unitDonors = array of group names specifying the unit combinations to use
-param taskDonors = array of group names specifying routes/tasks to use
-
-Return = unpacked array of groupData tables that can be passed to dynAdd to spawn a group
---]]
-ap_utils.generateGroups = function(nameRoot,count,unitDonors,taskDonors)
-
-	local groupNum =0 --index to go with name route to make group name
-	local ret={}
-	local logMessage="Generated groups: "
-	
-	while groupNum<count do
-		groupNum = groupNum + 1
-		
-		local newGroupData = mist.getGroupData(unitDonors[math.random(#unitDonors)])
-		
-		--get route and task data from random task donor
-		local taskDonorName=taskDonors[math.random(#taskDonors)]
-		local taskDonorData = mist.getGroupData(taskDonorName)
-		newGroupData.route  = mist.getGroupRoute(taskDonorName,true) --copying taskDonorData.route directly doesn't work...
-																	  -- mist... 
-		
-		newGroupData.groupName=nameRoot.."-"..groupNum
-		newGroupData.groupId=nil --mist generates a new id
-		
-		--null group position - get it from the route
-		newGroupData.x=nil --taskDonorData.x
-		newGroupData.y=nil --taskDonorData.y
-		
-		local unitInFront=taskDonorData.units[1] --unit in formation in front of the one being set. Initially the leader from the task donor
-		--lateral offsets between group units
-		--local xOff=100*math.sin(unitInFront.heading+math.rad(120))
-		--local yOff=100*math.cos(unitInFront.heading+math.rad(120))
-		
-		--generate unit names and null ids
-		--also copy initial locations and headings
-		for i,unit in pairs(newGroupData.units) do
-			unit.unitName=nameRoot.."-"..groupNum.."-"..(i+1)
-			unit.unitId=nil
-			
-			--null unit locations - force them to be set by start of route
-			unit.x=nil--taskDonorData.x
-			unit.y=nil--taskDonorData.y
-			unit.alt=nil--unitInFront.alt
-			unit.alt_type=nil--unitInFront.alt_type
-			unit.heading=nil--unitInFront.heading
-			--unitInFront=unit
-			
-			--debug
-			--ap_utils.log_i:info("unit data: "..unit.x..","..unit.y..","..unit.type)
-			
-		end
-		
-		newGroupData.lateActivation = true
-		
-		table.insert(ret,newGroupData)
-		
-		--[[local msgOK=" FAIL"
-		if mist.groupTableCheck(newGroupData) then
-			msgOK=" OK"
-		end
-		
-		--debug
-		p_utils.log_i:info("group data: "..newGroupData.category..","..newGroupData.country)
-		
-		logMessage=logMessage..newGroupData.groupName..msgOK..", "		--]]		
-		
-	end
-	
-	--ap_utils.log_i:info(logMessage)
-	
-	return unpack(ret)
-
-end
-
---[[
-Find the closest player to any living unit in named group
-ignores altitude - only lateral coordinates considered
-@param groupName - name of the group to check
-@param sides - table of coalition.side of players to check against
-@param options.unitFilter - (unit)-> boolean returns true if unit should be considered
-		(if this is nil then all units are considered)
-@param options.pickUnit - if true, only one unit in the group will be used for the calculation
-@param options.useGroupStart - if true, the group's starting waypoint will be added as an abstract unit position
-@return dist,playerUnit, closestUnit OR nil,nil,nil if no players found or group empty
---]]
-ap_utils.getClosestLateralPlayer = function(groupName,sides, options)
-
-	local playerUnits = {}
-	if options == nil then
-		options = {}
-	end
-	
-	for _,side in pairs(sides) do
-		for _,player in pairs (coalition.getPlayers(side)) do
-			table.insert(playerUnits,player)
-		end
-	end	
-	
-	local ret={nil,nil,nil} --default return	
-	
-	local group = Group.getByName(groupName)
-	local units={}
-	
-	if group ~= nil then 
-		units = group:getUnits() 
-	end
-	
-	
-	local positions={} -- {x,z},.... Indices correspond to indices in units
-	for i,unit in ipairs(units) do
-		local location=unit:getPoint()
-		
-		if not options.unitFilter or options.unitFilter(unit) then
-			positions[i]={location.x,location.z}
-			if options.pickUnit then
-				break
-			end
-		end
-	end
-	
-	if options.useGroupStart then
-		local points = mist.getGroupPoints(groupName)		
-		--ap_utils.log_i:info("group points: "..#points.." for "..groupName)--debug		
-		if points[1] then positions[#units + 1] = {points[1].x,points[1].y} end
-	end
-	
-	local preRet=nil --{best dist,player index,unit index}
-	for i,punit in pairs(playerUnits) do
-		local location=punit:getPoint()
-		
-		for j,pos in pairs(positions) do
-			local dist2 = (pos[1]-location.x)^2 + (pos[2]-location.z)^2
-			if preRet then
-				if dist2<preRet[1] then
-					preRet={dist2,i,j}
-				end
-			else --initial pairs
-				preRet={dist2,i,j}
-			end
-		end
-		
-	end
-	
-	if preRet then
-		ret = {math.sqrt(preRet[1]),playerUnits[preRet[2]],units[preRet[3]]}
-	end
-	
-	return unpack(ret)
-	
-end
 
 --[[
 	Create respawn-on-command asset pools for all groups whose name contains a certain substring.
@@ -594,71 +327,15 @@ end
 		-> units added with "neutral" will not be spawnable!
 --]]
 ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
-	for name,v in pairs(mist.DBs.groupsByName) do
-		if string.find(name,substring) ~= nil then
-			respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)	
-		end
+	local names = helms.mission.getNamesContaining(substring)
+	for _,name in pairs(names) do
+		respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)	
 	end
 end
 
---[[
-return (group, unit) for living unit in group of given name
---]]
-ap_utils.getLivingUnits = function (groupName)	
-	local group = Group.getByName(groupName)
-	local retUnits = {}
-	if group ~= nil and Group.isExist(group) then
-		local units = group:getUnits()
-		for i,unit in pairs(units) do
-			if unit:getLife()>1.0 then
-				table.insert(retUnits, unit)
-			end
-		end
-	end
-	return group,retUnits
-end
-
---[[
-return a float between 0 and 1 representing groups strength vs initial strength
---]]
-ap_utils.getNormalisedGroupHealth = function (groupName, initialSize)	
-	local group = Group.getByName(groupName)	
-	
-	if group ~= nil and Group.isExist(group) then
-	group:getSize()--TODO debug
-		if initialSize == nil then  initialSize = group:getSize() end
-		local accum = 0.0;
-		local units = group:getUnits()
-		for i,unit in pairs(units) do
-			accum = accum + (unit:getLife()/math.max(1.0,unit:getLife0()))
-		end
-		--constant_pressure_set.log_i:info("Calc:".. accum .." " .. initialSize .. " "..groupName )--TODO debug
-		return accum / math.max(1.0,initialSize)
-	end
-	return 0.0
-end
-
-
-ap_utils.safeCall = function(func,args,errorHandler)
-	local op = function()
-		func(unpack(args))
-	end
-	xpcall(op,errorHandler)
-end
-
-ap_utils.getGroupStartPoint2D = function(groupName)
-	local spawnData = mist.getGroupData(groupName)
-	if spawnData and spawnData.units and spawnData.units[1] then
-		return {x = spawnData.units[1].x,y=0,z = spawnData.units[1].y}
-	end
-end
 
 --#######################################################################################################
 -- RESPAWNABLE_ON_CALL
-
---REQUISITES----------------------------------------------------------------------------------------------
---local asset_pools=dofile('./Scripts/AssetPools/asset_pools.lua')
---local ap_utils=dofile('./Scripts/AssetPools/ap_utils.lua')
 
 
 --NAMESPACES----------------------------------------------------------------------------------------------
@@ -668,8 +345,8 @@ respawnable_on_call={}
 --[[
 Loggers for this module
 --]]
-respawnable_on_call.log_i=mist.Logger:new("respawnable_on_call","info")
-respawnable_on_call.log_e=mist.Logger:new("respawnable_on_call","error")
+respawnable_on_call.log_i=helms.logger.new("respawnable_on_call","info")
+respawnable_on_call.log_e=helms.logger.new("respawnable_on_call","error")
 
 --RESPAWNABLE_ON_CALL-----------------------------------------------------------------------------------------
 --[[
@@ -698,7 +375,7 @@ respawnable_on_call.instance_meta_={
 				= now + self.delayWhenDead
 				
 			--trigger.action.outText("Detected that asset "..groupName.." is dead",5)--DEBUG
-			--asset_pools.log_i:info(self.groupName.." was detected dead.")
+			--asset_pools.log_i.log(self.groupName.." was detected dead.")
 			
 			if self.groupDeathCallback then
 				self.groupDeathCallback(self.groupName, self.timesCalledIn)
@@ -714,7 +391,7 @@ respawnable_on_call.instance_meta_={
 				= now + self.delayWhenIdle
 				
 			--trigger.action.outText("Detected that asset "..groupName.." is idle",5)--DEBUG			
-			--asset_pools.log_i:info(groupName.." was detected idle.")
+			asset_pools.log_i.log(groupName.." was detected idle.")
 			
 			if self.groupIdleCallback then
 				self.groupIdleCallback(self.groupName, self.timesCalledIn)
@@ -783,23 +460,23 @@ respawnable_on_call.instance_meta_={
 			
 			if cRA==true or (cRA_isnum and cRA<now) then
 				self.canRequestAt=false --try to prevent dual requests, schedule spawn
-				mist.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName,nil},now+self.spawnDelay)
+				helms.dynamic.scheduleFunction(asset_pools.RespawnGroupForPoll,{self,self.groupName,nil,nil},now+self.spawnDelay)
 				
 				self.timesCalledIn = self.timesCalledIn+1 --increment spawn count
 				if self.groupCallInCallback then --post call-in callback
 					self.groupCallInCallback(self.groupName, self.timesCalledIn)
 				end
 				
-				ap_utils.messageForCoalitionOrAll(self.side,
+				helms.ui.messageForCoalitionOrAll(self.side,
 					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
 					
-				respawnable_on_call.log_i:info(self.groupName.." was called in.")
+				respawnable_on_call.log_i.log(self.groupName.." was called in.")
 			else
-				ap_utils.messageForCoalitionOrAll(self.side,
+				helms.ui.messageForCoalitionOrAll(self.side,
 					string.format("%s is not available or is already on-call",self.groupName),5)
 				if cRA_isnum then
 					local toWait= self.canRequestAt-now
-					ap_utils.messageForCoalitionOrAll(self.side,
+					helms.ui.messageForCoalitionOrAll(self.side,
 						string.format("%s will be available in %ds",self.groupName,toWait),5)
 				end
 			end
@@ -861,7 +538,7 @@ respawnable_on_call.commsMenus = {}
 Add comms submenu for red or blue (side == instance of coalition.side)
 --]]
 respawnable_on_call.ensureCoalitionSubmenu_=function(side)
-	local coa_string=ap_utils.sideToString(side)
+	local coa_string=helms.ui.convert.sideToString(side)
 	local menuNameRoot = coa_string.." Assets"
 	local level = 1
 	local menuName = menuNameRoot .. "_" .. level
@@ -934,7 +611,7 @@ end
 --]]
 respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
 	
-	local coa=ap_utils.stringToSide(coalitionName)
+	local coa=helms.ui.convert.stringToSide (coalitionName)
 	
 	local instance={}
 	
@@ -975,7 +652,7 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 		false -> not available to request
 		int -> time that requests can next be made (s elapsed in mission)
 	--]]
-	instance.canRequestAt = not ap_utils.groupHasActiveUnit(groupName)
+	instance.canRequestAt = not helms.dynamic.groupHasActiveUnit(groupName)
 		--initially true, unless group already exists on the map
 	
 	--[[
@@ -1004,7 +681,9 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 	
 	setmetatable(instance,respawnable_on_call.instance_meta_)	
 	
-	
+	instance.exclude_despawn_near = helms.util.excludeValues(coalition.side,{coa})
+	respawnable_on_call.log_i.log(instance.exclude_despawn_near) -- debug
+
 	--add pool and add group to poll list, with an association to this group
 	asset_pools.addPoolToPoll_(instance)
 	
@@ -1019,9 +698,6 @@ end--new
 --
 -- Asset pool functionality for keeping randomized steady presence of assets alive
 
---REQUISITES----------------------------------------------------------------------------------------------
---local asset_pools=dofile('./Scripts/AssetPools/asset_pools.lua')
---local ap_utils=dofile('./Scripts/AssetPools/ap_utils.lua')
 
 
 --NAMESPACES----------------------------------------------------------------------------------------------
@@ -1031,8 +707,8 @@ constant_pressure_set={}
 --[[
 Loggers for this module
 --]]
-constant_pressure_set.log_i=mist.Logger:new("constant_pressure_set","info")
-constant_pressure_set.log_e=mist.Logger:new("constant_pressure_set","error")
+constant_pressure_set.log_i=helms.logger.new("constant_pressure_set","info")
+constant_pressure_set.log_e=helms.logger.new("constant_pressure_set","error")
 
 --CONSTANT_PRESSURE_SET-----------------------------------------------------------------------------------------
 --[[
@@ -1073,11 +749,9 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			end
 			
 			if self.deathPredicate_ and self.deathPredicate_(groupName, initialSize) then
-				--constant_pressure_set.log_i:info(groupName .. " dead")--debug
-				--constant_pressure_set.log_i:info("Pct:"..ap_utils.getNormalisedGroupHealth(groupName, initialSize))
 				return self:groupDead(groupName,now)
 			end			
-			
+
 			local cooldownTime=now+self.cooldownOnIdle
 			self:putGroupOnCooldown_(groupName,cooldownTime)		
 			
@@ -1096,8 +770,9 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			--remove a number of groups from cooldown equal to number of 
 			--expired cooldown timers this tick
 			--remove expired timers from list
-			local toReactivate= ap_utils.removeRandom(self.groupListCooldown_, 
-				ap_utils.eraseByPredicate(self.timeListCooldown_,pred))
+			local toReactivate= helms.util.removeRandom(
+				self.groupListCooldown_, 
+				helms.util.eraseByPredicate(self.timeListCooldown_,pred))
 				
 			for k in pairs(toReactivate) do
 				self:takeGroupOffCooldown_(k)
@@ -1112,9 +787,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			end
 			
 			--pick random subset of ready groups to spawn
-			for g in pairs(
-				ap_utils.removeRandom(self.groupListReady_,-surplusSpawned)
-				) do
+			for g in pairs(helms.util.removeRandom(self.groupListReady_,-surplusSpawned)) do
 				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
 			end
 		
@@ -1152,7 +825,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 					=self.timeListCooldown_[cooldownTime]+1
 			else
 				self.timeListCooldown_[cooldownTime]=1
-				--constant_pressure_set.log_i:info(self.timeListCooldown_[cooldownTime]..", "..cooldownTime)--DEBUG
+				--constant_pressure_set.log_i.log(self.timeListCooldown_[cooldownTime]..", "..cooldownTime)--DEBUG
 			end	
 		end,
 		
@@ -1161,7 +834,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		
 			self.groupListReady_[groupName]=true
 			self.groupListCooldown_[groupName]=nil
-			constant_pressure_set.log_i:info(groupName.." cooled down")
+			constant_pressure_set.log_i.log(groupName.." cooled down")
 		end,
 		
 		-- Schedule spawn of group at random future time
@@ -1172,10 +845,11 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			
 			local delay= math.random(self.minSpawnDelay,self.maxSpawnDelay)
 			
-			mist.scheduleFunction(asset_pools.RespawnGroupForPoll,
-				{self,groupName,self.groupDataLookup[groupName]},now+delay)
+			helms.dynamic.scheduleFunction(asset_pools.RespawnGroupForPoll,
+				{self,groupName,self.groupDataLookup[groupName]},now+delay,true)
 				
-			constant_pressure_set.log_i:info(groupName.." called in with delay "..delay)
+			constant_pressure_set.log_i.log(groupName.." called in with delay "..delay)
+			--constant_pressure_set.log_i.log(helms.util.obj2str(self.groupDataLookup))--debug
 			
 		end,
 		
@@ -1198,7 +872,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		-- Short for setDeathPredicate with life percentage predicate
 		setDeathPctPredicate =function(self,percent) 
 			local pred = function(groupName, initialSize)
-				return ap_utils.getNormalisedGroupHealth(groupName,initialSize) < percent/100
+				return helms.dynamic.getNormalisedGroupHealth(groupName,initialSize) < percent/100
 			end
 			self:setDeathPredicate(pred)
 			return self
@@ -1281,8 +955,10 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	
 	--Assign methods
 	setmetatable(instance,constant_pressure_set.instance_meta_)
-	
-	
+
+	instance.exclude_despawn_near = coalition.side -- all players
+	constant_pressure_set.log_i.log(instance.exclude_despawn_near) -- debug
+
 	instance.groupDataLookup={} --lookup mapping groupName to group spawn data where available	
 	local allGroups={}--all group names
 	
@@ -1290,13 +966,14 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 		if type(v)=='string' then
 			table.insert(allGroups,v)
 		else --try to interpret as group data
-			table.insert(allGroups,v.groupName)
-			instance.groupDataLookup[v.groupName]=v
+			table.insert(allGroups,v.data.name)
+			instance.groupDataLookup[v.data.name]=v
+			--helms.log_i.log(v)--debug
 		end
 	end
 	
 	--select random groups to be initial spawns and ready retinforcements
-	local initForce=ap_utils.removeRandom(allGroups, reinforceStrength+targetActive)
+	local initForce=helms.util.removeRandom(allGroups, reinforceStrength+targetActive)
 	
 	for _,g in pairs(initForce) do
 		instance:addGroup_(g,true)
@@ -1322,17 +999,17 @@ unit_repairman={}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 unit_repairman.poll_interval = 67 --seconds, time between updates of group availability
-----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------doPoll_
 
 --[[
 Loggers for this module
 --]]
-unit_repairman.log_i = mist.Logger:new("unit_repairman","info")
-unit_repairman.log_e = mist.Logger:new("unit_repairman","error")
+unit_repairman.log_i = helms.logger.new("unit_repairman","info")
+unit_repairman.log_e = helms.logger.new("unit_repairman","error")
 
---error handler for xpcalls. wraps unit_repairman.log_e:error
+--error handler for xpcalls. wraps unit_repairman.log_e.log
 unit_repairman.catchError = function(err)
-	unit_repairman.log_e:error(err)
+	unit_repairman.log_e.log(err)
 end 
 
 --UNIT REPAIRMAN---------------------------------------------------------------------------------------
@@ -1347,13 +1024,13 @@ unit_repairman.tracked_groups_={}
 --POLL----------------------------------------------------------------------------------------------------
 
 unit_repairman.doPoll_=function()
-	local now=timer.getTime()	
 	local groupName = nil
 	local urData = nil
 	local repairedGroups = {}
+	local now = timer.getTime()
 	
 	local pollGroup = function()
-		local group,units = ap_utils.getLivingUnits(groupName) 
+		local group,units = helms.dynamic.getLivingUnits(groupName) 
 		local doRepair = false
 		
 		if group == nil or #units < group:getSize() then --compare to initial group size
@@ -1366,12 +1043,12 @@ unit_repairman.doPoll_=function()
 				end
 			end
 		end
-			
+		--unit_repairman.log_i.log("DoRepair:"..tostring(doRepair)) -- debug
 		if doRepair then
 			table.insert(repairedGroups, groupName)
 			--schedule next respawn----------------------------------
-			mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{urData.groupName,  urData.minDelaySeconds, urData.maxDelaySeconds,urData.options},
-				now + math.random(urData.minDelaySeconds,urData.maxDelaySeconds))
+			helms.dynamic.scheduleFunction(unit_repairman.doPeriodicRespawn_,{urData.groupName,  urData.minDelaySeconds, urData.maxDelaySeconds,urData.options},
+				now + math.random(urData.minDelaySeconds,urData.maxDelaySeconds),true)
 		end
 
 	end
@@ -1391,7 +1068,7 @@ unit_repairman.doPoll_=function()
 	end
 
 	--schedule next poll----------------------------------
-	mist.scheduleFunction(unit_repairman.doPoll_,nil,now + unit_repairman.poll_interval)
+	return now + unit_repairman.poll_interval
 end
 
 --[[
@@ -1410,18 +1087,18 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 	if options == nil then
 		options = {}
 	end
-			
+	local now = timer.getTime()
+
 	local function action()		
 		local group
-		local now=timer.getTime()
 		local newOptions = {}--options for subsequent respawn
 		
 		
 		if options.delaySpawnIfPlayerWithin then 
 			--check for players nearby
 			local gclpOptions={pickUnit=true, useGroupStart=true}
-			local startPoint = ap_utils.getGroupStartPoint2D(groupName)
-			local dist,_,_ = ap_utils.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
+			local startPoint = helms.mission.getGroupStartPoint2D(groupName)
+			local dist,_,_ = helms.dynamic.getClosestLateralPlayer(groupName,{coalition.side.RED,coalition.side.BLUE}, gclpOptions)
 			
 			if(dist ~= nil and dist < options.delaySpawnIfPlayerWithin) then --player too close
 				local delay = 600 --seconds
@@ -1429,9 +1106,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 					delay = options.retrySpawnDelay
 				end
 				
-				mist.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName,  minDelaySeconds, maxDelaySeconds,options}, now + delay) -- reschedule with the same options
-					
-				return
+				helms.dynamic.scheduleFunction(unit_repairman.doPeriodicRespawn_,{groupName,  minDelaySeconds, maxDelaySeconds,options}, now + delay, true) -- reschedule with the same options
 			end
 		end
 		
@@ -1448,7 +1123,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 			if now > options.spawnUntil then return end
 		end
 		
-		mist.respawnGroup(groupName,true) --respawn with original tasking
+		helms.dynamic.respawnMEGroupByName(groupName) --respawn with original tasking
 		
 		group = Group.getByName(groupName)
 		
@@ -1462,7 +1137,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 			options = newOptions}
 	end--action
 	
-	
+	--unit_repairman.log_i.log("Respawning") -- debug
 	xpcall(action,unit_repairman.catchError) -- safely call the respawn action
 end
 
@@ -1498,17 +1173,16 @@ end
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
 --]]
 unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options)
-	for name,v in pairs(mist.DBs.groupsByName) do
-		if string.find(name,substring) ~= nil then
-			unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)	
-		end
+	local names = helms.mission.getNamesContaining(substring)
+	for k, name in pairs(names) do
+		unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)
 	end
 end
 
-mist.scheduleFunction(unit_repairman.doPoll_,nil,timer.getTime() + unit_repairman.poll_interval)
+helms.dynamic.scheduleFunction(unit_repairman.doPoll_,nil,timer.getTime() + unit_repairman.poll_interval)
 
 --#######################################################################################################
 -- ASSET_POOLS (PART 2)
-mist.scheduleFunction(asset_pools.doPoll_,nil,timer.getTime()+asset_pools.poll_interval)
+helms.dynamic.scheduleFunction(asset_pools.doPoll_,nil,timer.getTime()+asset_pools.poll_interval)
 
 return asset_pools

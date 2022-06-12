@@ -1,4 +1,4 @@
-# Readme
+# HitchTroopers Readme
 
 Hitchtrooper provides some simple commands for respawnable ground units, aimed at making transporting troops more useful.
 
@@ -7,18 +7,14 @@ This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scrip
 
 ## General Usage
 
-### Prerequisites
-All scripts assume the use of the [mist helper library for DCS](https://github.com/mrSkortch/MissionScriptingTools/releases)
-
-Add the trigger `MISSION START -> DO SCRIPT FILE -> mist_*_*_*.lua`
+#### HeLMS
+Add the trigger `MISSION START -> DO SCRIPT FILE -> helms.lua`
 **Before** calls to any of these scripts
 \* `MISSION START` can be replaced by another event, as long as it will happen before using any of these scripts
 
-Currently tested with Mist version 4.4.90
-
 ### Initialization
 
-Before using any of the methods detailed below trigger `DO SCRIPT FILE -> hitch_trooper.lua` in your mission. The easiest time for this is immediately after initializsing MIST.
+Before using any of the methods detailed below trigger `DO SCRIPT FILE -> hitch_trooper.lua` in your mission. The easiest time for this is immediately after initializsing HeLMS.
 
 ## HitchTrooper
 
@@ -40,7 +36,7 @@ In a mission with a group called `Squad-1` set up the triggers:
 
 |Trigger|Action|Action Detail|
 |---|---|---|
-|MISSION START|DO SCRIPT FILE|mist_4_4_90.lua|
+|MISSION START|DO SCRIPT FILE|helms.lua|
 |MISSION START|DO SCRIPT FILE|hitch_trooper.lua|
 |MISSION START|DO SCRIPT|`hitch_trooper.new("Squad-1")`|
 
