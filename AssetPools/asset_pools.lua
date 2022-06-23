@@ -333,6 +333,16 @@ ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, 
 	end
 end
 
+-- Wrapper for new Helms method, for backwards compatibility
+ap_utils.getNamesContaining = function(substring)
+	return helms.mission.getNamesContaining(substring)
+end
+
+-- Wrapper for new Helms method, for backwards compatibility
+ap_utils.generateGroups = function(nameRoot,count,unitDonors,taskDonors)
+	return helms.mission.generateGroups(nameRoot,count,unitDonors,taskDonors)
+end
+
 
 --#######################################################################################################
 -- RESPAWNABLE_ON_CALL

@@ -1,4 +1,6 @@
 # Changelog
+## Latest
+* Added ap_utils wrappers for helms methods for backwards compatibility
 ## 1.6a
 * Replaced MIST with HeLMS
 * Added idle detection for asset pools based on fuel state

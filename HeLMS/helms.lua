@@ -691,7 +691,7 @@ helms.dynamic.getBaseList = function(farpSide,friendlyOnly, shipsAsFarps)
 			end
 		end
 	end
-	helms.log_i.log(bases) --debug
+	--helms.log_i.log(bases) --debug
 	return bases
 end
 
