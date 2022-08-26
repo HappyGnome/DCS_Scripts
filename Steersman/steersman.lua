@@ -159,7 +159,7 @@ steersman.instance_meta_ = {
 		--point to is vec2
 		--speed is in mps
 		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks,dpTasks)		
-			local group = Group.getByName(self.groupName_) 
+			local group = helms.dynamic.getGroupByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
 				if unit ~= nil then
@@ -216,7 +216,7 @@ steersman.instance_meta_ = {
 		--point to is vec2
 		--speed is in mps
 		GoOnPath_ = function(self, path, speed)		
-			local group = Group.getByName(self.groupName_) 
+			local group = helms.dynamic.getGroupByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
 				if unit ~= nil then
@@ -382,7 +382,7 @@ steersman.instance_meta_ = {
 		
 		GetUnitPoint_ = function(self)
 					
-			local group = Group.getByName(self.groupName_) 
+			local group = helms.dynamic.getGroupByName(self.groupName_) 
 			
 			if group == nil then return nil end
 			local unit = group:getUnits()[1]		
@@ -448,7 +448,7 @@ steersman.instance_meta_ = {
 steersman.new = function (groupName, zoneName)
 
 	local zone = trigger.misc.getZone(zoneName)
-	local group = Group.getByName(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
 	
 	if zone == nil or group == nil then return nil end
 	

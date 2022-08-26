@@ -45,11 +45,12 @@ In a mission with a group called `Squad-1` set up the triggers:
 At any point, usually mission start, any units can be made into hitchtroopers by looking for a substring in the group name as follows:
 `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>)'
 
-Usage: `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>, <playersCanSpawn>)`
+Usage: `DO SCRIPT ->hitch_trooper.newIfNameContains(<substring>, <playersCanSpawn>, <replaceSubstring>)`
 
 Where
 * `<substring>` Substring to search for in group name in ME
 * `<playersCanSpawn>` (optional, default **true**) See above.
+* `<replaceSubstring>` will replace the `<substring>` in the group name displayed in the mission. Default is `-`.
 **Example:**  `hitch_trooper.newIfNameContains("%-hitch%-")` If mission contains *-hitch-1*, and *-hitch-2*, these units willbecome independent hitchtrooper units.
 
 ### Usage

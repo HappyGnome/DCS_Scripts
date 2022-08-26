@@ -507,7 +507,7 @@ hitch_trooper.instance_meta_ = {
 					trigger.action.outTextForCoalition(self.side,string.format("%s: standing down. See ya!",self.digraph),5)
 					helms.dynamic.scheduleFunction(self.disbandGroup_,{self}, timer.getTime() + 300,true)
 					self:removeComms_()
-					helms.dynamic.scheduleFunction(hitch_trooper.new,{self.groupName, self.playersCanSpawn, self.spawnData}, timer.getTime() + 300, true)
+					helms.dynamic.scheduleFunction(hitch_trooper.new,{self.groupName, self.playersCanSpawn, self.spawnData,self.gpNameRoot}, timer.getTime() + 300, true)
 				end
 			end
 		end,
@@ -521,7 +521,7 @@ hitch_trooper.instance_meta_ = {
 				self.taskMessage = ""
 				
 				--delete group if it exists
-				local group = Group.getByName(self.groupName) 
+				local group = helms.dynamic.getGroupByName(self.groupName) 
 				if group ~= nil and Group.isExist(group) then
 					Group.destroy(group)
 				end
@@ -542,7 +542,7 @@ hitch_trooper.instance_meta_ = {
 		end,
 		
 		disbandGroup_ = function(self)
-			local group = Group.getByName(self.activeGroupName) 
+			local group = helms.dynamic.getGroupByName(self.activeGroupName) 
 			if group ~= nil and Group.isExist(group) then
 				Group.destroy(group)
 				self.minRespawnTime = timer.getTime() + hitch_trooper.respawn_delay
@@ -966,7 +966,7 @@ hitch_trooper.instance_meta_ = {
 --API--------------------------------------------------------------------------------------
 
 --spawn data overrrides obtaining data by group name
-hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
+hitch_trooper.new = function (groupName, playersCanSpawn, spawnData, displayGpName)
 	
 	if spawnData == nil then
 		spawnData = {groupData = helms.mission.getMEGroupDataByName(groupName),
@@ -976,6 +976,8 @@ hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 	if playersCanSpawn == nil then
 		playersCanSpawn = true
 	end
+
+	if displayGpName == nil then displayGpName = groupName end
 	
 	--local countryId = spawnData.country
 	--if type(countryId) == "string" then
@@ -984,7 +986,7 @@ hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 	--hitch_trooper.log_i:info(countryId) --debug
 	--hitch_trooper.log_i.log(spawnData.keys.ctryId) --debug
 	local coa = coalition.getCountryCoalition(spawnData.keys.ctryId)
-	local group = Group.getByName(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
 	local unit = nil
 	if group ~= nil then
 		unit = group:getUnits()[1]
@@ -992,6 +994,7 @@ hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 	
 	local instance = {
 		groupName = groupName,
+		gpNameRoot = displayGpName,
 		taskMessage = "",
 		minRespawnTime = 0,
 		side = coa,
@@ -1009,7 +1012,7 @@ hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 		reconAlarmState = false, -- set true to alternate alarm state
 		triggeredDetectCooldown = nil
 	}
-	instance.activeGroupName = string.format("%s (%s)",instance.groupName,instance.digraph)
+	instance.activeGroupName = string.format("%s (%s)",displayGpName,instance.digraph)
 	
 	setmetatable(instance,hitch_trooper.instance_meta_)
 	
@@ -1029,10 +1032,11 @@ hitch_trooper.new = function (groupName, playersCanSpawn, spawnData)
 end
 
 --Search for groups with name containing
-hitch_trooper.newIfNameContains = function(substring, playersCanSpawn)
+hitch_trooper.newIfNameContains = function(substring, playersCanSpawn, replaceSubstring)
 	local names = helms.mission.getNamesContaining(substring)
-	for k,name in pairs(names) do				
-		hitch_trooper.new(name, playersCanSpawn)
+	if replaceSubstring == nil then replaceSubstring = "-" end
+	for k,name in pairs(names) do			
+		hitch_trooper.new(name, playersCanSpawn,nil,string.gsub(name,substring,replaceSubstring,1))
 	end
 end
 

@@ -339,8 +339,8 @@ helms.mission.generateGroups = function(nameRoot,count,unitDonors,taskDonors)
 			local unitInFront = taskDonorData.units[1]
 			newGroupData.route = taskDonorData.route
 			
-			newGroupData.groupName=nameRoot.."-"..groupNum
-			newGroupData.groupId=nil 
+			newGroupData.name = nameRoot.."-"..groupNum
+			newGroupData.groupId = nil 
 			
 			--null group position - get it from the route
 			newGroupData.x=taskDonorData.x
@@ -461,19 +461,75 @@ end
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking
-helms.dynamic = {}
+helms.dynamic = {
+	groupNameMap = {}, -- key = ME group name/ group name in spawn data, value = Name to use to spawn/respawn group
+	groupNameMapReverse = {} --reverse lookup for groupNameMap
+}
+
+helms.dynamic.getGroupByName = function(name)
+	return Group.getByName(helms.dynamic.getGroupAlias(name))	
+end
+
+helms.dynamic.createGroupAlias = function(meGroupName, aliasRoot)
+	local index = 0
+	while true do
+		local name = aliasRoot
+		if index > 0 then name = name .. "-" .. index end
+		if helms.mission._GroupLookup[name] == nil and helms.dynamic.groupNameMapReverse[name] == nil and Group.getByName(name) == nil then
+			helms.dynamic.groupNameMap[meGroupName] = name
+			helms.dynamic.groupNameMapReverse[name] = meGroupName
+			break
+		end
+		index = index + 1
+	end
+end
+
+helms.dynamic.getGroupAlias = function(meGroupName)
+	local name = helms.dynamic.groupNameMap[meGroupName]
+	if name == nil then
+		return meGroupName
+	end
+	return name
+end
+
+helms.dynamic.normalizeUnitNames = function(gpData)
+	if not gpData or not gpData.units or not gpData.name then return end
+	local gpName = gpData.name
+	local index = 1
+	for _,u in ipairs(gpData.units) do
+		
+		while true do
+			local name = gpName .. "-" .. index
+			index = index + 1
+			local unit = Unit.getByName(name)
+			if unit == nil or unit:getGroup():getName() == gpName then
+				u.name = name
+				break
+			end			
+		end
+	end
+end
 
 helms.dynamic.respawnMEGroupByName = function(name, activate)
 	local gpData = helms.mission.getMEGroupDataByName(name)
 	if not gpData then return end
-	
+
 	local keys = helms.mission._GroupLookup[name]
 	if not keys then return end
 	if activate == nil or activate == true then
 		gpData.lateActivation = false
 	end
-	coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
 
+	local alias = helms.dynamic.groupNameMap[name]
+	if alias ~= nil then
+		local existingGp = Group.getByName(name)
+		if existingGp ~= nil then
+			existingGp:destroy()
+		end
+		gpData.name = alias
+	end
+	helms.dynamic.normalizeUnitNames(gpData)
+	coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
 end
 
 -- groupData = ME format as returned by getMEGroupDataByName
@@ -485,6 +541,16 @@ helms.dynamic.spawnGroup = function(groupData, keys, activate)
 	if activate == nil or activate == true then
 		groupData.lateActivation = false
 	end
+
+	local alias = helms.dynamic.groupNameMap[groupData.name]
+	if alias ~= nil then
+		local existingGp = Group.getByName(groupData.name)
+		if existingGp ~= nil then
+			existingGp:destroy()
+		end
+		groupData.name = alias
+	end
+	helms.dynamic.normalizeUnitNames(groupData)
 	coalition.addGroup(keys.ctryId, keys.catEnum, groupData)
 end
 
@@ -492,7 +558,7 @@ end
 Return = Boolean: Does named group have a living active unit in-play
 --]]
 helms.dynamic.groupHasActiveUnit=function(groupName)
-	local group=Group.getByName(groupName)	
+	local group=helms.dynamic.getGroupByName(groupName)	
 	
 	if group then
 		local units = Group.getUnits(group)
@@ -537,7 +603,7 @@ helms.dynamic.getClosestLateralPlayer = function(groupName,sides, options)
 	
 	local ret={nil,nil,nil} --default return	
 	
-	local group = Group.getByName(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
 	local units={}
 	
 	if group ~= nil then 
@@ -594,7 +660,7 @@ end
 return (group, unit) for living unit in group of given name
 --]]
 helms.dynamic.getLivingUnits = function (groupName)	
-	local group = Group.getByName(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
 	local retUnits = {}
 	if group ~= nil and Group.isExist(group) then
 		local units = group:getUnits()
@@ -612,7 +678,7 @@ end
 return a float between 0 and 1 representing groups strength vs initial strength
 --]]
 helms.dynamic.getNormalisedGroupHealth = function (groupName, initialSize)	
-	local group = Group.getByName(groupName)	
+	local group = helms.dynamic.getGroupByName(groupName)
 	
 	if group ~= nil and Group.isExist(group) then
 	group:getSize()

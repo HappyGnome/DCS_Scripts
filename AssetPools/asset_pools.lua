@@ -129,7 +129,7 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 			--asset_pools.log_i.log("name:"..groupName)--debug	
 			helms.dynamic.respawnMEGroupByName(groupName) --respawn with original tasking
 		end
-		group = Group.getByName(groupName)
+		group = helms.dynamic.getGroupByName(groupName)
 		
 		if group then
 			trigger.action.activateGroup(group) --ensure group is active
@@ -205,7 +205,7 @@ asset_pools.doPoll_ = function()
 		-- vv                                                      vv
 		
 		local unit = nil
-		local group = Group.getByName(groupName)
+		local group = helms.dynamic.getGroupByName(groupName)
 		local units={}
 		local groupController=nil
 		
@@ -325,11 +325,15 @@ ap_utils.log_e=helms.logger.new("ap_utils","error")
 		-> coalition name that can spawn group and receive updates about them
 		-> Note that neutral players don't seem to have a dedicated comms menu 
 		-> units added with "neutral" will not be spawnable!
+	
+	replaceSubstring = string to replace substring in generated groups in the mission. Default to "-".
 --]]
-ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)
+ap_utils.makeRocIfNameContains = function(substring, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName, replaceSubstring)
 	local names = helms.mission.getNamesContaining(substring)
+	if replaceSubstring == nil then replaceSubstring = "-" end
 	for _,name in pairs(names) do
-		respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)	
+		helms.dynamic.createGroupAlias(name,string.gsub(name,substring,replaceSubstring,1))
+		respawnable_on_call.new(name, spawnDelay, delayWhenIdle, delayWhenDead, coalitionName)		
 	end
 end
 
@@ -467,6 +471,7 @@ respawnable_on_call.instance_meta_={
 			local now=timer.getTime()
 			local cRA=self.canRequestAt
 			local cRA_isnum = type(cRA)=="number"
+			local groupAlias = helms.dynamic.getGroupAlias(self.groupName)
 			
 			if cRA==true or (cRA_isnum and cRA<now) then
 				self.canRequestAt=false --try to prevent dual requests, schedule spawn
@@ -478,16 +483,16 @@ respawnable_on_call.instance_meta_={
 				end
 				
 				helms.ui.messageForCoalitionOrAll(self.side,
-					string.format("%s will be on-call in %ds",self.groupName,self.spawnDelay),5)
+					string.format("%s will be on-call in %ds",groupAlias,self.spawnDelay),5)
 					
 				respawnable_on_call.log_i.log(self.groupName.." was called in.")
 			else
 				helms.ui.messageForCoalitionOrAll(self.side,
-					string.format("%s is not available or is already on-call",self.groupName),5)
+					string.format("%s is not available or is already on-call",groupAlias),5)
 				if cRA_isnum then
 					local toWait= self.canRequestAt-now
 					helms.ui.messageForCoalitionOrAll(self.side,
-						string.format("%s will be available in %ds",self.groupName,toWait),5)
+						string.format("%s will be available in %ds",groupAlias,toWait),5)
 				end
 			end
 		end,
@@ -496,17 +501,18 @@ respawnable_on_call.instance_meta_={
 		Set up comms menus needed to spawn this group
 		--]]
 		createComms_=function(self)
+			local groupAlias = helms.dynamic.getGroupAlias(self.groupName)
 			--add menu options
 			if self.side then --coalition specific addition	
 				self.subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
 				
-				self.commsPath=missionCommands.addCommandForCoalition(self.side,self.groupName,
+				self.commsPath=missionCommands.addCommandForCoalition(self.side,groupAlias,
 				respawnable_on_call.commsMenus[self.subMenuName][2],
 					self.handleSpawnRequest_,self)
 			else --add for all	
 				self.subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
 				
-				self.commsPath=missionCommands.addCommand(self.groupName,
+				self.commsPath=missionCommands.addCommand(groupAlias,
 				respawnable_on_call.commsMenus[self.subMenuName][2],
 					self.handleSpawnRequest_,self)
 			end
@@ -692,7 +698,6 @@ respawnable_on_call.new=function(groupName, spawnDelay, delayWhenIdle, delayWhen
 	setmetatable(instance,respawnable_on_call.instance_meta_)	
 	
 	instance.exclude_despawn_near = helms.util.excludeValues(coalition.side,{coa})
-	respawnable_on_call.log_i.log(instance.exclude_despawn_near) -- debug
 
 	--add pool and add group to poll list, with an association to this group
 	asset_pools.addPoolToPoll_(instance)
@@ -967,7 +972,7 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	setmetatable(instance,constant_pressure_set.instance_meta_)
 
 	instance.exclude_despawn_near = coalition.side -- all players
-	constant_pressure_set.log_i.log(instance.exclude_despawn_near) -- debug
+	--constant_pressure_set.log_i.log(instance.exclude_despawn_near) -- debug
 
 	instance.groupDataLookup={} --lookup mapping groupName to group spawn data where available	
 	local allGroups={}--all group names
@@ -1135,7 +1140,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 		
 		helms.dynamic.respawnMEGroupByName(groupName) --respawn with original tasking
 		
-		group = Group.getByName(groupName)
+		group = helms.dynamic.getGroupByName(groupName)
 		
 		if group then
 			trigger.action.activateGroup(group) --ensure group is active
@@ -1181,11 +1186,14 @@ end
 @param options.spawnUntil = latest value of timer.getTime() (mission elapsed time) that spawns will occur. Leave nil for no-limit
 @param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
+@param replaceSubstring = string to replace substring in generated groups in the mission. Default to "-".
 --]]
-unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options)
+unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options, replaceSubstring)
 	local names = helms.mission.getNamesContaining(substring)
+	if replaceSubstring == nil then replaceSubstring = "-" end
 	for k, name in pairs(names) do
 		unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)
+		helms.dynamic.createGroupAlias(name,string.gsub(name,substring,replaceSubstring,1))
 	end
 end
 

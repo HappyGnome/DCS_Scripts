@@ -194,7 +194,7 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 
 `unit_repairman.registerRepairmanIfNameContains` Has the effect of calling `unit_repairman.register` on each group whose name contains a certain string.
 
-Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>)`
+Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>, <replaceSubstring>)`
 
 Where
 * `<substring>` Substring to search for in group name in ME
@@ -204,6 +204,8 @@ Where
 * `<maxDelaySeconds>` is the maximum delay for subsequent respawn
 
 * `<options>` is a table containing further options
+
+* `<replaceSubstring>` will replace the `<substring>` in the group name displayed in the mission. Default is `-`.
 
 **Possible options:**
 
@@ -221,7 +223,7 @@ Where
 	Add comms menu commands to trigger them.
 
 Usage:
-`ap_utils.makeRocIfNameContains (<substring>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>)`
+`ap_utils.makeRocIfNameContains (<substring>, <spawnDelay>, <delayWhenIdle>, <delayWhenDead>, <coalitionName>, <replaceSubstring>)`
 
 Where:
 * `<spawnDelay>` (s) time between request and activation/respawn
@@ -233,6 +235,8 @@ Where:
 * `<coalitionName>` "red", "blue","neutral" or "all" (anything else counts as "all")
 		is the coalition name that can spawn group and receive updates about them
 		Note: neutral players don't seem to have a dedicated comms menu, so units added with "neutral" will not be spawnable!
+
+* `<replaceSubstring>` will replace the `<substring>` in the group name displayed in the mission. Default is `-`.
 		
 **Example:**		
 `ap_utils.makeRocIfNameContains("%-broc%-" , 60, 180, 600, "Blue")` Makes any group whose name contains "-broc-" respawnable for Blue. (Note that "-" needs to be escaped in lua for substring lookup.)

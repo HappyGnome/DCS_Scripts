@@ -1,5 +1,11 @@
 # Changelog
 ## Latest
+* Added group aliasing and unit name normalisation in HeLMS
+* Added auto-stripping of magic strings in group names. Affects names of groups created with:
+    * `unit_repairman.registerRepairmanIfNameContains`
+    * `ap_utils.makeRocIfNameContains`
+    * `hitch_trooper.newIfNameContains`
+* Fixed bug with generated group names in HeLMS
 * Added ap_utils wrappers for helms methods for backwards compatibility
 ## 1.6a
 * Replaced MIST with HeLMS
