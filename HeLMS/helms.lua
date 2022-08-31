@@ -442,6 +442,14 @@ helms.mission.getMEGroupDataByName = function(name)
 	return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
 end
 
+helms.mission.getMEGroupSize = function(name)
+	local keys = helms.mission._GroupLookup[name]
+	if not keys then return nil end
+	local gp = env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp]
+	if gp == nil then return 0 end	
+	return #gp.units
+end
+
 helms.mission.getMEGroupRouteByName = function(name)
 	local gpData = helms.mission.getMEGroupDataByName(name)
 	if not gpData then return nil end
@@ -467,7 +475,9 @@ helms.dynamic = {
 }
 
 helms.dynamic.getGroupByName = function(name)
-	return Group.getByName(helms.dynamic.getGroupAlias(name))	
+	local group = Group.getByName(name)	
+	if group ~= nil then return group end
+	return Group.getByName(helms.dynamic.getGroupAlias(name))
 end
 
 helms.dynamic.createGroupAlias = function(meGroupName, aliasRoot)
@@ -681,14 +691,12 @@ helms.dynamic.getNormalisedGroupHealth = function (groupName, initialSize)
 	local group = helms.dynamic.getGroupByName(groupName)
 	
 	if group ~= nil and Group.isExist(group) then
-	group:getSize()
 		if initialSize == nil then  initialSize = group:getSize() end
 		local accum = 0.0;
 		local units = group:getUnits()
 		for i,unit in pairs(units) do
 			accum = accum + (unit:getLife()/math.max(1.0,unit:getLife0()))
 		end
-		--constant_pressure_set.log_i:info("Calc:".. accum .." " .. initialSize .. " "..groupName )--TODO debug
 		return accum / math.max(1.0,initialSize)
 	end
 	return 0.0
@@ -779,7 +787,7 @@ helms.dynamic._scheduleFunctionWrapper = function(pack,t)
 		end
 		
 		if not pack.once and ret and type(ret) == 'number' then 
-			--helms.log_e.log({"Reschedule ",ret})
+			--helms.log_e.log({"Reschedule ",ret})--debug
 			return ret
 		end
 		return nil
