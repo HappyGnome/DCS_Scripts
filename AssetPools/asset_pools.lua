@@ -1055,7 +1055,7 @@ unit_repairman.doPoll_=function()
 		end
 		urData.lastHealth = health
 
-		if health < 1.0 and urData.lastDamagedAt ~= nil and urData.lastDamagedAt + (1.0 - health) * urData.options.secPerUnitDamage * urData.initialStrength + urData.options.baseDelay < now then
+		if health < 1.0 and urData.lastDamagedAt ~= nil and urData.lastDamagedAt + (1.0 - health) * urData.options.perDamageRepairSeconds * urData.initialStrength + urData.options.baseRepairSeconds < now then
 			doRepair = true
 		end
 
@@ -1097,8 +1097,8 @@ respawn named group and schedule a further respawn after random delay
 @param options.spawnUntil = latest value of timer.getTime() that spawns will occur. Leave nil for no-limit
 @param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
-@param options.secPerUnitDamage = (s) respawn delay per unit destroyed (or equivalent damage)
-@param options.baseDelay = (s) minimum delay to schedule respawn after new damage occurs
+@param options.perDamageRepairSeconds = (s) respawn delay per unit destroyed (or equivalent damage)
+@param options.baseRepairSeconds = (s) minimum delay to schedule respawn after new damage occurs
 --]]
 unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDelaySeconds, options)
 	
@@ -1109,7 +1109,7 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 
 	local function action()		
 		local group
-		local newOptions = {secPerUnitDamage = 180, baseDelay = 60}--options for subsequent respawn
+		local newOptions = {perDamageRepairSeconds = 180, baseRepairSeconds = 60}--options for subsequent respawn
 		
 		
 		if options.delaySpawnIfPlayerWithin then 
@@ -1175,8 +1175,8 @@ register group for periodic respawns random delay
 @param options.spawnUntil = latest value of timer.getTime() (mission elapsed time) that spawns will occur. Leave nil for no-limit
 @param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
-@param options.secPerUnitDamage = (s) respawn delay per unit destroyed (or equivalent damage)
-@param options.baseDelay = (s) minimum delay to schedule respawn after new damage occurs
+@param options.perDamageRepairSeconds = (s) respawn delay per unit destroyed (or equivalent damage accross the group)
+@param options.baseRepairSeconds = (s) minimum delay to schedule respawn after new damage occurs
 --]]
 unit_repairman.register = function(groupName, minDelaySeconds, maxDelaySeconds, options)
 	local group = helms.dynamic.getGroupByName(groupName)
@@ -1187,8 +1187,8 @@ unit_repairman.register = function(groupName, minDelaySeconds, maxDelaySeconds, 
 	end		
 	
 	
-	if options.secPerUnitDamage == nil then options.secPerUnitDamage = 180 end
-	if options.baseDelay == nil then options.baseDelay = 60 end
+	if options.perDamageRepairSeconds == nil then options.perDamageRepairSeconds = 3600 end
+	if options.baseRepairSeconds == nil then options.baseRepairSeconds = 600 end
 	
 	unit_repairman.tracked_groups_[groupName] = {groupName = groupName,
 	minDelaySeconds = minDelaySeconds,
@@ -1202,14 +1202,14 @@ end
 	Register a unit_repairman for each group whose name contains a certain substring.
 	
 @param substring = if a substring of a groupname, that group will get a repair scheduled
-@param minDelaySeconds = minimum delay for subsequent respawn
-@param maxDelaySeconds = maximum delay for subsequent respawn
+@param minDelaySeconds = minimum random delay to subsequent respawn
+@param maxDelaySeconds = maximum random delay to subsequent respawn
 @param options.remainingSpawns = when this reaches 0 the spawns will stop. Leave nil for no-limit
 @param options.spawnUntil = latest value of timer.getTime() (mission elapsed time) that spawns will occur. Leave nil for no-limit
 @param options.delaySpawnIfPlayerWithin = lateral distance from the group within which red or blue players block spawn
 @param options.retrySpawnDelay = (s) time after which to retry spawn if it's blocked (e.g. by players nearby). Default is 600 (10 minutes.)
-@param options.secPerUnitDamage = (s) respawn delay per unit damage Default is 3 minutes
-@param options.baseDelay = (s) minimum delay to schedule respawn after new damage occurs default is 1 minute
+@param options.perDamageRepairSeconds = (s) respawn delay per unit destroyed, or equivalent damage split between units. Default is 60 minutes
+@param options.baseRepairSeconds = (s) minimum delay to schedule respawn after new damage occurs default is 10 minutes
 @param replaceSubstring = string to replace substring in generated groups in the mission. Default to "-".
 --]]
 unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options, replaceSubstring)
