@@ -51,14 +51,29 @@ where `myCVN=steersman.new(...)`.
 |`setDeckAngleCCWDeg`|`angle` - `degrees`||Sets angle of landing deck measured counter clockwise. Default is 10|`myCVN:setDeckAngleCCWDeg(10)`|
 |`setMinCruiseSpeedKts`|`speed` - `kts`||Sets minimum forward speed of the boat while in ops mode. Default is ~14|`myCVN:setMinCruiseSpeedKts(8)`|
 
-
-
 **Note** These functions return the calling instance, so they can be chained. E.g. `steersman.new(...):setMinCruiseSpeedKts(13):setDesiredHeadwindKts(25)`	
+
+#### Configure sailing direction in light winds
+
+To set the default upwind sailing direction for a named zone when winds are low add a trigger: `DO SCRIPT -> steersman.setDefaultUpwindHeading(<zoneName>,<upwindSailingDir>)` 
+
+Where
+* `<zoneName>` is the name of the zone to set the default direction to.
+* `<upwindSailingDir>` true heading to sail during flight ops in low wind (reversed for ships with landing decks set CW from the bow).
+
+
+#### Selected module params
+|Parameter|Type|Desc|
+|---|---|---|
+|`steersman.multi_group_offset`|`number`|`(meters) offset of centre between groups using the same zone`|
 
 ### Usage
 * Once created as above, the carrier's route will periodically update. 
 * If there are friendly players nearby, or on an inbound course with an ETA to within ~50nm of the carrier less than a few minutes, the carrier will enter or maintain ops mode
 * When entering ops mode the carrier will start a turn to achieve the desired wind over the deck as accurately as possible. 
 * Out of ops mode, the carrier will sometimes zig-zag downwind to make space to run upwind again. (Zig-zagging helps to reduce the time to turn back upwind).
-* The carrier will not set waypoints outside of its allocated zone, so it will stop or reposition when reaching the edge of the zone.
+* The carrier will not set waypoints outside of its allocated zone, so it will stop or reposition when reaching the edge of the zone (single CV per zone only)
+* If multiple carriers are assigned to the same zone:
+    * they will sail approximately parallel upwind-downwind legs, with a set spacing (see `multi_group_offset`). 
+    * Groups with an offset will leave the original zone, so ensure that the zone is far enough from land in all directions if using this feature.
 * Any tasks given to the steersman group in its initial waypoint in the ME will be repeated whenever ops mode commences.

@@ -171,7 +171,7 @@ hitch_trooper.log_e=helms.logger.new("hitch_trooper","error")
 
 --error handler for xpcalls. wraps hitch_trooper.log_e:error
 hitch_trooper.catchError=function(err)
-	hitch_trooper.log_e:error(err)
+	hitch_trooper.log_e.log(err)
 end 
 
 --POLL----------------------------------------------------------------------------------------------------

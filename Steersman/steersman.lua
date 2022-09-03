@@ -24,6 +24,7 @@ steersman.ops_radius_inner = 65000 -- m switch to flight ops mode if player is w
 steersman.teardrop_dist = 1800 -- (m) distance behind ship to put turning point for expedited turnaround
 steersman.deck_height = 20 -- m height at which to measure wind
 steersman.enable_messages = false
+steersman.multi_group_offset = 10000 --m offset of centre between groups using the same zone
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -31,6 +32,8 @@ key = group name in mission
 value = steersman
 --]]
 steersman.tracked_groups_={} 
+
+steersman.zones_ = {}
 
 --------------------------------------------------------------------------------------------------------
 
@@ -42,7 +45,7 @@ steersman.log_e=helms.logger.new("steersman","error")
 
 --error handler for xpcalls. wraps steersman.log_e:error
 steersman.catchError=function(err)
-	steersman.log_e:error(err)
+	steersman.log_e.log(err)
 end 
 
 --POLL----------------------------------------------------------------------------------------------------
@@ -95,7 +98,6 @@ steersman.instance_meta_ = {
 		end,
 		
 		pollStep_ = function(self)
-			
 			local options = {pickUnit=true}
 			
 			local dist,playerUnit,closestUnit = helms.dynamic.getClosestLateralPlayer(self.groupName_,{self.side_}, options)	
@@ -103,7 +105,7 @@ steersman.instance_meta_ = {
 			local wantOpsMode = false
 			
 			if dist ~= nil then 
-				local playerToBoat = helms.maths.unitVector(playerUnit:getPoint(),			   closestUnit:getPoint() )
+				local playerToBoat = helms.maths.unitVector(playerUnit:getPoint(), closestUnit:getPoint() )
 				local inbound = helms.maths.dot2D(playerUnit:getVelocity(),
 					playerToBoat)
 			
@@ -158,7 +160,8 @@ steersman.instance_meta_ = {
 		-- if spTasks is provided these will be added to the unit tasking
 		--point to is vec2
 		--speed is in mps
-		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks,dpTasks)		
+		GoToPoint_ = function(self, pointTo, speed, expediteTurn, spTasks,dpTasks)	
+			--steersman.log_i.log({"GoToPoint",pointTo})	--debug
 			local group = helms.dynamic.getGroupByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
@@ -216,6 +219,7 @@ steersman.instance_meta_ = {
 		--point to is vec2
 		--speed is in mps
 		GoOnPath_ = function(self, path, speed)		
+			--steersman.log_i.log({"GoOnPath",path})	--debug
 			local group = helms.dynamic.getGroupByName(self.groupName_) 
 			if group ~= nil then
 				local unit = group:getUnits()[1]
@@ -254,17 +258,23 @@ steersman.instance_meta_ = {
 		end,
 		
 		--[[
-		Get windspeed and downwindTheta at zone centre at deck height
+		Get windspeed, downwindTheta, wind at zone centre at deck height (or preferred direction for zone if winds are light)
 		--]]
 		GetWindsZoneCentre = function(self)
-			local wind = atmosphere.getWind({x = self.zoneCentre_.x, y = steersman.deck_height ,z = self.zoneCentre_.y})
+			local zone = steersman.zones_[self.zoneName_]
+			local wind = atmosphere.getWind({x = zone.centre.x, y = steersman.deck_height ,z = zone.centre.y})
 			
 			local speed = math.sqrt(helms.maths.dot2D(wind,wind))
 
-			local downwindTheta = math.atan2(wind.z,wind.x)
+			local downwindTheta
+			if speed < zone.lightWindCuttoff then
+				wind = {x = -math.cos(zone.defaultUpwindTheta), z = - math.sin(zone.defaultUpwindTheta), y = 0}
+				downwindTheta = math.pi + zone.defaultUpwindTheta
+			else
+				downwindTheta = math.atan2(wind.z,wind.x)
+			end			
 			
-			return unpack({speed,downwindTheta})
-
+			return unpack({speed,downwindTheta,wind})
 		end,
 		
 		--[[
@@ -302,11 +312,12 @@ steersman.instance_meta_ = {
 		-- Return true if winds are light or the boat is in the downwind part of the zone
 		-- point = point to assess for being upwind, or nil to use unit position
 		NotUpwind_ = function(self,point)
-			local wind = atmosphere.getWind({x = self.zoneCentre_.x, y = steersman.deck_height ,z = self.zoneCentre_.y})
-			
-			if math.sqrt(helms.maths.dot2D(wind,wind)) < self.lightWindCuttoff then
-				return true
-			end
+
+			local zone = steersman.zones_[self.zoneName_]
+			local windspeed, downwindTheta,_ = self:GetWindsZoneCentre()
+			local _,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
+			local offsetCenter, downwindDir,crosswindDir = 	self:GetOffsetCentre_(theta,zone)		
+			local wind = {x = math.cos(theta), y = math.sin(theta)}	
 			
 			local here
 			if point ~= nil then
@@ -316,52 +327,56 @@ steersman.instance_meta_ = {
 			end
 			 
 			--unit from centre
-			local u = { x = here.x - self.zoneCentre_.x, 
-						y = here.z - self.zoneCentre_.y}
+			local u = { x = here.x - offsetCenter.x,
+						y = here.z - offsetCenter.y}
 
 			return helms.maths.dot2D(wind,u) >= 0
-
 		end,
-
 
 		GetRepositionRoute_ = function (self)
 			if self:NotUpwind_() then
-				return self:GetDownwindZigZag_(nil)
+				return self:GetDownwindZigZag_(false)
 			else
-				local ret = self:GetDownwindZigZag_(helms.maths.as3D(self.zoneCentre_))
-				table.insert(ret,0,self.zoneCentre_)
+				local zone = steersman.zones_[self.zoneName_]
+				local ret = self:GetDownwindZigZag_(true)
 				return ret
 			end	
+		end,
+
+		GetOffsetCentre_ = function (self,downwindTheta, zone)
+			local downwindDir = {x = math.cos(downwindTheta), y = math.sin(downwindTheta)}	
+			local crosswindDir = {x = -downwindDir.y, y = downwindDir.x}	
+			return helms.maths.lin2D(zone.centre,1,crosswindDir,self.zoneOffset_),downwindDir,crosswindDir 
 		end,
 		
 		-- return coords of the downwind position from zone centre of the group at the edge of the zone, based on winds at zone centre,
 		--accounts for angled deck
 		--return list of points {x,y} zig-zagging to the downwind point
 		-- Uses current unit position as start of the route unless startPoint (3D) is passed
-		GetDownwindZigZag_ = function(self,startPoint)
-			local windspeed, downwindTheta = self:GetWindsZoneCentre()
+		GetDownwindZigZag_ = function(self,viaCentre)
+			local windspeed, downwindTheta,_ = self:GetWindsZoneCentre()
 			local theta = 0 --theta for the downwind position, accounting for deck angle
 			
 			_,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
-						
-			if windspeed < self.lightWindCuttoff then --for light winds choose a random direction instead
-				theta = math.random()*2*math.pi
-				return { [1] = {x = self.zoneCentre_.x + math.cos(theta)*self.zoneRadius_, y = self.zoneCentre_.y + math.sin(theta)*self.zoneRadius_} }
-			end
+			local zone = steersman.zones_[self.zoneName_]
 			
-			local downwindDir = {x = math.cos(theta), y = math.sin(theta)}	
-			local crosswindDir = {x = -downwindDir.y, y = downwindDir.x}	
-			local downwindPoint = helms.maths.lin2D(self.zoneCentre_,1,downwindDir,self.zoneRadius_)
+			local offsetCenter, downwindDir,crosswindDir = 	self:GetOffsetCentre_(theta,zone)
+			local downwindPoint = helms.maths.lin2D(offsetCenter,1,downwindDir,zone.radius)
 			
 			local preRet = {[1] = downwindPoint} -- default return
-			local unitPoint  = startPoint
-			if unitPoint == nil then unitPoint = self:GetUnitPoint_() end
+			local unitPoint  = nil
+			
+			if not viaCentre then 
+				unitPoint = self:GetUnitPoint_() 
+			else 
+				unitPoint = helms.maths.as3D(offsetCenter)
+			end
 			if unitPoint == nil then return preRet end
 			
 			local unitToDownwind = helms.maths.lin2D(unitPoint,-1,downwindPoint,1)
 			local zagQuot = math.floor(helms.maths.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
-			
-			--steersman.log_i:info(zagQuot)--TODO
+			--steersman.log_i.log({"zigZagQuot",zagQuot})
+			--steersman.log_i:info(zagQuot)--debug TODO
 			local i=1
 			local sign = 1
 			while i<zagQuot do
@@ -375,6 +390,10 @@ steersman.instance_meta_ = {
 			local ret = {}
 			for j=1,#preRet do
 				table.insert(ret, preRet[#preRet - j + 1])
+			end
+
+			if viaCentre then
+				table.insert(ret,0,offsetCenter)
 			end
 			--steersman.log_i:info(#ret)--TODO
 			return ret
@@ -401,31 +420,31 @@ steersman.instance_meta_ = {
 			local unitPoint  = self:GetUnitPoint_()
 			if unitPoint == nil then return ret end
 			
-			--unit from centre
-			local u = { x = unitPoint.x - self.zoneCentre_.x, 
-						y = unitPoint.z - self.zoneCentre_.y}
+			local zone = steersman.zones_[self.zoneName_]			
 			
-			local windspeed, downwindTheta = self:GetWindsZoneCentre()
-			local speed =0
+			local windspeed, downwindTheta,_ = self:GetWindsZoneCentre()
+			
+			local speed = 0
 			local theta = 0 --theta for the downwind position, accounting for deck angle
 			
 			speed,theta = self:GetSpeedAndTheta(windspeed,downwindTheta)
+			local offsetCenter, downwindDir,_ = self:GetOffsetCentre_(theta,zone)
+
+			--unit from centre
+			local u = { x = unitPoint.x - offsetCenter.x, 
+						y = unitPoint.z - offsetCenter.y}
 			
-			if windspeed < self.lightWindCuttoff then --for calm winds default to crossing the zone
-				theta = math.atan2(u.y, u.x)
-			end			
-			
-			-- unit direction to travel for headwind
-			local v = {x = -1 * math.cos(theta), y = -1 * math.sin(theta)}
-			local vDotU = helms.maths.dot2D(v,u)
+			-- "v" = unit direction to travel for headwind = -downwindDir
+
+			local vDotU = -helms.maths.dot2D(downwindDir,u)
 			--discriminant
-			local D = vDotU * vDotU - helms.maths.dot2D(u,u) + self.zoneRadius_*self.zoneRadius_
+			local D = vDotU * vDotU - helms.maths.dot2D(u,u) + zone.radius*zone.radius
 			
 			if D <= 0 then return ret end
 			
 			local t = math.sqrt(D) - vDotU
 			
-			ret = {x = unitPoint.x + t * v.x , y = unitPoint.z + t * v.y}
+			ret = {x = unitPoint.x - t * downwindDir.x, y = unitPoint.z - t * downwindDir.y}
 			
 			ret.speed = speed
 			
@@ -443,6 +462,27 @@ steersman.instance_meta_ = {
 }
 	
 --API--------------------------------------------------------------------------------------
+
+steersman.setDefaultUpwindHeading = function(zoneName, degTrue)
+	local zone = trigger.misc.getZone(zoneName)
+	if zone == nil then return end
+
+	degTrue = degTrue-90
+
+	if steersman.zones_[zoneName] == nil then
+		steersman.zones_[zoneName] =
+		{
+			centre = {x = zone.point.x, y = zone.point.z},
+			radius = zone.radius,
+			nextOffset = 0, -- m
+			defaultUpwindTheta = degTrue * helms.maths.deg2rad, -- for light winds
+			lightWindCuttoff = 0.4 --mps
+		}
+	else
+		steersman.zones_[zoneName].defaultUpwindTheta = degTrue * helms.maths.deg2rad 
+	end
+	steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
+end
 
 --spawn data overrrides obtaining data by group name
 steersman.new = function (groupName, zoneName)
@@ -462,6 +502,21 @@ steersman.new = function (groupName, zoneName)
 		end
 		
 	end
+
+	local zoneOffset = 0
+	if steersman.zones_[zoneName] == nil then
+		steersman.zones_[zoneName] =
+		{
+			centre = {x = zone.point.x, y = zone.point.z},
+			radius = zone.radius,
+			nextOffset = steersman.multi_group_offset, -- m
+			defaultUpwindTheta = math.random()*2*math.pi, -- for light winds
+			lightWindCuttoff = 0.4 --mps
+		}
+	else
+		zoneOffset = steersman.zones_[zoneName].nextOffset
+		steersman.zones_[zoneName].nextOffset = zoneOffset + steersman.multi_group_offset
+	end
 	
 	local instance = {
 		groupName_ = groupName,
@@ -470,9 +525,8 @@ steersman.new = function (groupName, zoneName)
 		desiredHeadwindMps_ = 16, -- >=0
 		minBoatSpeed_ = 7, -- >=0
 		zagSize_ = 1000,
-		lightWindCuttoff = 0.4,--mps
-		zoneCentre_ = {x = zone.point.x, y = zone.point.z},
-		zoneRadius_ = zone.radius,
+		zoneName_ = zoneName,
+		zoneOffset_ = zoneOffset,
 		lastUpdatedRestPos = nil,
 		opsMode_ = false,
 		turnMode_ = false,
