@@ -481,7 +481,7 @@ steersman.setDefaultUpwindHeading = function(zoneName, degTrue)
 	else
 		steersman.zones_[zoneName].defaultUpwindTheta = degTrue * helms.maths.deg2rad 
 	end
-	steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
+	--steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
 end
 
 --spawn data overrrides obtaining data by group name
