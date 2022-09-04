@@ -1,4 +1,5 @@
 # Changelog
+
 ## Latest
 * Added group aliasing and unit name normalisation in HeLMS
 * Added auto-stripping of magic strings in group names. Affects names of groups created with:
@@ -7,6 +8,8 @@
     * `hitch_trooper.newIfNameContains`
 * Fixed bug with generated group names in HeLMS
 * Added ap_utils wrappers for helms methods for backwards compatibility
+* Added damage dependent respawn times for unit_repairman
+* Added zone reuse and direction enforcement for steersman
 ## 1.6a
 * Replaced MIST with HeLMS
 * Added idle detection for asset pools based on fuel state

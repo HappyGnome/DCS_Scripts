@@ -55,11 +55,12 @@ where `myCVN=steersman.new(...)`.
 
 #### Configure sailing direction in light winds
 
-To set the default upwind sailing direction for a named zone when winds are low add a trigger: `DO SCRIPT -> steersman.setDefaultUpwindHeading(<zoneName>,<upwindSailingDir>)` 
+To set the default upwind sailing direction for a named zone when winds are low add a trigger: `DO SCRIPT -> steersman.setDefaultUpwindHeading(<zoneName>,<upwindSailingDir>, <restrictToDefault>)` 
 
 Where
 * `<zoneName>` is the name of the zone to set the default direction to.
 * `<upwindSailingDir>` true heading to sail during flight ops in low wind (reversed for ships with landing decks set CW from the bow).
+* `<restrictToDefault>` Default false. Set true to force sailing directioon during flight ops to `<upwindSailingDir>` or `<reciprocal>`
 
 
 #### Selected module params
