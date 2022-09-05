@@ -10,6 +10,8 @@
 * Added ap_utils wrappers for helms methods for backwards compatibility
 * Added damage dependent respawn times for unit_repairman
 * Added zone reuse and direction enforcement for steersman
+* Changed default deck angle to 9 degrees for steersman
+* Added initial respawn for repairman groups
 ## 1.6a
 * Replaced MIST with HeLMS
 * Added idle detection for asset pools based on fuel state

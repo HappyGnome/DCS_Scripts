@@ -566,7 +566,7 @@ steersman.new = function (groupName, zoneName)
 	local instance = {
 		groupName_ = groupName,
 		side_ = group:getCoalition(),
-		deckAngleCCWDeg_ = 10, -- -90 - +90
+		deckAngleCCWDeg_ = 9, -- -90 - +90
 		desiredHeadwindMps_ = 16, -- >=0
 		minBoatSpeed_ = 7, -- >=0
 		zagSize_ = 1000,
