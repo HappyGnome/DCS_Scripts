@@ -196,7 +196,7 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 
 `unit_repairman.registerRepairmanIfNameContains` Has the effect of calling `unit_repairman.register` on each group whose name contains a certain string.
 
-Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>, <replaceSubstring>)`
+Usage: `unit_repairman.registerRepairmanIfNameContains(<substring>, <minDelaySeconds>, <maxDelaySeconds>, <options>, <replaceSubstring>, <respawnNow>)`
 
 Where
 * `<substring>` Substring to search for in group name in ME
@@ -208,6 +208,7 @@ Where
 * `<options>` is a table containing further options
 
 * `<replaceSubstring>` will replace the `<substring>` in the group name displayed in the mission. Default is `-`.
+* `<respawnNow>` if true, respawn the group now to apply the new group name. Default is true.
 
 **Possible options:**
 See options object for `unit_repairman.register`.

@@ -1211,13 +1211,17 @@ end
 @param options.perDamageRepairSeconds = (s) respawn delay per unit destroyed, or equivalent damage split between units. Default is 60 minutes
 @param options.baseRepairSeconds = (s) minimum delay to schedule respawn after new damage occurs default is 10 minutes
 @param replaceSubstring = string to replace substring in generated groups in the mission. Default to "-".
+@param respawnNow = bool, default true. Respawn the group now to apply the alias group name.
 --]]
-unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options, replaceSubstring)
+unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options, replaceSubstring, respawnNow)
+
 	local names = helms.mission.getNamesContaining(substring)
 	if replaceSubstring == nil then replaceSubstring = "-" end
+	if respawnNow == nil then respawnNow = true end
 	for k, name in pairs(names) do
 		unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)
 		helms.dynamic.createGroupAlias(name,string.gsub(name,substring,replaceSubstring,1))
+		if respawnNow then helms.dynamic.respawnMEGroupByName(name) end -- respawn after applying alias
 	end
 end
 
