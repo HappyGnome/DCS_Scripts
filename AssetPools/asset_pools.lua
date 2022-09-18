@@ -719,6 +719,10 @@ end--new
 constant_pressure_set={}
 ----------------------------------------------------------------------------------------------------------
 
+-- MODULE OPTIONS:----------------------------------------------------------------------------------------
+constant_pressure_set.gc_delay_seconds=600 --seconds, time to wait before destroying idle groups
+----------------------------------------------------------------------------------------------------------
+
 --[[
 Loggers for this module
 --]]
@@ -748,8 +752,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		--Asset pool override
 		groupDead=function(self, groupName, now)						
 			
-			local cooldownTime=now+self.cooldownOnDeath
-			self:putGroupOnCooldown_(groupName,cooldownTime)				
+			self:putGroupOnCooldown_(groupName,now)				
 			
 			--stop polling this group
 			return false		
@@ -767,8 +770,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				return self:groupDead(groupName,now)
 			end			
 
-			local cooldownTime=now+self.cooldownOnIdle
-			self:putGroupOnCooldown_(groupName,cooldownTime)		
+			self:putGroupOnCooldown_(groupName,now)		
 			
 			--stop polling this group
 			return false 
@@ -805,6 +807,15 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			for g in pairs(helms.util.removeRandom(self.groupListReady_,-surplusSpawned)) do
 				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
 			end
+
+			local gc_cutoff = now - constant_pressure_set.gc_delay_seconds
+
+			for k,v in pairs(self.groupListIdleTimes_) do
+				if v < gc_cutoff then
+					helms.dynamic.despawnGroupByName(k)
+					self.groupListIdleTimes_[k] = nil
+				end
+			end
 		
 			return not self.killSwitch -- keep polling
 		end,
@@ -830,11 +841,13 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		
 		-- Move group to cooldown list and off of active list
 		-- add cooldown clock time to cooldown list
-		putGroupOnCooldown_=function(self,groupName,cooldownTime)
-		
+		putGroupOnCooldown_=function(self,groupName,now)
+			
+			local cooldownTime=now+self.cooldownOnDeath
 			self.groupListActive_[groupName]=nil
 			self.groupListCooldown_[groupName]=true
-			
+			self.groupListIdleTimes_[groupName] = now
+
 			if self.timeListCooldown_[cooldownTime] then
 				self.timeListCooldown_[cooldownTime]
 					=self.timeListCooldown_[cooldownTime]+1
@@ -856,6 +869,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		doScheduleSpawn_=function(self,groupName,now)
 		
 			self.groupListReady_[groupName]=nil
+			self.groupListIdleTimes_[groupName] = nil
 			self.groupListActive_[groupName]=true
 			
 			local delay= math.random(self.minSpawnDelay,self.maxSpawnDelay)
@@ -917,6 +931,11 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	
 	--Other properties
 	
+	-- Names of groups that may be destroyed, along with the time the group became idle
+	-- key=groupName
+	-- values = time cooled down
+	instance.groupListIdleTimes_={}
+
 	--set (table) for active groups (those active or requested spawned)
 	--key=groupNames
 	--values = true

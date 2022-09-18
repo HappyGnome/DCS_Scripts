@@ -12,6 +12,7 @@
 * Added zone reuse and direction enforcement for steersman
 * Changed default deck angle to 9 degrees for steersman
 * Added initial respawn for repairman groups
+* Added despawning constant_pressure groups on a timer once they go idle
 ## 1.6a
 * Replaced MIST with HeLMS
 * Added idle detection for asset pools based on fuel state

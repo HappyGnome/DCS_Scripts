@@ -520,6 +520,14 @@ helms.dynamic.normalizeUnitNames = function(gpData)
 	end
 end
 
+helms.dynamic.despawnGroupByName = function(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
+	--helms.log_i.log("Deleting " .. groupName) --Debug
+	if group then
+		group:destroy()
+	end
+end
+
 helms.dynamic.respawnMEGroupByName = function(name, activate)
 	local gpData = helms.mission.getMEGroupDataByName(name)
 	if not gpData then return end
