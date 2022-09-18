@@ -811,7 +811,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			local gc_cutoff = now - constant_pressure_set.gc_delay_seconds
 
 			for k,v in pairs(self.groupListIdleTimes_) do
-				if v < gc_cutoff then
+				if v < gc_cutoff and helms.dynamic.allUnitPredicate(k, function(unit) return not unit:inAir() end)then
 					helms.dynamic.despawnGroupByName(k)
 					self.groupListIdleTimes_[k] = nil
 				end

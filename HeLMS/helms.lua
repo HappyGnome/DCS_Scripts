@@ -528,6 +528,19 @@ helms.dynamic.despawnGroupByName = function(groupName)
 	end
 end
 
+helms.dynamic.allUnitPredicate = function(groupName, func)
+	local group = helms.dynamic.getGroupByName(groupName)
+	if group ==nil then return true end
+	
+	local units = Group.getUnits(group)
+	if units == nil then return true end
+
+	for k,v in pairs(units) do
+		if not func(v) then return false end
+	end
+	return true
+end
+
 helms.dynamic.respawnMEGroupByName = function(name, activate)
 	local gpData = helms.mission.getMEGroupDataByName(name)
 	if not gpData then return end
