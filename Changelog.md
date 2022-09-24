@@ -1,6 +1,8 @@
 # Changelog
 
 ## Latest
+* Added late activation handling for unit_repairman
+* Added deregistration methods for unit_repairman
 * Added group aliasing and unit name normalisation in HeLMS
 * Added auto-stripping of magic strings in group names. Affects names of groups created with:
     * `unit_repairman.registerRepairmanIfNameContains`

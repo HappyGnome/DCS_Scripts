@@ -215,6 +215,30 @@ See options object for `unit_repairman.register`.
 
 **Example:**  `unit_repairman.registerRepairmanIfNameContains("%-repair%-",  300, 600, {delaySpawnIfPlayerWithin = 8000})` If mission contains *unit-repair-1*,  and *unit-repair-2*, these units will independently respawn 5 - 10 minutes after being damaged/destroyed, unless there is a non-neutral player within 8km of that active unit. If there is a player nearby, the spawn will be attempted again in 10 minutes (default). The names of the respawned units will be *unit-1* and *unit-2*.
 
+### Deregister/despawn individual units
+
+`unit_repairman.deregister` deregister group for periodic respawns random delay
+
+Usage: `unit_repairman.deregister<groupName>, <despawn>)`
+
+Where
+* `<groupName>`  name of group in ME to stop repairing, or a table containing ME names of groups to deregister
+* `<despawnNow>` despawn the group now if it exists. (Default true).
+
+**Example:**  `unit_repairman.deregister("BattleGroup-1")`
+
+### Deregister/despawn by substring name
+
+`unit_repairman.deregisterRepairmanIfNameContains` deregister groups for periodic respawns random delay, if their (original) group name in the mission editor contains a certain substring.
+
+Usage: `unit_repairman.deregisterRepairmanIfNameContains(<substring>, <despawn>)`
+
+Where
+* `<substring>` Substring to search for in group name in ME
+* `<despawnNow>` despawn the groups now if they exist. (Default true).
+
+**Example:**  `unit_repairman.deregisterRepairmanIfNameContains("Area1%-repair%-")`
+
 ## Utilities
 
 ### Make respawnable on-call units by group name

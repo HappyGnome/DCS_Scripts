@@ -1074,7 +1074,10 @@ unit_repairman.doPoll_=function()
 		end
 		urData.lastHealth = health
 
-		if health < 1.0 and urData.lastDamagedAt ~= nil and urData.lastDamagedAt + (1.0 - health) * urData.options.perDamageRepairSeconds * urData.initialStrength + urData.options.baseRepairSeconds < now then
+		if health < 1.0
+			and urData.lastDamagedAt ~= nil and urData.lastDamagedAt + (1.0 - health) * urData.options.perDamageRepairSeconds * urData.initialStrength + urData.options.baseRepairSeconds < now
+			and not urData.awaitingActivation then
+
 			doRepair = true
 		end
 
@@ -1176,10 +1179,40 @@ unit_repairman.doPeriodicRespawn_ = function(groupName, minDelaySeconds, maxDela
 			maxDelaySeconds = maxDelaySeconds,
 			options = newOptions, 
 			initialStrength = initSize,
-			lastHealth = 1.0}
+			lastHealth = 1.0,
+			awaitingActivation = false}
 	end--action
 	
 	xpcall(action,unit_repairman.catchError) -- safely call the respawn action
+end
+
+unit_repairman.eventHandler = { 
+	onEvent = function(self,event)
+		if (event.id == world.event.S_EVENT_BIRTH) then
+			helms.util.safeCall(unit_repairman.birthHandler,{event.initiator},unit_repairman.catchError)
+		end
+
+		if (event.id == world.event.S_EVENT_UNIT_LOST) then
+			unit_repairman.log_i.log('dead event'.. helms.util.obj2str(event.initiator))--TODO
+		end
+	end
+}
+
+world.addEventHandler(unit_repairman.eventHandler)
+
+unit_repairman.birthHandler = function(initiator)
+	if initiator and initiator:getCategory() == Object.Category.UNIT then
+		local group = initiator:getGroup()
+		if group then
+			local groupName = group:getName()
+			local urData = unit_repairman.tracked_groups_[groupName]
+			if urData and urData.awaitingActivation then
+				urData.awaitingActivation = false
+				
+				helms.dynamic.scheduleFunction(helms.dynamic.respawnMEGroupByName,{groupName},timer.getTime() + 2,true) -- respawn after a short delay to prevent a crash
+			end
+		end
+	end
 end
 
 --API UNIT_REPAIRMAN---------------------------------------------------------------------------------------
@@ -1209,12 +1242,43 @@ unit_repairman.register = function(groupName, minDelaySeconds, maxDelaySeconds, 
 	if options.perDamageRepairSeconds == nil then options.perDamageRepairSeconds = 3600 end
 	if options.baseRepairSeconds == nil then options.baseRepairSeconds = 600 end
 	
-	unit_repairman.tracked_groups_[groupName] = {groupName = groupName,
-	minDelaySeconds = minDelaySeconds,
-	maxDelaySeconds = maxDelaySeconds,
-	options = options,
-	initialStrength = initSize,
-	lastHealth = 1.0}
+	unit_repairman.tracked_groups_[groupName] = {
+		groupName = groupName,
+		minDelaySeconds = minDelaySeconds,
+		maxDelaySeconds = maxDelaySeconds,
+		options = options,
+		initialStrength = initSize,
+		lastHealth = 1.0,
+		awaitingActivation = helms.mission.groupAwaitingActivation(groupName)}
+end
+
+--[[
+deregister group for periodic respawns random delay
+
+@param groupName = name of group in ME to stop repairing, or a table containing ME names of groups to deregister
+@param despawnNow = (default true) despawn the group now if it exists?
+--]]
+unit_repairman.deregister = function(groupName, despawn)
+	if type(groupName) == 'string' then
+		groupName = {groupName}
+	end
+
+	for _,v in pairs(groupName) do
+		unit_repairman.tracked_groups_[v] = nil
+		if despawn == nil or despawn == true then
+			helms.dynamic.despawnGroupByName(v)
+		end
+	end
+end
+
+--[[
+deregister group for periodic respawns random delay
+
+@param substring = if a substring of a groupname, that group will cease being repaired, and may optionally be despawned
+@param despawnNow = (default true) despawn the group now if it exists?
+--]]
+unit_repairman.deregisterRepairmanIfNameContains = function(substring, despawn)
+	unit_repairman.deregister(helms.mission.getNamesContaining(substring),despawn)
 end
 
 --[[
@@ -1231,6 +1295,8 @@ end
 @param options.baseRepairSeconds = (s) minimum delay to schedule respawn after new damage occurs default is 10 minutes
 @param replaceSubstring = string to replace substring in generated groups in the mission. Default to "-".
 @param respawnNow = bool, default true. Respawn the group now to apply the alias group name.
+
+@returns a table where values are the original names of groups registered
 --]]
 unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySeconds, maxDelaySeconds, options, replaceSubstring, respawnNow)
 
@@ -1239,9 +1305,15 @@ unit_repairman.registerRepairmanIfNameContains = function(substring,  minDelaySe
 	if respawnNow == nil then respawnNow = true end
 	for k, name in pairs(names) do
 		unit_repairman.register(name, minDelaySeconds, maxDelaySeconds, options)
+
 		helms.dynamic.createGroupAlias(name,string.gsub(name,substring,replaceSubstring,1))
-		if respawnNow then helms.dynamic.respawnMEGroupByName(name) end -- respawn after applying alias
+
+		if respawnNow and not unit_repairman.tracked_groups_[name].awaitingActivation then
+			helms.dynamic.respawnMEGroupByName(name) 
+		end -- respawn after applying alias
 	end
+
+	return names
 end
 
 helms.dynamic.scheduleFunction(unit_repairman.doPoll_,nil,timer.getTime() + unit_repairman.poll_interval)

@@ -249,6 +249,12 @@ helms.maths.lin2D = function(u,a,v,b)
 	return {x = a*u.x + b*v.x, y= a*uy+b*vy}
 end
 
+helms.maths.lin3D = function(u,a,v,b)
+	local U= helms.maths.as3D(u)
+	local V= helms.maths.as3D(v)
+	return {x = a*U.x + b*V.x, y= a*U.y+b*V.y, z= a*U.z+b*V.z}
+end
+
 --return {x,y} unit vector in direction from a to b
 helms.maths.unitVector = function(A,B)
 	local Ay = A.z
@@ -308,6 +314,24 @@ helms.mission.getNamesContaining = function(substring)
 		end
 	end
 	return ret
+end
+
+--[[
+	Return true if group activation is pending
+--]]
+helms.mission.groupAwaitingActivation = function(name)
+
+	local group=helms.dynamic.getGroupByName(name)
+	if not group or not group:isExist() then return false end -- group not spawned, or destroyed implies not awaiting activation
+
+	local units = Group.getUnits(group)
+	if units then
+		local unit=units[1]
+		if unit then
+			return not Unit.isActive(unit)
+		end
+	end	
+	return false -- no existing units
 end
 
 --[[
@@ -994,3 +1018,22 @@ end
 helms.mission._buildMEGroupLookup()
 
 helms.log_i.log("HeLMS v"..helms.version.." loaded")
+---------------------------------------------------------------------------------------------------
+helms.test ={}
+helms.test.explodeUnitIfNameContains = function(substring, power)
+	local names = helms.mission.getNamesContaining(substring)
+
+	for k, name in pairs(names) do
+		local gp = helms.dynamic.getGroupByName(name)
+		if gp then
+			local units = gp:getUnits()
+			if units then
+				for _,v in pairs(units) do
+					trigger.action.explosion(helms.maths.lin3D(v:getPoint(),1,{x = 10,y=0,z=0},1),power)
+				end				
+			end
+		end
+	end
+
+	return names
+end
