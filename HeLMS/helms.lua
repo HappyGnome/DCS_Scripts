@@ -506,6 +506,7 @@ end
 
 helms.dynamic.createGroupAlias = function(meGroupName, aliasRoot)
 	local index = 0
+	if meGroupName == aliasRoot then return end
 	while true do
 		local name = aliasRoot
 		if index > 0 then name = name .. "-" .. index end
