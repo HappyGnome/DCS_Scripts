@@ -1,6 +1,7 @@
 # Changelog
 
 ## Latest
+* Mission examples added
 * Added late activation handling for unit_repairman
 * Added deregistration methods for unit_repairman
 * Added group aliasing and unit name normalisation in HeLMS
