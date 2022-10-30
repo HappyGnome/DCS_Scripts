@@ -106,8 +106,10 @@ steersman.instance_meta_ = {
 			local dist,playerUnit,closestUnit = helms.dynamic.getClosestLateralPlayer(self.groupName_,{self.side_}, options)	
 			
 			local wantOpsMode = false
-			
-			if dist ~= nil then 
+
+			if self.opsModeOverride ~= nil then
+				wantOpsMode = self.opsModeOverride
+			elseif dist ~= nil then 
 				local playerToBoat = helms.maths.unitVector(playerUnit:getPoint(), closestUnit:getPoint() )
 				local inbound = helms.maths.dot2D(playerUnit:getVelocity(),
 					playerToBoat)
@@ -524,19 +526,48 @@ steersman.setDefaultUpwindHeading = function(zoneName, degTrue, restrictToDefaul
 	--steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
 end
 
-steersman.getDefaultFleetName = function(coa)
-	local side = helms.ui.convert.sideToString(coa)
-	local num = steersman.zoneCountByCoa_[coa]
-	steersman.zoneCountByCoa_[coa] = num +1
-	return side .. "Fleet-" .. num
+steersman.manualSetOpsMode_ = function (groupName,opsMode)
+	if steersman.tracked_groups_[groupName] then
+		steersman.tracked_groups_[groupName].opsModeOverride = opsMode
+
+		local groupPath = steersman.tracked_groups_[groupName].commsPath_
+		helms.ui.removeItem(groupPath,steersman.tracked_groups_[groupName].commsIndex)
+
+		if opsMode ~= nil and steersman.tracked_groups_[groupName].commsAutoIndex == nil then
+			steersman.tracked_groups_[groupName].commsAutoIndex = helms.ui.addCommand(groupPath,"Auto Flight Ops",steersman.manualSetOpsMode_,groupName, nil)
+		elseif opsMode == nil and steersman.tracked_groups_[groupName].commsAutoIndex ~= nil then
+			helms.ui.removeItem(groupPath,steersman.tracked_groups_[groupName].commsAutoIndex)
+			steersman.tracked_groups_[groupName].commsAutoIndex = nil
+		end
+
+		if not opsMode then		
+			steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"Start Flight Ops",steersman.manualSetOpsMode_,groupName, true)
+		else
+			steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
+		end
+	end
 end
 
-steersman.addCommsMenuControl = function(zoneName,coa,fleetName)
-	if fleetName == nil then
-		fleetName = steersman.getDefaultFleetName(coa)
+steersman.addCommsMenuControl = function(groupName)
+	
+	if steersman.tracked_groups_[groupName] == nil then 
+		steersman.log_i.log("Cannot add comms menu control - group not registered.")
+		return 
 	end
 
-	
+	local group = helms.dynamic.getGroupByName(groupName)
+
+	local smPath = helms.ui.ensureSubmenu(group:getCoalition(), "Steersman")
+	local groupPath = helms.ui.ensureSubmenu(smPath, groupName)
+
+	steersman.tracked_groups_[groupName].commsPath_ = groupPath
+
+
+	if not steersman.tracked_groups_[groupName].opsModeOverride then		
+		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"Start Flight Ops",steersman.manualSetOpsMode_,groupName, true)
+	else
+		steersman.tracked_groups_[groupName].commsIndex =helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
+	end
 end
 
 --spawn data overrrides obtaining data by group name
