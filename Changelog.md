@@ -1,6 +1,6 @@
 # Changelog
 
-## Latest
+## 1.7a
 * Mission examples added
 * Added late activation handling for unit_repairman
 * Added deregistration methods for unit_repairman
