@@ -504,105 +504,22 @@ respawnable_on_call.instance_meta_={
 			local groupAlias = helms.dynamic.getGroupAlias(self.groupName)
 			--add menu options
 			if self.side then --coalition specific addition	
-				self.subMenuName=respawnable_on_call.ensureCoalitionSubmenu_(self.side)
-				
-				self.commsPath=missionCommands.addCommandForCoalition(self.side,groupAlias,
-				respawnable_on_call.commsMenus[self.subMenuName][2],
-					self.handleSpawnRequest_,self)
+				self.subMenuName, _ = helms.ui.ensureSubmenu(self.side,"Assets",true)
 			else --add for all	
-				self.subMenuName=respawnable_on_call.ensureUniversalSubmenu_()
-				
-				self.commsPath=missionCommands.addCommand(groupAlias,
-				respawnable_on_call.commsMenus[self.subMenuName][2],
-					self.handleSpawnRequest_,self)
+				self.subMenuName, _ = helms.ui.ensureSubmenu(nil,"Other Assets")
 			end
-			
-			respawnable_on_call.commsMenus[self.subMenuName][1] 
-					= respawnable_on_call.commsMenus[self.subMenuName][1] + 1
+			self.commsIndex=helms.ui.addCommand(self.subMenuName,groupAlias,self.handleSpawnRequest_,self)
 		end,
 		
 		--[[
 		Remove comms menus for spawning this group
 		--]]
 		deleteComms_=function(self)
-			if not self.commsPath then return end-- very important it's not nil, or whole comms menu will be emptied
-			
 			--remove menu options
-			if self.side then --coalition specific removal				
-				missionCommands.removeItemForCoalition(self.side,self.commsPath)
-			else --remove for all					
-				missionCommands.removeItem(self.commsPath)
-			end
-			
-			--update submenu item count
-			if self.subMenuName then
-				respawnable_on_call.commsMenus[self.subMenuName][1] 
-					= respawnable_on_call.commsMenus[self.subMenuName][1] - 1
-			end
+			helms.ui.removeItem(self.subMenuName,self.commsIndex)
 		end
 	}----index
 }--meta_	
-	
---[[
-Menu item counts for submenus
-key = menu name
-value = {item count,path}
---]]
-respawnable_on_call.commsMenus = {}
-
---[[
-Add comms submenu for red or blue (side == instance of coalition.side)
---]]
-respawnable_on_call.ensureCoalitionSubmenu_=function(side)
-	local coa_string=helms.ui.convert.sideToString(side)
-	local menuNameRoot = coa_string.." Assets"
-	local level = 1
-	local menuName = menuNameRoot .. "_" .. level
-	
-	if respawnable_on_call.commsMenus[menuName]==nil then--create submenu
-		respawnable_on_call.commsMenus[menuName] = {0, missionCommands.addSubMenuForCoalition(side, menuNameRoot ,nil)}
-	else 
-		
-		while respawnable_on_call.commsMenus[menuName][1]>=9 do --create overflow if no space here
-			level = level + 1
-			local newMenuName = menuNameRoot .. "_"..level
-			
-			if respawnable_on_call.commsMenus[newMenuName]==nil then--create submenu of menu at menuName
-				respawnable_on_call.commsMenus[newMenuName] = {0,
-				missionCommands.addSubMenuForCoalition(side, "Next",respawnable_on_call.commsMenus[menuName][2])}
-			end
-			menuName = newMenuName
-		end
-	end	
-	return menuName
-end
-
---[[
-Add comms submenu for assets available to any faction
-return name of the submenu
---]]
-respawnable_on_call.ensureUniversalSubmenu_=function()
-
-	local menuNameRoot = "Other Assets"
-	local level = 1
-	local menuName = menuNameRoot .. "_" .. level
-	
-	if respawnable_on_call.commsMenus[menuName]==nil then--create submenu
-		respawnable_on_call.commsMenus[menuName] = {0, missionCommands.addSubMenu(menuNameRoot ,nil)}
-	else 		
-		while respawnable_on_call.commsMenus[menuName][1]>=9 do --create overflow if no space here
-			level = level + 1
-			local newMenuName = menuNameRoot .. "_"..level
-			
-			if respawnable_on_call.commsMenus[newMenuName]==nil then--create submenu of menu at menuName
-				respawnable_on_call.commsMenus[newMenuName] = {0,
-				missionCommands.addSubMenu("Next",respawnable_on_call.commsMenus[menuName][2])}
-			end
-			menuName = newMenuName
-		end
-	end	
-	return menuName
-end
 
 ----------------------------------------------------------------------------------------------------
 

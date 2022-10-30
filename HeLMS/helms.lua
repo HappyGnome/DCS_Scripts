@@ -1012,6 +1012,187 @@ helms.ui.convert.getETAString = function (point1,point2, estMps)
 	local dhms = helms.ui.convert.getDHMS(etaAbs)
 	return string.format("%02d%02dL",dhms["h"],dhms["m"])
 end
+
+--[[
+keys: name
+values: {
+	[1] = #items
+	[2] = path for DCS commands
+	[3] = {item paths, or nested object for submenus}
+	[4] = coalition (side) or nil
+}
+
+--]]
+helms.ui.commsMenus_ = {}
+
+--[[
+Get page with space in comms submenu with given text label, relative to parent path or side
+parentMenuPath = coalition.side, nil for neutral, or object returned by previous call or nil. If included specifies the submenu to add the new menu to, side is inferred from parent.
+label = radio item text
+prependCoa (bool) = if true, add coalition name to label text
+--]]
+helms.ui.ensureSubmenu=function(parentMenuPath, label, prependCoa)
+	local retPath = {}
+	if type(parentMenuPath) == "table" then
+		retPath = helms.util.shallow_copy(parentMenuPath)
+	end
+
+	local parentCommsMenusBase, side, dcsParentPath, _ = helms.ui.unpackCommsPath_ (parentMenuPath)
+	local parentCommsMenus
+	if parentCommsMenusBase then
+		parentCommsMenus = parentCommsMenusBase[3]
+	else
+		parentCommsMenus = helms.ui.commsMenus_ 
+	end
+
+	local menuNameRootText = label
+	local menuNameRoot = label .. helms.ui.convert.sideToString(side)
+	if prependCoa then
+		menuNameRootText = helms.ui.convert.sideToString(side).." ".. menuNameRootText
+	end
+	local menuName = menuNameRoot
+	local subMenuAdded = false
+	
+	local menu
+	if parentCommsMenus[menuName]==nil then--create submenu
+		menu,_,dcsParentPath= helms.ui.getPageWithSpace_(parentCommsMenusBase,retPath)
+		local menuItems = parentCommsMenus
+
+		if menu then menuItems = menu[3] end
+		if side then
+			menuItems[menuName] = {0, missionCommands.addSubMenuForCoalition(side, menuNameRootText ,dcsParentPath),{},side}
+		else 
+			menuItems[menuName] = {0, missionCommands.addSubMenu(menuNameRootText ,dcsParentPath),{},nil}
+		end
+		if menu then
+			menu[1] = menu[1] + 1
+		end		
+		subMenuAdded = true
+		retPath[#retPath+1] = menuName
+	else
+		retPath[#retPath+1] = menuName
+		menu,_,_ = helms.ui.getPageWithSpace_(parentCommsMenus[menuName],retPath)
+	end
+	
+	return retPath, nil, subMenuAdded
+end
+
+helms.ui.getPageWithSpace_ = function(commsMenus,pathBuilder)
+	if commsMenus == nil then
+		return nil, {},nil
+	end
+	if pathBuilder == nil then pathBuilder = {} end
+	while commsMenus[1]>=9 do --create overflow if no space here
+		local newMenuName = "__NEXT__"
+		local side = commsMenus[4]
+		if commsMenus[3][newMenuName] ==nil then--create submenu of menu at menuName
+			if side then
+				commsMenus[3][newMenuName] = {0,missionCommands.addSubMenuForCoalition(side, "Next",commsMenus[2]),{},side}
+			else
+				commsMenus[3][newMenuName] = {0,missionCommands.addSubMenu("Next",commsMenus[2]),{},nil}
+			end
+		end
+		commsMenus = commsMenus[3][newMenuName]
+		pathBuilder[#pathBuilder+1] = newMenuName
+	end
+	return commsMenus, pathBuilder, commsMenus[2]
+end
+
+helms.ui.unpackCommsPath_ = function(parentMenuPath,upLevels)
+	local dcsParentPath = nil
+	local parentCommsMenus = nil
+	local side = nil
+	local nextItemKey = nil
+
+	if parentMenuPath ~= nil and type(parentMenuPath) == "table" then
+		local maxKey = #parentMenuPath
+		if upLevels ~= nil then
+			maxKey = maxKey - upLevels
+		end
+		
+		for k,v in ipairs(parentMenuPath) do
+			if k>maxKey then
+				nextItemKey = v
+				break 
+			elseif k > 1 then
+				if parentCommsMenus[3] and parentCommsMenus[3][v] then
+					parentCommsMenus = parentCommsMenus[3][v]
+				end
+			else -- parentCommsMenus = helms.ui.commsMenus_
+				parentCommsMenus = helms.ui.commsMenus_[v] 
+			end
+		end
+		if parentCommsMenus then 
+			dcsParentPath = parentCommsMenus[2]
+			side = parentCommsMenus[4]
+		end
+	elseif parentMenuPath ~= nil then
+		side = parentMenuPath
+	end
+
+	return parentCommsMenus, side, dcsParentPath, nextItemKey
+end 
+
+--[[
+Add comms submenu for red or blue (side == instance of coalition.side)
+parentMenuPath = coalition.side, nil for neutral, or object returned by previous call or nil. If included specifies the submenu to add the new menu to, side is inferred from parent.
+label = radio item text
+handler = handler method,
+args = args for handler
+--]]
+helms.ui.addCommand = function (parentMenuPath, label, handler, ...)
+	local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_ (parentMenuPath)
+	parentCommsMenus,_,dcsParentPath  = helms.ui.getPageWithSpace_(parentCommsMenus)
+
+	if parentCommsMenus == nil then 
+		helms.log_e.log("Could not add comms menu "..label)
+		return
+	end
+
+	local newDcsPath
+	if side then
+		newDcsPath = missionCommands.addCommandForCoalition(side,label,
+					dcsParentPath,
+					handler,unpack(arg))
+	else 
+		newDcsPath = missionCommands.addCommand(label,
+					dcsParentPath,
+					handler,unpack(arg))
+	end
+	
+	local newIndex = parentCommsMenus[1] + 1
+	parentCommsMenus[1] = newIndex
+	parentCommsMenus[3][newIndex] = newDcsPath
+	return newIndex
+end
+
+helms.ui.removeItem = function (parentMenuPath, itemIndex)
+	local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_ (parentMenuPath)
+
+	if parentCommsMenus~= nil then
+		local path
+		if itemIndex ~= nil then
+			path = parentCommsMenus[3][itemIndex]
+			if path ~= nil then
+				parentCommsMenus[3][itemIndex] = nil
+				parentCommsMenus[1] = parentCommsMenus[1] - 1				
+			end
+		else -- remove parent menu
+			path = dcsParentPath
+			local parent2CommsMenus, _, _, nextKey = helms.ui.unpackCommsPath_ (parentMenuPath,1)
+			if parent2CommsMenus ~= nil then
+				parent2CommsMenus[3][nextKey] = nil
+				parent2CommsMenus[1] = parent2CommsMenus[1] - 1
+			end			    
+		end
+
+		if path ~= nil and side == nil then
+			missionCommands.removeItem(path)
+		elseif path ~= nil then
+			missionCommands.removeItemForCoalition(side,path)
+		end	
+	end
+end
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------

@@ -36,6 +36,8 @@ steersman.tracked_groups_={}
 
 steersman.zones_ = {}
 
+steersman.zoneCountByCoa_ = {[coalition.side.NEUTRAL] = 0,[coalition.side.BLUE] = 0, [coalition.side.RED] = 0 }
+
 --------------------------------------------------------------------------------------------------------
 
 --[[
@@ -522,6 +524,21 @@ steersman.setDefaultUpwindHeading = function(zoneName, degTrue, restrictToDefaul
 	--steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
 end
 
+steersman.getDefaultFleetName = function(coa)
+	local side = helms.ui.convert.sideToString(coa)
+	local num = steersman.zoneCountByCoa_[coa]
+	steersman.zoneCountByCoa_[coa] = num +1
+	return side .. "Fleet-" .. num
+end
+
+steersman.addCommsMenuControl = function(zoneName,coa,fleetName)
+	if fleetName == nil then
+		fleetName = steersman.getDefaultFleetName(coa)
+	end
+
+	
+end
+
 --spawn data overrrides obtaining data by group name
 steersman.new = function (groupName, zoneName)
 
@@ -551,7 +568,7 @@ steersman.new = function (groupName, zoneName)
 			defaultUpwindTheta = math.random()*2*math.pi, -- for light winds
 			restrictToDefault = false,
 			lightWindCuttoff = 0.4, --mps
-			leadGroupName = groupName,
+			leadGroupName = groupName
 		}
 	else
 		zoneOffset = steersman.zones_[zoneName].nextOffset
