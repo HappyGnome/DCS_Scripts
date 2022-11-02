@@ -62,6 +62,12 @@ Where
 * `<upwindSailingDir>` true heading to sail during flight ops in low wind (reversed for ships with landing decks set CW from the bow).
 * `<restrictToDefault>` Default false. Set true to force sailing directioon during flight ops to `<upwindSailingDir>` or the reciprocal
 
+#### Enabling manual control via the F10 menu
+
+To enable players to force a steersman group into (or out of) ops mode via the comms menu: `DO SCRIPT -> steersman.addCommsMenuControl(<groupName>)` 
+
+Where
+* `<groupName>` is the name of the group to make controllable via the comms menu.
 
 #### Selected module params
 |Parameter|Type|Desc|
