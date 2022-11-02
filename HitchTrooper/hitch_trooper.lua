@@ -154,12 +154,6 @@ value = hitch_trooper
 --]]
 hitch_trooper.author_spawnable_groups_={} 
 
---[[
-Menu item counts for submenus
-key = menu name
-value = {item count,path}
---]]
-hitch_trooper.commsMenus = {}
 
 --------------------------------------------------------------------------------------------------------
 
@@ -330,29 +324,16 @@ world.addEventHandler(hitch_trooper.eventHandler)
 Add comms submenu for red or blue (side == instance of coalition.side)
 --]]
 hitch_trooper.ensureCoalitionSubmenu_=function(side)
-	local rootMenuText = "Hitchtroopers"
-	local menuNameRoot = rootMenuText..side
-	local level = 1
-	local menuName = menuNameRoot .. "_" .. level
-	
-	if hitch_trooper.commsMenus[menuName] == nil then--create submenu
-		hitch_trooper.commsMenus[menuName] = {2, missionCommands.addSubMenuForCoalition(side,rootMenuText,nil)}
-		missionCommands.addCommandForCoalition(side, "Available", hitch_trooper.commsMenus[menuName][2], hitch_trooper.listForSide,side)
-		missionCommands.addCommandForCoalition(side, "Help", hitch_trooper.commsMenus[menuName][2], hitch_trooper.help,side)
-	else  
-		
-		while hitch_trooper.commsMenus[menuName][1] >= 9 do --create overflow if no space here
-			level = level + 1
-			local newMenuName = menuNameRoot .. "_"..level
-			
-			if hitch_trooper.commsMenus[newMenuName] == nil then--create submenu of menu at menuName
-				hitch_trooper.commsMenus[newMenuName] = {0,
-				missionCommands.addSubMenuForCoalition(side, "Next",hitch_trooper.commsMenus[menuName][2])}
-			end
-			menuName = newMenuName
-		end
-	end	
+	local menuName, _, subMenuAdded = helms.ui.ensureSubmenu(side,"Hitchtroopers")
+
+	if subMenuAdded then
+		helms.ui.addCommand(menuName, "Available",  hitch_trooper.listForSide,side)
+		helms.ui.addCommand(menuName, "Help", hitch_trooper.help,side)
+	end
+
 	return menuName
+		
+
 end
 
 hitch_trooper.listForSide = function(side)
@@ -413,10 +394,10 @@ hitch_trooper.instance_meta_ = {
 		
 		setCommsSpawnMode_ = function(self)
 			for k,v in pairs(self.commsMenuItems) do
-				missionCommands.removeItemForCoalition(self.side,v)
+				helms.ui.removeItem(self.commsMenuRoot,v)
 			end
 			self:ensureGroupCommsRoot_()
-			self.commsMenuItems = {spawn = missionCommands.addCommandForCoalition(self.side, "Call in",self.commsMenuRoot,self.spawnGroup_,self)}
+			self.commsMenuItems = {spawn = helms.ui.addCommand(self.commsMenuRoot, "Call in",self.spawnGroup_,self)}
 			hitch_trooper.spawnable_groups_[self.activeGroupName] = self
 		end,
 		
@@ -452,13 +433,13 @@ hitch_trooper.instance_meta_ = {
 		
 		setCommsActiveMode_ = function(self)
 			for k,v in pairs(self.commsMenuItems) do
-				missionCommands.removeItemForCoalition(self.side,v)
+				helms.ui.removeItem(self.commsMenuRoot,v)
 			end
 			self:ensureGroupCommsRoot_()
-			self.commsMenuItems = {	evac = missionCommands.addCommandForCoalition(self.side, "Evac",self.commsMenuRoot,self.evacPoint_,self,nil,true),
-			smoke= missionCommands.addCommandForCoalition(self.side, "Smoke",self.commsMenuRoot,self.smokePosition_,self),
-			sitrep = missionCommands.addCommandForCoalition(self.side, "Sitrep",self.commsMenuRoot,self.sitrep_,self),
-			recover = missionCommands.addCommandForCoalition(self.side, "Stand down",self.commsMenuRoot,self.recover_,self)}
+			self.commsMenuItems = {	evac = helms.ui.addCommand(self.commsMenuRoot, "Evac",self.evacPoint_,self,nil,true),
+			smoke= helms.ui.addCommand(self.commsMenuRoot, "Smoke",self.smokePosition_,self),
+			sitrep = helms.ui.addCommand(self.commsMenuRoot, "Sitrep",self.sitrep_,self),
+			recover = helms.ui.addCommand(self.commsMenuRoot, "Stand down",self.recover_,self)}
 			hitch_trooper.spawnable_groups_[self.activeGroupName] = nil			
 		end,
 		
@@ -470,22 +451,15 @@ hitch_trooper.instance_meta_ = {
 		ensureGroupCommsRoot_ = function(self)
 			if self.commsMenuRoot == nil then
 				self.htCommsPage = hitch_trooper.ensureCoalitionSubmenu_(self.side)
-				self.commsMenuRoot =  
-					missionCommands.addSubMenuForCoalition(self.side, self.digraph,hitch_trooper.commsMenus[self.htCommsPage][2])
-				hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] + 1
+				self.commsMenuRoot =  helms.ui.ensureSubmenu(self.htCommsPage,self.digraph)
 			end
 		end,
 		
 		removeComms_ = function(self)
 			if self.commsMenuRoot ~= nil then
 				--remove menu options
-				missionCommands.removeItemForCoalition(self.side,self.commsMenuRoot)
+				helms.ui.removeItem(self.commsMenuRoot)
 				self.commsMenuRoot = nil
-				
-				--update submenu item count
-				if self.htCommsPage then
-					hitch_trooper.commsMenus[self.htCommsPage][1] = hitch_trooper.commsMenus[self.htCommsPage][1] - 1
-				end
 			end
 		end,
 		

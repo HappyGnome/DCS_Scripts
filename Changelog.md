@@ -1,5 +1,8 @@
 # Changelog
 
+## Latest
+* Created common comms management logic in HeLMS
+* Steersman comms control option added
 ## 1.7a
 * Mission examples added
 * Added late activation handling for unit_repairman
