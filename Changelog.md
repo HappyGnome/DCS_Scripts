@@ -3,6 +3,7 @@
 ## Latest
 * Created common comms management logic in HeLMS
 * Steersman comms control option added
+* Added separate asset pool activity detection for non-air groups (CPS and ROC now compatible with these groups)
 ## 1.7a
 * Mission examples added
 * Added late activation handling for unit_repairman

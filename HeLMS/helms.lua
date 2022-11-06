@@ -846,6 +846,20 @@ helms.dynamic.scheduleFunction = function(f,argPack,t, once)
 	timer.scheduleFunction(helms.dynamic._scheduleFunctionWrapper, {f = f, args = argPack, once = once},t)
 end
 
+helms.dynamic.isAirGroup = function(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
+	local retUnits = {}
+	if group ~= nil then
+		local units = group:getUnits()
+		local unit = units[1]
+		if unit then
+			local desc = unit:getDesc()
+			return desc.category == Unit.Category["HELICOPTER"] or desc.category == Unit.Category["AIRPLANE"]
+		end
+	end
+	return false
+end
+
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.
@@ -1206,16 +1220,21 @@ helms.test.explodeUnitIfNameContains = function(substring, power)
 	local names = helms.mission.getNamesContaining(substring)
 
 	for k, name in pairs(names) do
-		local gp = helms.dynamic.getGroupByName(name)
-		if gp then
-			local units = gp:getUnits()
-			if units then
-				for _,v in pairs(units) do
-					trigger.action.explosion(helms.maths.lin3D(v:getPoint(),1,{x = 10,y=0,z=0},1),power)
-				end				
-			end
-		end
+		helms.test.explodeUnits(name,power)
+		helms.dynamic.getGroupByName(name)
 	end
 
 	return names
+end
+
+helms.test.explodeUnits = function(groupName, power)
+	local gp = helms.dynamic.getGroupByName(groupName)
+	if gp then
+		local units = gp:getUnits()
+		if units then
+			for _,v in pairs(units) do
+				trigger.action.explosion(helms.maths.lin3D(v:getPoint(),1,{x = 10,y=0,z=0},1),power)
+			end				
+		end
+	end
 end

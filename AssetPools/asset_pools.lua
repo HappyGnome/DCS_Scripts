@@ -40,9 +40,9 @@ N.B. a group can only belong to one pool at a time. Adding it to multiple pools 
 asset_pools.tracked_groups_={} 
 
 --[[
-key=group name, value = number of units at spawn
+key=group name, value = {size = number of units at spawn, isAirGroup = true for groups containing an aircraft}
 ]]--
-asset_pools.initial_group_sizes={} 
+asset_pools.initial_group_properties={} 
 
 --[[
 key=group name, value = SetFrequency command for unit at spawn
@@ -133,7 +133,7 @@ asset_pools.RespawnGroupForPoll = function(pool,groupName, groupData)
 		
 		if group then
 			trigger.action.activateGroup(group) --ensure group is active
-			asset_pools.initial_group_sizes[groupName] = group:getSize()
+			asset_pools.initial_group_properties[groupName] = {size = group:getSize(), isAirGroup = helms.dynamic.isAirGroup(groupName)}
 			local freqCommand = asset_pools.initial_group_freq_commands[groupName]
 			
 			if freqCommand == nil then
@@ -200,62 +200,29 @@ asset_pools.doPoll_ = function()
 			asset_pools.tracked_groups_[groupName]=nil
 			return
 		end
-		
-		-- || group and associated pool now both alive for polling ||
-		-- vv                                                      vv
-		
-		local unit = nil
-		local group = helms.dynamic.getGroupByName(groupName)
-		local units={}
-		local groupController=nil
-		
-		if group then
-			units = group:getUnits()
-			groupController = group:getController()
-		end	
-		
+
+		local group, units= helms.dynamic.getLivingUnits(groupName)
 		local isActive = false
 		local isDead = true -- being dead takes precedence over being inactive 
-							-- if the unit doesn't exist we also count it as dead
-							
-		
-		local groupHasTask =  groupController and groupController:hasTask()
-		
-		for i,unit in pairs(units) do
-			if unit:getLife()>1.0 then
-				isDead=false
-				
-				--check whether group or unit have a controller with active task
-				
-				local controller=unit:getController()				
-				
-				--if controller then trigger.action.outText("DB2",5)end--DEBUG
-				--if groupController then trigger.action.outText("DB3",5)end--DEBUG
+							-- if the unit doesn't exist we also count it as dead	
 
-				if unit:getFuel() < asset_pools.ai_bingo_fuel then
-					groupController:popTask()
-					controller:popTask()
-				else
-				
-					if pool.exclude_despawn_near then 
-						local d,_,u=helms.dynamic.getClosestLateralPlayer(groupName, pool.exclude_despawn_near)
-						if d and u then
-							local landType = landTypeUnderUnit(u);
-							isActive = isActive or u:inAir() and d<asset_pools.ai_despawn_exclusion_air 
-							isActive = isActive or (landType == land.SurfaceType.WATER
-												or landType == land.SurfaceType.SHALLOW_WATER) and 
-									d<asset_pools.ai_despawn_exclusion_water
-							isActive = isActive or d<asset_pools.ai_despawn_exclusion_ground
-						end
-					end
-
-					local unitHasTask = controller and controller:hasTask()
-					--asset_pools.log_i.log({groupName,unitHasTask,groupHasTask})--debug
-					isActive = isActive or unit:isActive() and (unitHasTask or groupHasTask)
-		
-				end
+		if pool.exclude_despawn_near then 
+			local d,_,u=helms.dynamic.getClosestLateralPlayer(groupName, pool.exclude_despawn_near)
+			if d and u then
+				local landType = helms.dynamic.landTypeUnderUnit(u);
+				isActive = isActive or u:inAir() and d<asset_pools.ai_despawn_exclusion_air 
+				isActive = isActive or (landType == land.SurfaceType.WATER
+									or landType == land.SurfaceType.SHALLOW_WATER) and 
+						d<asset_pools.ai_despawn_exclusion_water
+				isActive = isActive or d<asset_pools.ai_despawn_exclusion_ground
 			end
-			--trigger.action.outText("DB1",5)--DEBUG
+		end
+		
+		local props = asset_pools.initial_group_properties[groupName]
+		if  props and props.isAirGroup then
+			isDead, isActive = asset_pools.getDeathIdleStatusAir_(group,units)
+		else 
+			isDead, isActive = asset_pools.getDeathIdleStatusSurface_(group,units)
 		end
 		
 		if isDead then
@@ -263,7 +230,8 @@ asset_pools.doPoll_ = function()
 				asset_pools.tracked_groups_[groupName]=nil
 			end 
 		elseif not isActive then
-			if not pool:groupIdle(groupName,now, asset_pools.initial_group_sizes[groupName]) then -- if pool requests to stop polling this group
+			local props = asset_pools.initial_group_properties[groupName]
+			if not props or not pool:groupIdle(groupName,now, props.size) then -- if pool requests to stop polling this group
 				asset_pools.tracked_groups_[groupName]=nil
 			end
 		end
@@ -283,6 +251,47 @@ asset_pools.doPoll_ = function()
 
 	--schedule next poll----------------------------------
 	return now+asset_pools.poll_interval
+end
+
+asset_pools.getDeathIdleStatusAir_ = function(group, livingUnits)
+	local groupController=nil
+		
+	if group then
+		groupController = group:getController()
+	end	
+	
+	local isActive = false
+	local isDead = true -- being dead takes precedence over being inactive 
+						-- if the unit doesn't exist we also count it as dead						
+	
+	local groupHasTask =  groupController and groupController:hasTask()
+
+	for i,unit in pairs(livingUnits) do
+		isDead = false
+		
+		--check whether group or unit have a controller with active task
+		
+		local controller = unit:getController()				
+
+		if unit:getFuel() < asset_pools.ai_bingo_fuel then
+			groupController:popTask()
+			controller:popTask()
+		else
+			local unitHasTask = controller and controller:hasTask()
+			--asset_pools.log_i.log({groupName,unitHasTask,groupHasTask})--debug
+			isActive = isActive or unit:isActive() and (unitHasTask or groupHasTask)
+		end
+	end
+	return isDead, isActive
+end
+
+asset_pools.getDeathIdleStatusSurface_ = function(group, livingUnits)
+	local isActive = false					
+	
+	if #livingUnits > 0 then
+		isActive = true
+	end
+	return not isActive,isActive
 end
 
 --#######################################################################################################
@@ -420,10 +429,7 @@ respawnable_on_call.instance_meta_={
 			return not self.killSwitch -- keep polling
 		end,
 
-
-		--Other methods
-		
-		
+		--Other methods		
 		--[[
 			Set optional callback for when group dies/despawns
 			param callback = function(groupName,timesCalledIn)
