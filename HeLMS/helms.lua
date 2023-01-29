@@ -46,13 +46,17 @@ end
 
 --[[
 Randomly remove N elements from a table and return removed elements (key,value)
+If predicate(k, v) is specified, only entries satisfying the predicate are returned
 --]]
-helms.util.removeRandom = function(t,N)
+helms.util.removeRandom = function(t,N, predicate)
 	local ret={}
 	local count=0
-	
-	for k in pairs(t) do
-		count=count+1
+	local s ={}
+	for k, v in pairs(t) do
+		if predicate == nil or predicate(k,v) == true then
+			count=count+1
+			s[k] = v
+		end
 	end
 	
 	N=math.min(N,count)
@@ -63,10 +67,11 @@ helms.util.removeRandom = function(t,N)
 			
 		local i=0
 
-		for k,v in pairs(t) do
+		for k,v in pairs(s) do
 			i=i+1
 			if i==toRemove then
 				t[k]=nil
+				s[k] = nil
 				ret[k]=v
 			end
 		end
@@ -316,6 +321,9 @@ helms.mission.getNamesContaining = function(substring)
 	return ret
 end
 
+helms.mission.getNamesContainingUpk = function(substring)
+	return unpack(helms.mission.getNamesContaining(substring))
+end
 --[[
 	Return true if group activation is pending
 --]]

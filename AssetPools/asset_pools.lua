@@ -707,12 +707,17 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				return T<now
 			end				
 			
+			local predicate = nil
+			if self.activeFilterIndex_ ~= nil then
+				predicate = self.filters_[self.activeFilterIndex_].predicate
+			end
+
 			--remove a number of groups from cooldown equal to number of 
 			--expired cooldown timers this tick
 			--remove expired timers from list
 			local toReactivate= helms.util.removeRandom(
 				self.groupListCooldown_, 
-				helms.util.eraseByPredicate(self.timeListCooldown_,pred))
+				helms.util.eraseByPredicate(self.timeListCooldown_,pred), predicate)
 				
 			for k in pairs(toReactivate) do
 				self:takeGroupOffCooldown_(k)
@@ -725,7 +730,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			for _ in pairs(self.groupListActive_) do
 				surplusSpawned=surplusSpawned+1
 			end
-			
+
 			--pick random subset of ready groups to spawn
 			for g in pairs(helms.util.removeRandom(self.groupListReady_,-surplusSpawned)) do
 				self:doScheduleSpawn_(g,now)--activate group and schedule to spawn with random delay
@@ -757,7 +762,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 				if ready then
 					self.groupListReady_[groupName]=true--ready to spawn immediately
 				else
-					self.groupListCooldown_[groupName]=true--only spawn after a cooldown event puts it back to ready
+					self.groupListCooldown_[groupName] = true--only spawn after a cooldown event puts it back to ready
 				end
 			end
 		end,
@@ -777,6 +782,24 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			else
 				self.timeListCooldown_[cooldownTime]=1
 				--constant_pressure_set.log_i.log(self.timeListCooldown_[cooldownTime]..", "..cooldownTime)--DEBUG
+			end	
+		end,
+
+		-- Move all ready groups back to the cooldown list
+		putAllReadyBackToCooldown_=function(self)
+			local now = timer.getTime()
+			local count = 0
+			for k,_ in pairs(self.groupListReady_) do
+				self.groupListCooldown_[k]=true
+				count = count + 1
+			end
+			self.groupListReady_ = {}
+
+			if self.timeListCooldown_[now] then
+				self.timeListCooldown_[now]
+					=self.timeListCooldown_[now] + count
+			else
+				self.timeListCooldown_[now] = count
 			end	
 		end,
 		
@@ -828,8 +851,37 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			end
 			self:setDeathPredicate(pred)
 			return self
+		end,
+
+		filterSelectHandler_ = function(self, index)
+			self.activeFilterIndex_ = index
+			self:putAllReadyBackToCooldown_() -- filter is applied between cooldown and ready groups, so reset the ready group
+		end,
+
+		setCommsName = function(self, name)
+			self.commsSubRoot_ = name
+			return self
+		end,
+
+		addSubstringFilterGroup = function(self, substring, commsText, sideName)
+			local index = #self.filters_ + 1
+			self.filters_[index] =
+			{
+				commsText = commsText,
+				predicate = function(groupName, boolVal)
+					--constant_pressure_set.log_i.log(groupName.." "..substring) -- debug
+					return string.find(groupName,substring) ~= nil
+				end
+			}
+			if self.activeFilterIndex_ == nil then self.activeFilterIndex_ = 1 end
+
+			local side = helms.ui.convert.stringToSide (sideName)
+			local rootMenu, _ = helms.ui.ensureSubmenu(side,self.commsRoot_)
+
+			self.subMenuName, _ = helms.ui.ensureSubmenu(rootMenu,self.commsSubRoot_)
+			helms.ui.addCommand(self.subMenuName,commsText,self.filterSelectHandler_, self, index)
+			return self
 		end
-		
 	}--index
 }--meta_,		
 	
@@ -886,7 +938,7 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	--key=time(s)
 	--value == number of groups to cooldown at that time
 	instance.timeListCooldown_={}
-	
+
 	--number of groups we're currently trying to keep alive
 	instance.targetActiveCount=targetActive
 	
@@ -922,13 +974,21 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	for _,v in pairs{...} do
 		if type(v)=='string' then
 			table.insert(allGroups,v)
-		else --try to interpret as group data
+		elseif v.data ~= nil then --try to interpret as group data
 			table.insert(allGroups,v.data.name)
 			instance.groupDataLookup[v.data.name]=v
 			--helms.log_i.log(v)--debug
 		end
 	end
-	
+		
+	--List of filter options
+	--value == {commsText, predicate}
+	-- predicate = function(groupName, bool) => bool
+	instance.filters_={}
+	instance.activeFilterIndex_ = nil
+	instance.commsRoot_ = "CPS"
+	instance.commsSubRoot_ = allGroups[1]
+
 	--select random groups to be initial spawns and ready retinforcements
 	local initForce=helms.util.removeRandom(allGroups, reinforceStrength+targetActive)
 	
@@ -945,6 +1005,8 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	
 	return instance
 end
+
+
 
 --#######################################################################################################
 -- UNIT_REPAIRMAN
