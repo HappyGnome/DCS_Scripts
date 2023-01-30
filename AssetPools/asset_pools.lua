@@ -509,11 +509,7 @@ respawnable_on_call.instance_meta_={
 		createComms_=function(self)
 			local groupAlias = helms.dynamic.getGroupAlias(self.groupName)
 			--add menu options
-			if self.side then --coalition specific addition	
-				self.subMenuName, _ = helms.ui.ensureSubmenu(self.side,"Assets",true)
-			else --add for all	
-				self.subMenuName, _ = helms.ui.ensureSubmenu(nil,"Other Assets")
-			end
+			self.subMenuName, _ = helms.ui.ensureDefaultSubmenu(self.side)
 			self.commsIndex=helms.ui.addCommand(self.subMenuName,groupAlias,self.handleSpawnRequest_,self)
 		end,
 		
@@ -856,27 +852,30 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		filterSelectHandler_ = function(self, index)
 			self.activeFilterIndex_ = index
 			self:putAllReadyBackToCooldown_() -- filter is applied between cooldown and ready groups, so reset the ready group
+			helms.ui.messageForCoalitionOrAll(self.filters_[index].side,
+			string.format("%s selected for %s",self.filters_[index].commsText,self.commsSubRoot_),5)
 		end,
 
-		setCommsName = function(self, name)
+		setCommsOptionsRoot = function(self, name)
 			self.commsSubRoot_ = name
 			return self
 		end,
 
-		addSubstringFilterGroup = function(self, substring, commsText, sideName)
+		addSubstringFilterOption = function(self, substring, commsText, sideName)
 			local index = #self.filters_ + 1
+			local side = helms.ui.convert.stringToSide(sideName)
 			self.filters_[index] =
 			{
 				commsText = commsText,
 				predicate = function(groupName, boolVal)
 					--constant_pressure_set.log_i.log(groupName.." "..substring) -- debug
 					return string.find(groupName,substring) ~= nil
-				end
+				end,
+				side = side
 			}
 			if self.activeFilterIndex_ == nil then self.activeFilterIndex_ = 1 end
-
-			local side = helms.ui.convert.stringToSide (sideName)
-			local rootMenu, _ = helms.ui.ensureSubmenu(side,self.commsRoot_)
+			
+			local rootMenu, _ = helms.ui.ensureDefaultSubmenu(side)
 
 			self.subMenuName, _ = helms.ui.ensureSubmenu(rootMenu,self.commsSubRoot_)
 			helms.ui.addCommand(self.subMenuName,commsText,self.filterSelectHandler_, self, index)
@@ -986,7 +985,6 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	-- predicate = function(groupName, bool) => bool
 	instance.filters_={}
 	instance.activeFilterIndex_ = nil
-	instance.commsRoot_ = "CPS"
 	instance.commsSubRoot_ = allGroups[1]
 
 	--select random groups to be initial spawns and ready retinforcements

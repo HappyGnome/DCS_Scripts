@@ -889,7 +889,9 @@ end
 helms.ui.convert = {}
 
 helms.ui.convert.stringToSide = function(name)
-	name=string.lower(name) --remove case sensitivity
+	if name ~= nil then
+		name=string.lower(name) --remove case sensitivity
+	end
 	if name == "red" then
 		return coalition.side.RED
 	elseif name == "blue" then
@@ -1046,6 +1048,14 @@ values: {
 
 --]]
 helms.ui.commsMenus_ = {}
+
+helms.ui.ensureDefaultSubmenu=function(side)
+	if side and side ~= coalition.side.NEUTRAL then --coalition specific addition	
+		return helms.ui.ensureSubmenu(side,"Assets",true)
+	else --add for all	
+		return helms.ui.ensureSubmenu(nil,"Other Assets")
+	end
+end
 
 --[[
 Get page with space in comms submenu with given text label, relative to parent path or side

@@ -129,7 +129,7 @@ In a mission with groups called `Aerial-1` ... `Aerial-7` set up the triggers:
 |MISSION START|DO SCRIPT FILE|asset_pools.lua|
 |MISSION START|DO SCRIPT|`constant_pressure_set.new(2,2,1800,3600,10,120, "Aerial-1","Aerial-2","Aerial-3","Aerial-4","Aerial-5","Aerial-6","Aerial-7" )`|
 
-Then two groups from among the seven Aerial groups will spawn, as each finishs their mission/dies/despawns, it enters a cooldown and
+Then two groups from among the seven Aerial groups will spawn, as each finishes their mission/dies/despawns, it enters a cooldown and
  another one will spawn within between 10s and  ~120s afterwards. Up to two additional groups will spawn this way. But this numebr increases
 each time one of the 1800s or 3600s cooldowns finishes. 
  
@@ -141,6 +141,43 @@ To cease respawning units from this pressure set, call `<constant_pressure_set i
 Where
 
 `<constant_pressure_set instance>` was returned by a call to `constant_pressure_set.new`
+
+#### Player-controlled filters
+In some situations, its can be useful to add multiple modes for a constant pressure set, and allow players to switch between them through the comms menu. For example, in a training scenario, to switch difficulty modes.
+
+##### Menu text
+To set the name of the constant pressure set in the commes menu, call `<constant_pressure_set instance>:setCommsOptionsRoot(<name>)` 
+
+Where
+
+* `<constant_pressure_set instance>` was returned by a call to `constant_pressure_set.new`
+* `<name>` is the text for the option in the comms menu
+
+**Return:** the same `constant_pressure_set` instance
+
+##### Add a filters
+To create a filter, to only allow groups whose name contains a certain substring to be spawned by the pressure set, call `<constant_pressure_set instance>:addSubstringFilterOption( <groupNameSubstring>, <optionName>, <side>)` 
+
+Where
+
+* `<constant_pressure_set instance>` was returned by a call to `constant_pressure_set.new`
+* `<groupNameSubstring>` is the substring that a group's name must contain for it to be spawned while this filter is active
+* `<side>` (optional). If "blue" or "red", this is added as an option in the comms menu for the named side only.
+
+**Return:** the same `constant_pressure_set` instance
+
+##### Example
+These methods can be called in sequence to set the comms menu name and add filter groups in one line:
+
+In a mission with groups called `Aerial-low-1`, `Aerial-low-2`, `Aerial-low-3`, `Aerial-hi-1`, `Aerial-hi-2`, `Aerial-hi-3`, set up the triggers:
+
+|Trigger|Action|Action Detail|
+|---|---|---|
+|MISSION START|DO SCRIPT FILE|helms.lua|
+|MISSION START|DO SCRIPT FILE|asset_pools.lua|
+|MISSION START|DO SCRIPT|`constant_pressure_set.new(1,0,60,180,10,20, helms.mission.getNamesContainingUpk("Red")):setCommsOptionsRoot("Redair Options"):addSubstringFilterOption( "low", "Easy", "blue"):addSubstringFilterOption( "hi", "Hard", "blue")`|
+
+Then Blue players can select `Blue Assets > Redair Options > Hard` so that only `Aerial-hi-1`, `Aerial-hi-2`, and `Aerial-hi-3` will spawn; or `Blue Assets > Redair Options > Easy` so that only `Aerial-low-1`, `Aerial-low-2`, `Aerial-low-3` will spawn.
 
 #### Suggestion
 
