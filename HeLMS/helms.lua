@@ -151,10 +151,12 @@ helms.util.deep_copy = function(obj)
 end
 
 -- return a unpacked then b unpacked. (Avoids the issue {unpack(a),unpack(b)}=={a[1],unpack(b)})
-helms.util.multiunpack = function(a,b)
-	local ret = a
-	for i,v in ipairs(b) do
-	ret[#ret+1] = v
+helms.util.multiunpack = function(...)
+	local ret = {}
+	for k,v in pairs{...} do
+		for i,w in ipairs(v) do
+			ret[#ret+1] = w
+		end
 	end
 	return unpack(ret)
 end
