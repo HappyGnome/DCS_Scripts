@@ -150,6 +150,15 @@ helms.util.deep_copy = function(obj)
 	return _copy(obj)
 end
 
+-- return a unpacked then b unpacked. (Avoids the issue {unpack(a),unpack(b)}=={a[1],unpack(b)})
+helms.util.multiunpack = function(a,b)
+	local ret = a
+	for i,v in ipairs(b) do
+	ret[#ret+1] = v
+	end
+	return unpack(ret)
+end
+
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
 helms.logger = {

@@ -31,6 +31,8 @@ Where
 
 **Example:** `constant_pressure_set.new(2,2,1800,3600,10,120, helms.mission.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
 
+**Example:** Use `helms.util.multiunpack` to pass a union of generated groups `constant_pressure_set.new(2,2,1800,3600,10,120, helms.util.multiunpack({ap_utils.generateGroups("F16_B", 5, ap_utils.getNamesContaining("DefF15"), ap_utils.getNamesContaining("DedF16"))},{ap_utils.generateGroups("F16_A", 15, ap_utils.getNamesContaining("DefF16"), ap_utils.getNamesContaining("DedF16"))}) )`
+
 ### Checking for player proximity
 `helms.dynamic.getClosestLateralPlayer` can be used to find the closest player (in lateral coordinates, i.e. ignoring altitude) to a unit from a specified group.
 
