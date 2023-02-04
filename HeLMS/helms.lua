@@ -879,6 +879,16 @@ helms.dynamic.isAirGroup = function(groupName)
 	return false
 end
 
+helms.dynamic.clearTasks = function(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
+	if group ~= nil then
+		local controller = group:getController()
+		if controller ~= nil then
+			controller:setTask({id = 'NoTask',params = {}})
+		end
+	end
+end
+
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.

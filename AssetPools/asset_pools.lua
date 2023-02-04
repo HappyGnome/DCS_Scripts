@@ -850,6 +850,11 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		end,
 
 		filterSelectHandler_ = function(self, index)
+			if index ~= self.activeFilterIndex_ then
+				for k,v in pairs(self.groupListActive_) do
+					helms.dynamic.clearTasks(k)
+				end
+			end
 			self.activeFilterIndex_ = index
 			self:putAllReadyBackToCooldown_() -- filter is applied between cooldown and ready groups, so reset the ready group
 			helms.ui.messageForCoalitionOrAll(self.filters_[index].side,
