@@ -16,10 +16,18 @@ helms={ version = 1}
 helms.util = {}
 
 helms.util.safeCall = function(func,args,errorHandler)
+	--helms.log_i.log("sc1")
 	local op = function()
-		func(unpack(args))
+		--helms.log_i.log(args) --TODO
+		return func(unpack(args))
 	end
-	xpcall(op,errorHandler)
+	local ok,result = xpcall(op,errorHandler)
+	--helms.log_i.log(result)--TODO
+	return result
+end
+
+helms.util.safeCallWrap = function(func,errorHandler)
+	return function(...) return helms.util.safeCall(func,arg,errorHandler) end
 end
 
 helms.util.obj2str = function(obj)
@@ -290,6 +298,15 @@ Return the angle between velocity/heading X and the line from points A to B
 helms.maths.thetaToDest = function (X,A,B)
 	local toDest = helms.maths.lin2D(B,1,A,-1)
 	return math.atan2(helms.maths.wedge2D(X,toDest),helms.maths.dot2D(X,toDest))
+end
+
+helms.maths.randomInCircle = function (r,centre)
+	centre = helms.maths.as2D(centre)
+
+	local theta = math.random() * 2 * math.pi
+	r = r * math.sqrt(math.random())
+
+	return { x = centre.x + math.cos(theta) * r, y = centre.y + math.sin(theta) * r}
 end
 
 ----------------------------------------------------------------------------------------------------------
@@ -802,6 +819,26 @@ helms.dynamic.getKeyOfNearest2D = function(objList,point)
 end
 
 --[[
+Get the key of an object within a given distance laterally from a given point. For speed the L^\infinity metric is used.
+Optional predicate can be specified.
+Returns first example found, even if multiple exist
+if no object is found, nil is returned, otherwise the key of the object is returned
+--]]
+helms.dynamic.getKeyOfObjWithin2D = function(objList,point, dist, predicate)
+	local closestDist = math.huge
+	local closestKey = nil
+	point = helms.math.as3D(point)
+	for k,v in pairs(objList) do		
+		if math.abs(v:getPoint().x - point.x) < dist 
+			and math.abs(v:getPoint().z - point.z) < dist 
+			and (predicate == nil or predicate(v)) then 
+			return k
+		end
+	end
+	return nil
+end
+
+--[[
 Return a table of airbases and farps for the coalition farpSide. If friendlyOnly then farpSide also applies to the fixed airbases returned
 --]]
 helms.dynamic.getBaseList = function(farpSide,friendlyOnly, shipsAsFarps)
@@ -852,7 +889,7 @@ helms.dynamic._scheduleFunctionWrapper = function(pack,t)
 		end
 		
 		if not pack.once and ret and type(ret) == 'number' then 
-			--helms.log_e.log({"Reschedule ",ret})--debug
+			helms.log_e.log({"Reschedule ",ret})--debug
 			return ret
 		end
 		return nil
@@ -863,6 +900,11 @@ end
 helms.dynamic.scheduleFunction = function(f,argPack,t, once)
 	if not argPack then argPack = {} end
 	timer.scheduleFunction(helms.dynamic._scheduleFunctionWrapper, {f = f, args = argPack, once = once},t)
+end
+
+helms.dynamic.scheduleFunctionSafe = function(f,argPack,t, once, errorHandler)
+	if not argPack then argPack = {} end
+	timer.scheduleFunction(helms.util.safeCallWrap(helms.dynamic._scheduleFunctionWrapper,errorHandler), {f = f, args = argPack, once = once},t)
 end
 
 helms.dynamic.isAirGroup = function(groupName)
