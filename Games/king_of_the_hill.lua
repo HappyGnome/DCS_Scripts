@@ -42,7 +42,38 @@ king_of_the_hill.log_e=helms.logger.new("king_of_the_hill","error")
 king_of_the_hill.catchError=function(err)
 	king_of_the_hill.log_e.log(err)
 end 
+-----------------------------------------------------------------------------------------------------------
+-- Event handlers
 
+king_of_the_hill.eventHandler = { 
+	onEvent = function(self,event)
+		if (event.id == world.event.S_EVENT_HIT) then
+			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
+		elseif (event.id == world.event.S_EVENT_KILL) then
+			helms.util.safeCall(king_of_the_hill.killHandler,{event.initiator,event.place},king_of_the_hill.catchError)
+		end
+	end
+}
+world.addEventHandler(king_of_the_hill.eventHandler)
+
+king_of_the_hill.hitHandler = function(target, initiator)
+    --TODO multipliers when king scores hits
+end
+
+king_of_the_hill.killHandler = function(target, initiator)
+    if not target or not initiator then return end
+    local tgtName = target:getName()
+    local initName = initiator:getName()
+
+    if initName == tgtName then return end
+
+    for k,v in pairs(king_of_the_hill.games) do
+        if v.rules.kingUnitName == tgtName then
+            king_of_the_hill.kingKilled(v,initName)
+        end
+    end
+end
+-----------------------------------------------------------------------------------------------------------
 king_of_the_hill.doPoll_ = function()
     local now = timer.getTime()
 
@@ -51,11 +82,11 @@ king_of_the_hill.doPoll_ = function()
     king_of_the_hill.running = false
 
     for k,v in pairs(king_of_the_hill.games) do
-        king_of_the_hill.running = king_of_the_hill.pollGame_(k, now) or king_of_the_hill.running
+        king_of_the_hill.running = king_of_the_hill.pollGame_(v, now) or king_of_the_hill.running
     end
-
+    --king_of_the_hill.log_i.log({"running",king_of_the_hill.running})
     if king_of_the_hill.running then
-        return now+king_of_the_hill.poll_interval
+        return now + king_of_the_hill.poll_interval
     else
         return nil
     end
@@ -70,7 +101,7 @@ king_of_the_hill.pollGame_ = function(game, now)
     else
         king_of_the_hill.pollGameWithoutKing_(game, now)
     end
-
+    --king_of_the_hill.log_i.log({"game running",game.running})
     return game.running
 end
 
@@ -91,6 +122,7 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
             king_of_the_hill.loseCrown_(game, now)
         elseif not game.rules.boundsWarningTime then
             trigger.action.outText("King " .. game.rules.kingUnitFriendlyName .. " left the zone. GET BACK!",10)
+            game.rules.boundsWarningTime = now
         end
     else
         game.rules.boundsWarningTime = nil
@@ -99,7 +131,7 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
     -- check for win
     local scoreThisKing = king_of_the_hill.scoreThisKing_(game,now)
 
-    if game.rules.kingTeam  and game.rules.scores[game.rules.kingTeam] + scoreThisKing >= game.ruleOptions.firstToScore then
+    if game.rules.kingTeam  and game.rules.scores[game.rules.kingTeam] + scoreThisKing >= game.rules.firstToScore then
         game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + scoreThisKing
         king_of_the_hill.endGame_ (game)
     end
@@ -111,13 +143,27 @@ end
 
 king_of_the_hill.getUnitInCapRange_ = function(game, side)
     local units = {}
+
+    if not game.rules.crownPoint then return end
+
     local pred = function (unit)
         return unit and unit:inAir()
     end
     for k,v in pairs(coalition.getGroups(side,Group.Category.AIRPLANE)) do
-        units[#units + 1] = v:getUnits()
+        for l,w in pairs(v:getUnits()) do
+            units[#units + 1] = w
+        end
     end
-    local idx = helms.dynamic.getKeyOfObjWithin2D (units,game.zone.centre, king_of_the_hill.crown_cap_radius, pred)
+
+    for k,v in pairs(coalition.getGroups(side,Group.Category.HELICOPTER)) do
+        for l,w in pairs(v:getUnits()) do
+            units[#units + 1] = w
+        end
+    end
+
+    --king_of_the_hill.log_i.log({"units",#units})
+
+    local idx = helms.dynamic.getKeyOfObjWithin2D (units,game.rules.crownPoint, king_of_the_hill.crown_cap_radius, pred)
     if idx then
         return units[idx]
     end
@@ -126,21 +172,22 @@ end
 
 king_of_the_hill.pollGameWithoutKing_ = function(game, now)
     -- check for new king
-    local redUnit = king_of_the_hill.getUnitInCapRange_(coalition.side.RED)
-    local blueUnit = king_of_the_hill.getUnitInCapRange_(coalition.side.BLUE)
+    local redUnit = king_of_the_hill.getUnitInCapRange_(game, coalition.side.RED)
+    local blueUnit = king_of_the_hill.getUnitInCapRange_(game, coalition.side.BLUE)
 
     if (redUnit and blueUnit) or (not redUnit and not blueUnit) then return end
 
     local unit = redUnit
 
     if redUnit then
-        game.rules.kingUnitTeam = "red"
+        game.rules.kingTeam = "red"
     else 
         unit = blueUnit
-        game.rules.kingUnitTeam = "blue"
+        game.rules.kingTeam = "blue"
     end
 
     game.rules.kingUnitName = unit:getName()
+    game.rules.crownPoint = nil
     game.rules.kingUnitFriendlyName = unit:getPlayerName()
     if not game.rules.kingUnitFriendlyName then
         game.rules.kingUnitFriendlyName = game.rules.kingUnitName
@@ -149,7 +196,52 @@ king_of_the_hill.pollGameWithoutKing_ = function(game, now)
     game.rules.boundsWarningTime = nil
     king_of_the_hill.smokeOnCrown_(game)
 
-    trigger.action.outText(string.upper(game.rules.kingUnitTeam) .. " player " .. game.rules.kingUnitFriendlyName .. " is King!",t)
+    trigger.action.outText(string.upper(game.rules.kingTeam) .. " player " .. game.rules.kingUnitFriendlyName .. " is King!",10)
+end
+------------------------------------------------------------------------------------------------------------
+king_of_the_hill.kingKilled = function(game, killedByUnitName)
+
+    if not killedByUnitName then return end
+    local killedByUnit = Unit.getByName(killedByUnitName)
+    if not killedByUnit then return end
+
+    local killedByUnitFriendlyName = killedByUnit:getPlayerName()
+    if not killedByUnitFriendlyName then killedByUnitFriendlyName = killedByUnitName end
+
+    local newKingTeamEnum = killedByUnit:getCoalition()
+    local newKingTeam = nil
+
+    if newKingTeamEnum == coalition.side.RED then
+        newKingTeam = "red"
+    elseif newKingTeamEnum == coalition.side.BLUE then
+        newKingTeam = "blue"
+    else 
+        return
+    end
+
+    local now = timer.getTime()
+
+    if game.rules.kingUnitFriendlyName  then 
+        trigger.action.outText(game.rules.kingUnitFriendlyName .. " killed by " .. killedByUnitFriendlyName,10)
+        trigger.action.outText(string.upper(newKingTeam) .. " player " .. killedByUnitFriendlyName .. " is King!",10)
+    end
+
+    -- update scores
+    if game.rules.kingUnitName and game.rules.kingTeam then
+        game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
+    end
+
+    -- reset king details
+    game.rules.crownHidden = false
+    game.rules.boundsWarningTime = nil
+    game.rules.prevKingUnitName = game.rules.kingUnitName
+    game.rules.kingUnitName = killedByUnitName    
+    game.rules.crownPoint = nil
+    game.rules.kingTeam = newKingTeam
+    game.rules.kingSince = now
+
+    -- update smoke
+    king_of_the_hill.smokeOnCrown_ (game)
 end
 
 king_of_the_hill.endGame_ = function(game)
@@ -163,21 +255,21 @@ king_of_the_hill.endGame_ = function(game)
         trigger.action.outText("RED wins!",30)
     end
 
-    game.crownHidden = true
+    game.rules.crownHidden = true
     king_of_the_hill.smokeOnCrown_(game)
     game.running = false
 
     king_of_the_hill.resetComms_ (game.gameName)
 end
 --
-king_of_the_hill.startGame_ = function(gameName)
+king_of_the_hill.startGame_ = function(gameName, rulesetInd)
 
     --king_of_the_hill.log_i.log("Pre Poll - 1")
-    if gameName == nil then return end
+    if gameName == nil or rulesetInd == nil  then return end
 
     local game = king_of_the_hill.games[gameName]
 
-    if game == nil or game.running  then return end
+    if game == nil or game.running or game.ruleOptions[rulesetInd] == nil then return end
 
     local now = timer.getTime()
     game.rules = {
@@ -188,7 +280,8 @@ king_of_the_hill.startGame_ = function(gameName)
         kingSince = nil,
         crownHidden = false,
         crownPoint = {x = 0, y = 0},
-        boundsWarningTime = nil
+        boundsWarningTime = nil,
+        firstToScore = game.ruleOptions[rulesetInd].firstToScore
     }
     --king_of_the_hill.log_i.log("Pre Poll0")
     for k,v in pairs(game.ruleOptions) do
@@ -208,18 +301,19 @@ end
 king_of_the_hill.getFlarePos = function(game)
     if game == nil then return end
 
-    local pos = helms.maths.as3D(game.rules.crownPoint)
+    local unit = nil
+    if game.rules.kingUnitName then unit = Unit.getByName(game.rules.kingUnitName) end
+
+    local pos = nil
     local yDir = {x = 0, y = 0, z = 1.0}
 
-    if pos == nil then
-        local unit = Unit.getByName(game.rules.kingUnitName)
-        if unit then
-            local posit = unit:getPosition() 
-            pos = posit.p
-            yDir = posit.y
-        end
-    else
-        pos.y = land.getHeight(helms.maths.as2D(pos)) + king_of_the_hill.smoke_elevation_interval
+    if unit then
+        local posit = unit:getPosition() 
+        pos = posit.p
+        yDir = posit.y
+    elseif game.rules.crownPoint then
+        pos = helms.maths.as3D(game.rules.crownPoint)
+        pos.y = land.getHeight(helms.maths.as2D(pos))
     end
 
     return pos, yDir
@@ -244,7 +338,7 @@ king_of_the_hill.flareOnCrownPeriodic_ = function(game)
     if game == nil then return end
 
     if game.running then
-        if not game.crownHidden then king_of_the_hill.flareOnCrown_(game) end
+        if not game.rules.crownHidden then king_of_the_hill.flareOnCrown_(game) end
         --helms.log_i.log("smoke next!" .. timer.getTime() + king_of_the_hill.flare_interval)
         return timer.getTime() + king_of_the_hill.flare_interval
     else 
@@ -260,13 +354,13 @@ king_of_the_hill.smokeOnCrown_ = function(game)
         trigger.action.ctfColorTag(game.rules.prevKingUnitName, 0)
     end
 
-    if game.kingUnitName ~= nil then
+    if game.rules.kingUnitName ~= nil then
         stopStatic = true
 
-        if game.crownHidden then
-            trigger.action.ctfColorTag(game.kingUnitName, 0)
+        if game.rules.crownHidden then
+            trigger.action.ctfColorTag(game.rules.kingUnitName, 0)
         else 
-            trigger.action.ctfColorTag(game.kingUnitName, 4)
+            trigger.action.ctfColorTag(game.rules.kingUnitName, 4)
         end
         
         --[[
@@ -278,13 +372,15 @@ king_of_the_hill.smokeOnCrown_ = function(game)
               Blue    5
         ]]
     else
-        if game.crownHidden then
+        if game.rules.crownHidden then
             stopStatic = true
         else
             local pos = king_of_the_hill.getFlarePos(game)
 
             for i = 1,king_of_the_hill.smoke_count do
-                trigger.action.effectSmokeBig(pos,2,0.5,game.gameName .. "_smoke")
+                local smokeName = game.gameName .. "_smoke_"..i
+                trigger.action.effectSmokeStop(smokeName)
+                trigger.action.effectSmokeBig(pos,2,0.5,smokeName)
                 pos.y = pos.y + king_of_the_hill.smoke_elevation_interval
             end
         end
@@ -292,7 +388,8 @@ king_of_the_hill.smokeOnCrown_ = function(game)
 
     if stopStatic then
         for i = 1,king_of_the_hill.smoke_count do
-            trigger.action.effectSmokeStop(game.gameName .. "_smoke")
+            local smokeName = game.gameName .. "_smoke_"..i
+            trigger.action.effectSmokeStop(smokeName)
                 --[[
                     1 = small smoke and fire
                     2 = medium smoke and fire
@@ -333,8 +430,8 @@ king_of_the_hill.loseCrown_ = function(game, now)
 
     -- reset king details
     game.rules.boundsWarningTime = nil
-    game.rules.kingUnitName = nil
     game.rules.prevKingUnitName = game.rules.kingUnitName
+    game.rules.kingUnitName = nil
     game.rules.kingTeam = nil
     game.rules.kingSince = nil
 
@@ -352,7 +449,7 @@ king_of_the_hill.resetComms_ = function(game)
     game.subMenuPath = helms.ui.ensureSubmenu(gamesMenuPath, game.gameName)
 
     for k,v in pairs(game.ruleOptions) do
-        v.commsIndex = helms.ui.addCommand(game.subMenuPath,v.label,helms.util.safeCallWrap(king_of_the_hill.startGame_,king_of_the_hill.catchError),game.gameName)
+        v.commsIndex = helms.ui.addCommand(game.subMenuPath,v.label,helms.util.safeCallWrap(king_of_the_hill.startGame_,king_of_the_hill.catchError),game.gameName,k)
     end
 
     return game
@@ -386,7 +483,8 @@ king_of_the_hill.AddGame = function(zoneName, gameName)
             kingSince = nil,
             crownHidden = false,
             crownPoint = {x = 0, y = 0},
-            boundsWarningTime = nil
+            boundsWarningTime = nil,
+            firstToScore = 0
         }
     }
     king_of_the_hill.resetComms_ (newGame)

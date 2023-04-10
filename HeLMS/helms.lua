@@ -825,15 +825,15 @@ Returns first example found, even if multiple exist
 if no object is found, nil is returned, otherwise the key of the object is returned
 --]]
 helms.dynamic.getKeyOfObjWithin2D = function(objList,point, dist, predicate)
-	local closestDist = math.huge
-	local closestKey = nil
-	point = helms.math.as3D(point)
-	for k,v in pairs(objList) do		
-		if math.abs(v:getPoint().x - point.x) < dist 
-			and math.abs(v:getPoint().z - point.z) < dist 
+	point = helms.maths.as3D(point)
+	for k,v in pairs(objList) do	
+		local point2 = v:getPoint()
+		if math.abs(point.x - point2.x) < dist 
+			and math.abs(point.z - point2.z) < dist 
 			and (predicate == nil or predicate(v)) then 
 			return k
 		end
+		--helms.log_i.log({point,point2,dist,predicate(v)})
 	end
 	return nil
 end
@@ -889,7 +889,7 @@ helms.dynamic._scheduleFunctionWrapper = function(pack,t)
 		end
 		
 		if not pack.once and ret and type(ret) == 'number' then 
-			helms.log_e.log({"Reschedule ",ret})--debug
+			--helms.log_e.log({"Reschedule ",ret})--debug
 			return ret
 		end
 		return nil
