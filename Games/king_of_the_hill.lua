@@ -53,32 +53,72 @@ king_of_the_hill.eventHandler = {
 			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
 		elseif (event.id == world.event.S_EVENT_KILL) then
 			helms.util.safeCall(king_of_the_hill.killHandler,{event.target,event.initiator},king_of_the_hill.catchError)
-		end
+        elseif (event.id == world.event.S_EVENT_DEAD) then
+            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
+        elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
+            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
+		end -- TODO: use UNIT_LOST handler?
 	end
 }
 world.addEventHandler(king_of_the_hill.eventHandler)
 
 king_of_the_hill.hitHandler = function(target, initiator)
-    --TODO multipliers when king scores hits
-end
 
-king_of_the_hill.killHandler = function(target, initiator)
-    king_of_the_hill.log_i.log({target, initiator}) --TODO
     if not target or not initiator then return end
     local tgtName = target:getName()
     local initName = initiator:getName()
 
-    king_of_the_hill.log_i.log({tgtName , initName}) --TODO
+    if target:getCoalition() == initiator:getCoalition() then return end
+
+    for k,v in pairs(king_of_the_hill.games) do
+        if v.rules.kingUnitName == tgtName then
+            --king_of_the_hill.log_i.log("kingKilled") 
+            v.rules.lastUnitHitKing = initName
+        end
+    end
+end
+
+king_of_the_hill.deadHandler = function(initiator)
+--[[    if not initiator then return end
+    local initName = initiator:getName()
+
+    for k,v in pairs(king_of_the_hill.games) do
+        local killedByUnit = nil
+        if v.rules.lastUnitHitKing then
+            killedByUnit = Unit.getByName(v.rules.lastUnitHitKing)
+        end 
+
+        if killedByUnit 
+            and (v.rules.kingUnitName == initName
+                or (v.rules.prevKingUnitName == initName
+                    and v.rules.kingLostAt
+                    and timer.getTime() - v.rules.kingLostAt < king_of_the_hill.max_loss_to_kill_time)) then
+            --king_of_the_hill.log_i.log("kingKilled") 
+            king_of_the_hill.kingKilled_(v,v.rules.lastUnitHitKing)
+        end
+    end]]--TODO WIP
+end
+
+king_of_the_hill.killHandler = function(target, initiator)
+    --king_of_the_hill.log_i.log({target, initiator}) 
+    if not target or not initiator then return end
+    local tgtName = target:getName()
+    local initName = initiator:getName()
+
+    --king_of_the_hill.log_i.log({tgtName , initName})
 
     if initName == tgtName then return end
+    if target:getCoalition() == initiator:getCoalition() then return end
 
     for k,v in pairs(king_of_the_hill.games) do
         if v.rules.kingUnitName == tgtName 
         or (v.rules.prevKingUnitName == tgtName
             and v.rules.kingLostAt
             and timer.getTime() - v.rules.kingLostAt < king_of_the_hill.max_loss_to_kill_time) then
-            king_of_the_hill.log_i.log("kingKilled") --TODO
+            --king_of_the_hill.log_i.log("kingKilled") 
             king_of_the_hill.kingKilled_(v,initName)
+        elseif v.rules.kingUnitName == initName then
+            king_of_the_hill.kingGetKill_ (v, target)
         end
     end
 end
@@ -158,7 +198,7 @@ king_of_the_hill.printScore_ = function(game, t, now)
     if game.rules.kingTeam and now then
         score[game.rules.kingTeam] = score[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
     end
-    trigger.action.outText("BLUE: "..score.blue.." | RED:"  .. score.red,t)
+    trigger.action.outText("BLUE: "..score.blue.." | RED: "  .. score.red,t)
     game.lastScoreReminder = now
 end
 
@@ -263,14 +303,34 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     -- reset king details
     game.rules.crownHidden = false
     game.rules.boundsWarningTime = nil
-    game.rules.kingUnitName = killedByUnitName    
+    game.rules.kingUnitName = killedByUnitName
+    game.rules.lastUnitHitKing = nil
     game.rules.crownPoint = nil
     game.rules.kingTeam = newKingTeam
     game.rules.kingSince = now
     game.rules.kingLostAt = nil
+    game.rules.kingMultiplier = 1
 
     -- update smoke
     king_of_the_hill.smokeOnCrown_ (game)
+end
+
+king_of_the_hill.kingGetKill_ = function(game, killedUnit)
+    if not killedUnit then return end
+    local killedUnitName = killedUnit:getName()
+
+    local killedGroup = killedUnit:getGroup()
+    local groupCategory = killedGroup:getCategory()
+
+    --king_of_the_hill.log_i.log({"gpcat",groupCategory})--TODO
+    --if groupCategory ~= Group.Category.AIRPLANE and groupCategory ~= Group.Category.HELICOPTER then return end
+
+    local killedUnitFriendlyName = killedUnit:getPlayerName()
+    if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
+
+    game.rules.kingMultiplier = game.rules.kingMultiplier + 1
+    trigger.action.outText("King killed  " .. killedUnitFriendlyName,10)
+    trigger.action.outText("Multiplier increased to " .. game.rules.kingMultiplier,10)
 end
 
 king_of_the_hill.endGame_ = function(game)
@@ -311,7 +371,8 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
         crownPoint = {x = 0, y = 0},
         boundsWarningTime = nil,
         firstToScore = game.ruleOptions[rulesetInd].firstToScore,
-        kingLostAt = nil
+        kingLostAt = nil,
+        kingMultiplier = 1
     }
     game.lastScoreReminder = now
 
@@ -384,6 +445,7 @@ king_of_the_hill.smokeOnCrown_ = function(game)
 
     if game.rules.prevKingUnitName and Unit.getByName(game.rules.prevKingUnitName) then
         trigger.action.ctfColorTag(game.rules.prevKingUnitName, 0)
+        --helms.log_i.log({"smoke off for",game.rules.prevKingUnitName}) --TODO
     end
 
     if game.rules.kingUnitName ~= nil then
@@ -392,8 +454,10 @@ king_of_the_hill.smokeOnCrown_ = function(game)
         if Unit.getByName(game.rules.kingUnitName) then
             if game.rules.crownHidden then
                 trigger.action.ctfColorTag(game.rules.kingUnitName, 0)
+                --helms.log_i.log({"smoke off for",game.rules.kingUnitName}) --TODO
             else 
                 trigger.action.ctfColorTag(game.rules.kingUnitName, 4)
+                --helms.log_i.log({"smoke on for",game.rules.kingUnitName}) --TODO
             end
             
             --[[
@@ -445,9 +509,12 @@ king_of_the_hill.crownAppears_ = function(game)
     --king_of_the_hill.log_i.log("Crown appears") 
     local newPos = helms.maths.randomInCircle(game.zone.radius, game.zone.centre)
     game.rules.kingUnitName = nil
+    game.rules.lastUnitHitKing = nil
+    game.rules.kingMultiplier = 1
     game.rules.crownPoint = newPos
     game.rules.crownHidden = false
     game.rules.kingLostAt = nil
+    game.rules.prevKingUnitName = nil
 
     king_of_the_hill.smokeOnCrown_ (game)
     trigger.action.outText("Crown re-appeared!",10)
@@ -464,12 +531,13 @@ king_of_the_hill.loseCrown_ = function(game, now)
     -- update scores
     if game.rules.kingUnitName and game.rules.kingTeam then
         game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
+        game.rules.prevKingUnitName = game.rules.kingUnitName
     end
 
     -- reset king details
     game.rules.boundsWarningTime = nil
-    game.rules.prevKingUnitName = game.rules.kingUnitName
     game.rules.kingUnitName = nil
+    game.rules.kingMultiplier = 1
     game.rules.kingTeam = nil
     game.rules.kingSince = nil
 
@@ -479,7 +547,7 @@ end
 
 king_of_the_hill.scoreThisKing_ = function(game, now)
     if not game.rules.kingSince then return 0 end
-    return math.floor(now - game.rules.kingSince)
+    return math.floor(now - game.rules.kingSince) * game.rules.kingMultiplier
 end
 
 king_of_the_hill.resetComms_ = function(game)
@@ -518,12 +586,14 @@ king_of_the_hill.AddGame = function(zoneName, gameName)
             kingUnitName = nil,
             kingUnitFriendlyName = nil,
             prevKingUnitName = nil,
+            lastUnitHitKing = nil,
             kingTeam = nil, -- index into scores
             kingSince = nil,
             crownHidden = false,
             crownPoint = {x = 0, y = 0},
             boundsWarningTime = nil,
             firstToScore = 0,
+            kingMultiplier = 1,
             kingLostAt = nil
         }
     }
