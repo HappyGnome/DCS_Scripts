@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1}
+helms={ version = 1.8}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -18,11 +18,11 @@ helms.util = {}
 helms.util.safeCall = function(func,args,errorHandler)
 	--helms.log_i.log("sc1")
 	local op = function()
-		--helms.log_i.log(args) --TODO
+		--helms.log_i.log(args)
 		return func(unpack(args))
 	end
 	local ok,result = xpcall(op,errorHandler)
-	--helms.log_i.log(result)--TODO
+	--helms.log_i.log(result)
 	return result
 end
 
@@ -187,6 +187,11 @@ Loggers for this module
 --]]
 helms.log_i = helms.logger.new("helms","info")
 helms.log_e = helms.logger.new("helms","error")
+
+--error handler for xpcalls. wraps helms.log_e.log
+helms.catchError=function(err)
+	helms.log_e.log(err)
+end 
 
 ----------------------------------------------------------------------------------------------------------
 --MATHS---------------------------------------------------------------------------------------------------
@@ -1291,7 +1296,42 @@ end
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
+-- Events
 
+helms.events = {
+	hitLoggingEnabled_ = false,
+	lastHitBy_ = {} -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
+}
+
+helms.events.getLastHitBy = function(unitHitName)
+	return helms.events.lastHitBy_[unitHitName]
+end
+
+helms.events.hitHandler_ = function(target, initiator,time)
+	if not target or not initiator then return end
+    local tgtName = target:getName()
+    local initName = initiator:getName()
+
+    if target:getCoalition() == initiator:getCoalition() then return end
+
+    helms.events.lastHitBy_[tgtName]={time = time, initiatorName = initName}
+end
+
+helms.events.enableHitLogging = function()
+	if helms.events.hitLoggingEnabled_ then return end
+
+	local eventHandler = { 
+		onEvent = function(self,event)
+			if (event.id == world.event.S_EVENT_HIT) then
+				helms.util.safeCall(helms.events.hitHandler_,{event.target,event.initiator,event.time},helms.catchError)
+			end
+		end
+	}
+	world.addEventHandler(eventHandler)
+
+	helms.events.hitLoggingEnabled_ = true
+end
+---------------------------------------------------------------------------------------------------
 helms.mission._buildMEGroupLookup()
 
 helms.log_i.log("HeLMS v"..helms.version.." loaded")
