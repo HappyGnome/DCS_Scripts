@@ -577,12 +577,13 @@ end
 ----------------------------------------------------------------------------------------------------------
 -- API
 
-king_of_the_hill.AddGame = function(zoneName, gameName)
+king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore)
     local zone = trigger.misc.getZone(zoneName)
 
 	if zone == nil then return nil end
+    if firstToScore == nil then firstToScore = 1800 end
     --Add comms options
-    local timeOptions = {[1]={firstToScore = 1800, label = "First to 1800" --[[, commsIndex = ]]}}
+    local timeOptions = {[1]={firstToScore = firstToScore, label = "First to "..firstToScore --[[, commsIndex = ]]}}
 
     local newGame = {
         zone = {

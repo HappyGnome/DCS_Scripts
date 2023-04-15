@@ -5,6 +5,7 @@ This repository contains some lua scripts for making DCS World missions:
 * Asset Pools - Scripts for spawning groups automatically to keep a mission alive, and managing resources to be spawned via the F10 menu
 * Hitch Troopers - Allows for dynamically spawning, transporting and controlling (semi) intelligent infantry groups
 * Steersman - Scripting for controlling aircraft carrier routes, accounting for wind etc.
+* Games - Game modes. E.g. King-of-the-hill
 
 See the individual module Readme files for more information.
 
