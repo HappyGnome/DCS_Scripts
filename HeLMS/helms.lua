@@ -201,6 +201,8 @@ helms.maths = {}
 
 helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.5144
+helms.maths.m2nm = 0.00054
+helms.maths.m2ft = 3.281
 
 --[[
 True heading point A to point B, in degrees
@@ -997,19 +999,37 @@ end
 --[[
 	Format decimal angle in tegrees to deg, decimal minutes format
 --]]
-helms.ui.convert.formatDegMinDec = function(degrees,posPrefix,negPrefix)
+helms.ui.convert.formatDegMinDec = function(degrees,posPrefix,negPrefix, precision)
 	local prefix = posPrefix
 	if(degrees < 0) then prefix = negPrefix end
 	degrees = math.abs(degrees)
 	local whole = math.floor(degrees)
 	local minutes = 60 *(degrees - whole)
-	
-	return string.format("%s %d°%.2f'",prefix,whole,minutes)
+	if not precision then precision = 2 end
+	return string.format("%s %02d°%0"..3+precision.."."..precision.."f'",prefix,whole,minutes)
 end
 
-helms.ui.convert.pos2LL = function(pos)
+helms.ui.convert.formatDegMinSec = function(degrees,posPrefix,negPrefix, precision)
+	local prefix = posPrefix
+	if(degrees < 0) then prefix = negPrefix end
+	degrees = math.abs(degrees)
+	local whole = math.floor(degrees)
+	local minutesDec = 60 *(degrees - whole)
+	local minutes = math.floor(minutesDec)
+	local seconds = 60 *(minutesDec - minutes)
+	
+	if not precision then precision = 2 end
+	return string.format("%s %02d°%02d'%0"..3+precision.."."..precision.."f\"",prefix,whole,minutes,seconds)
+end
+
+helms.ui.convert.pos2LL = function(pos,seconds, precision, sep)
 	local lat,lon,_ = coord.LOtoLL(pos)
-	return string.format("%s %s",helms.ui.convert.formatDegMinDec(lat,"N","S"),helms.ui.convert.formatDegMinDec(lon,"E","W"))
+	if not sep then sep = ' ' end
+	if not seconds then
+		return string.format("%s%s%s",helms.ui.convert.formatDegMinDec(lat,"N","S", precision),sep,helms.ui.convert.formatDegMinDec(lon,"E","W", precision))
+	else
+		return string.format("%s%s%s",helms.ui.convert.formatDegMinSec(lat,"N","S", precision),sep,helms.ui.convert.formatDegMinSec(lon,"E","W", precision))
+	end	
 end
 
 --[[
