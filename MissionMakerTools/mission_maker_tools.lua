@@ -43,7 +43,11 @@ end
 ----------------------------------------------------------------------------------------------------------
 -- API
 
-mission_maker_tools.logWaypoints = function(substring, seconds, precision, includeAlt)
+mission_maker_tools.logWaypoints = function(substring, seconds, precision, includeAlt, sep, prefix,suffix)
+	if not sep then sep =',' end
+	if not prefix then prefix ='' end
+	if not suffix then suffix ='' end
+
 	local groupNames= helms.mission.getNamesContaining(substring)
 
 	for k,v in pairs(groupNames) do
@@ -54,16 +58,16 @@ mission_maker_tools.logWaypoints = function(substring, seconds, precision, inclu
 			for i,point in pairs(points) do
 				local alt = point.alt * helms.maths.m2ft
 				point = helms.maths.as3D(point) 
-				logstring = string.format("%s\n%d,%s",logstring ,i,helms.ui.convert.pos2LL(point,seconds, precision,','))
+				logstring = string.format("%s\n%s%d%s%s",logstring ,prefix,i,sep,helms.ui.convert.pos2LL(point,seconds, precision,sep))
 
 				if prevPoint then
-					logstring = string.format("%s,%0.0f,%0.1f",logstring,helms.maths.getHeading(prevPoint, point),helms.maths.get2DDist(prevPoint, point)*helms.maths.m2nm)
+					logstring = string.format("%s%s%0.0f%s%0.1f",logstring,sep,helms.maths.getHeading(prevPoint, point),sep,helms.maths.get2DDist(prevPoint, point)*helms.maths.m2nm)
 				end
 
 				if includeAlt then
-					logstring = string.format("%s,%d",logstring,alt)
+					logstring = string.format("%s%s%d",logstring,sep,alt)
 				end
-
+				logstring = string.format("%s%s",logstring,suffix)
 				prevPoint = point
 			end			
 			mission_maker_tools.log_i.log('\n'..logstring..'\n')
