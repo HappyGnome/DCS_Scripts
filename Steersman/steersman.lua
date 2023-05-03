@@ -411,34 +411,36 @@ steersman.instance_meta_ = {
 			local preRet = {[1] = downwindPoint} -- default return
 			local unitPoint  = nil
 			
-			if not viaCentre then 
-				unitPoint = self:GetUnitPoint_() 
-			else 
-				unitPoint = helms.maths.as3D(offsetCenter)
-			end
-			if unitPoint == nil then return preRet end
-			
-			local unitToDownwind = helms.maths.lin2D(unitPoint,-1,downwindPoint,1)
-			local zagQuot = math.floor(helms.maths.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
-			--steersman.log_i.log({"zigZagQuot",zagQuot})
-			--steersman.log_i:info(zagQuot)--debug TODO
-			local i=1
-			local sign = 1
-			while i<zagQuot do
+			if not self.simpleDownwind_ then
+				if not viaCentre then 
+					unitPoint = self:GetUnitPoint_() 
+				else 
+					unitPoint = helms.maths.as3D(offsetCenter)
+				end
+				if unitPoint == nil then return preRet end
 				
-				table.insert(preRet,helms.maths.lin2D(helms.maths.lin2D(downwindDir,i*self.zagSize_,crosswindDir,sign*self.zagSize_),-1,downwindPoint,1))
+				local unitToDownwind = helms.maths.lin2D(unitPoint,-1,downwindPoint,1)
+				local zagQuot = math.floor(helms.maths.dot2D(unitToDownwind,downwindDir)/self.zagSize_)
+				--steersman.log_i.log({"zigZagQuot",zagQuot})
+				--steersman.log_i:info(zagQuot)--debug TODO
+				local i=1
+				local sign = 1
+				while i<zagQuot do
+					
+					table.insert(preRet,helms.maths.lin2D(helms.maths.lin2D(downwindDir,i*self.zagSize_,crosswindDir,sign*self.zagSize_),-1,downwindPoint,1))
+					
+					sign = -1*sign
+					i = i+2
+				end
 				
-				sign = -1*sign
-				i = i+2
-			end
-			
-			local ret = {}
-			for j=1,#preRet do
-				table.insert(ret, preRet[#preRet - j + 1])
-			end
+				local ret = {}
+				for j=1,#preRet do
+					table.insert(ret, preRet[#preRet - j + 1])
+				end
 
-			if viaCentre then
-				table.insert(ret,0,offsetCenter)
+				if viaCentre then
+					table.insert(ret,0,offsetCenter)
+				end
 			end
 			--steersman.log_i:info(#ret)--TODO
 			return ret
@@ -562,11 +564,12 @@ steersman.addCommsMenuControl = function(groupName)
 
 	steersman.tracked_groups_[groupName].commsPath_ = groupPath
 
+	steersman.tracked_groups_[groupName].simpleDownwind_ = true
 
 	if not steersman.tracked_groups_[groupName].opsModeOverride then		
 		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"Start Flight Ops",steersman.manualSetOpsMode_,groupName, true)
 	else
-		steersman.tracked_groups_[groupName].commsIndex =helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
+		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
 	end
 end
 
@@ -623,6 +626,7 @@ steersman.new = function (groupName, zoneName)
 		lastUpdatedRestPos = nil,
 		opsMode_ = false,
 		turnMode_ = false,
+		simpleDownwind_ = false,
 		activationTasks = activationTasks,
 		currentDestPoint_ = nil
 	}	
