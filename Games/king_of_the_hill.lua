@@ -305,6 +305,7 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     game.rules.crownHidden = false
     game.rules.boundsWarningTime = nil
     game.rules.kingUnitName = killedByUnitName
+    game.rules.kingUnitFriendlyName = killedByUnitFriendlyName
     --game.rules.lastUnitHitKing = nil
     game.rules.crownPoint = nil
     game.rules.kingTeam = newKingTeam
@@ -511,6 +512,7 @@ king_of_the_hill.crownAppears_ = function(game)
     --king_of_the_hill.log_i.log("Crown appears") 
     local newPos = helms.maths.randomInCircle(game.zone.radius, game.zone.centre)
     game.rules.kingUnitName = nil
+    game.rules.kingUnitFriendlyName = nil
     --game.rules.lastUnitHitKing = nil
     game.rules.kingMultiplier = 1
     game.rules.crownPoint = newPos
@@ -550,6 +552,7 @@ king_of_the_hill.loseCrown_ = function(game, now)
         -- reset king details
         game.rules.boundsWarningTime = nil
         game.rules.kingUnitName = nil
+        game.rules.kingUnitFriendlyName = nil
         game.rules.kingMultiplier = 1
         game.rules.kingTeam = nil
         game.rules.kingSince = nil
