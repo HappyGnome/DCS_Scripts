@@ -184,6 +184,8 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
         game.rules.boundsWarningTime = nil
     end
 
+    king_of_the_hill.refreshCtfSmokeOnCrown_(game)
+
     -- check for win
     local scoreThisKing = king_of_the_hill.scoreThisKing_(game,now)
 
@@ -195,11 +197,16 @@ end
 
 king_of_the_hill.printScore_ = function(game, t, now)
     local score = {blue = game.rules.scores.blue, red = game.rules.scores.red}
+    local suffix = {['red'] = '', ['blue'] = ''}
 
     if game.rules.kingTeam and now then
         score[game.rules.kingTeam] = score[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
+        suffix[game.rules.kingTeam] = '↑'
+        if game.rules.kingMultiplier > 1 then
+            suffix[game.rules.kingTeam]  = suffix[game.rules.kingTeam]  .. '×' .. game.rules.kingMultiplier
+        end
     end
-    trigger.action.outText("BLUE: "..score.blue.." | RED: "  .. score.red,t)
+    trigger.action.outText("BLUE: "..score.blue..suffix['blue'].." | RED: "  .. score.red  .. suffix['red'],t)
     game.lastScoreReminder = now
 end
 
@@ -442,6 +449,20 @@ king_of_the_hill.flareOnCrownPeriodic_ = function(game)
     end
 end
 
+king_of_the_hill.refreshCtfSmokeOnCrown_ = function(game)
+    if game.rules.kingUnitName ~= nil then
+        local unit = Unit.getByName(game.rules.kingUnitName)
+        if unit then
+            local point = unit:getPoint()
+            if not game.rules.crownHidden and game.rules.smokeAlt and point and point.y < game.rules.smokeAlt then
+                game.rules.smokeAlt = point.y
+                trigger.action.ctfColorTag(game.rules.kingUnitName, 4,0)
+                --helms.log_i.log({"smoke on for",game.rules.kingUnitName})
+            end
+        end
+    end
+end
+
 king_of_the_hill.smokeOnCrown_ = function(game)
 
     local stopStatic = false
@@ -454,12 +475,15 @@ king_of_the_hill.smokeOnCrown_ = function(game)
     if game.rules.kingUnitName ~= nil then
         stopStatic = true
 
-        if Unit.getByName(game.rules.kingUnitName) then
+        local unit = Unit.getByName(game.rules.kingUnitName)
+        if unit then
             if game.rules.crownHidden then
                 trigger.action.ctfColorTag(game.rules.kingUnitName, 0)
                 --helms.log_i.log({"smoke off for",game.rules.kingUnitName})
             else 
-                trigger.action.ctfColorTag(game.rules.kingUnitName, 4)
+                local point = unit:getPoint()
+                game.rules.smokeAlt = point.y
+                trigger.action.ctfColorTag(game.rules.kingUnitName, 4,0)
                 --helms.log_i.log({"smoke on for",game.rules.kingUnitName})
             end
             
