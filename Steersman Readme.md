@@ -76,7 +76,7 @@ To disable (or re-enable) downwind zig-zagging for a particular group, add a tri
 
 Where
 * `<groupName>` is the name of the group for which to enable/disable zig-zagging.
-* `<enable>` true to enable zig-zagging, false or nil to disable zig-zagging for this group (optional, defalt false)
+* `<enable>` true to enable zig-zagging, false or nil to disable zig-zagging for this group (optional, default false)
 
 #### Selected module params
 |Parameter|Type|Desc|
