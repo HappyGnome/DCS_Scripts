@@ -2,6 +2,7 @@
 
 ## Latest
 * Improved KOTH scoreboard and added disappearing smoke workaround
+* Added steersman zig-zag enable/disable function
 ## 1.8a
 * Created common comms management logic in HeLMS
 * Steersman comms control option added
