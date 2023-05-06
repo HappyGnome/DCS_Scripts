@@ -1,7 +1,8 @@
 # Changelog
 
 ## Latest
-## 1.8
+* Improved KOTH scoreboard and added disappearing smoke workaround
+## 1.8a
 * Created common comms management logic in HeLMS
 * Steersman comms control option added
 * Added separate asset pool activity detection for non-air groups (CPS and ROC now compatible with these groups)
