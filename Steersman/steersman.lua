@@ -432,15 +432,14 @@ steersman.instance_meta_ = {
 					sign = -1*sign
 					i = i+2
 				end
-				
-				local ret = {}
-				for j=1,#preRet do
-					table.insert(ret, preRet[#preRet - j + 1])
-				end
+			end	
+			local ret = {}
+			for j=1,#preRet do
+				table.insert(ret, preRet[#preRet - j + 1])
+			end
 
-				if viaCentre then
-					table.insert(ret,0,offsetCenter)
-				end
+			if viaCentre then
+				table.insert(ret,0,offsetCenter)
 			end
 			--steersman.log_i:info(#ret)--TODO
 			return ret
@@ -571,6 +570,18 @@ steersman.addCommsMenuControl = function(groupName)
 	else
 		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
 	end
+end
+
+steersman.disableZigZag = function(groupName,enable)
+	
+	if enable == nil then enable = false end
+
+	if steersman.tracked_groups_[groupName] == nil then 
+		steersman.log_i.log("Cannot disable zigzag - group not registered.")
+		return 
+	end
+
+	steersman.tracked_groups_[groupName].simpleDownwind_ = not enable
 end
 
 --spawn data overrrides obtaining data by group name

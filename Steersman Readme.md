@@ -64,10 +64,19 @@ Where
 
 #### Enabling manual control via the F10 menu
 
-To enable players to force a steersman group into (or out of) ops mode via the comms menu: `DO SCRIPT -> steersman.addCommsMenuControl(<groupName>)` 
+To enable players to force a steersman group into (or out of) ops mode via the comms menu: `DO SCRIPT -> steersman.addCommsMenuControl(<groupName>)`.
+Zig-zag behaviour is disabled by default for groups with F10 menu control (but this can be re-enabled using the disableZigZag method).
 
 Where
 * `<groupName>` is the name of the group to make controllable via the comms menu.
+
+#### Disabling zigzag behaviour
+
+To disable (or re-enable) downwind zig-zagging for a particular group, add a trigger: `DO SCRIPT -> steersman.disableZigZag(<groupName>,<enable>)` 
+
+Where
+* `<groupName>` is the name of the group for which to enable/disable zig-zagging.
+* `<enable>` true to enable zig-zagging, false or nil to disable zig-zagging for this group (optional, defalt false)
 
 #### Selected module params
 |Parameter|Type|Desc|
