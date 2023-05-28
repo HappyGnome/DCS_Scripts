@@ -102,6 +102,10 @@ steersman.instance_meta_ = {
 		
 		pollStep_ = function(self)
 			local options = {pickUnit=true}
+
+			if self.holdPosition then
+				return true
+			end
 			
 			local dist,playerUnit,closestUnit = helms.dynamic.getClosestLateralPlayer(self.groupName_,{self.side_}, options)	
 			
@@ -527,6 +531,30 @@ steersman.setDefaultUpwindHeading = function(zoneName, degTrue, restrictToDefaul
 	--steersman.log_i.log(steersman.zones_[zoneName].defaultUpwindTheta )
 end
 
+steersman.setHoldPosition_ = function(groupName,holdPosition)
+	if steersman.tracked_groups_[groupName] then
+		steersman.tracked_groups_[groupName].holdPosition = holdPosition
+		local group = helms.dynamic.getGroupByName(groupName) 
+		local controller = group:getController()
+
+		if controller then
+			controller:setOnOff(not holdPosition)
+		end
+
+		local groupPath = steersman.tracked_groups_[groupName].commsPath_
+
+		if groupPath ~= nil and steersman.tracked_groups_[groupName].commsHoldIndex ~= nil then
+			helms.ui.removeItem(groupPath,steersman.tracked_groups_[groupName].commsHoldIndex)
+		end
+
+		if not steersman.tracked_groups_[groupName].holdPosition then		
+			steersman.tracked_groups_[groupName].commsHoldIndex = helms.ui.addCommand(groupPath,"Hold Position",steersman.setHoldPosition_,groupName, true)
+		else
+			steersman.tracked_groups_[groupName].commsHoldIndex = helms.ui.addCommand(groupPath,"Resume Sailing",steersman.setHoldPosition_,groupName, false)
+		end
+	end
+end
+
 steersman.manualSetOpsMode_ = function (groupName,opsMode)
 	if steersman.tracked_groups_[groupName] then
 		steersman.tracked_groups_[groupName].opsModeOverride = opsMode
@@ -569,6 +597,12 @@ steersman.addCommsMenuControl = function(groupName)
 		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"Start Flight Ops",steersman.manualSetOpsMode_,groupName, true)
 	else
 		steersman.tracked_groups_[groupName].commsIndex = helms.ui.addCommand(groupPath,"End Flight Ops",steersman.manualSetOpsMode_,groupName, false)
+	end
+
+	if not steersman.tracked_groups_[groupName].holdPosition then		
+		steersman.tracked_groups_[groupName].commsHoldIndex = helms.ui.addCommand(groupPath,"Hold Position",steersman.setHoldPosition_,groupName, true)
+	else
+		steersman.tracked_groups_[groupName].commsHoldIndex = helms.ui.addCommand(groupPath,"Resume Sailing",steersman.setHoldPosition_,groupName, false)
 	end
 end
 
@@ -639,7 +673,8 @@ steersman.new = function (groupName, zoneName)
 		turnMode_ = false,
 		simpleDownwind_ = false,
 		activationTasks = activationTasks,
-		currentDestPoint_ = nil
+		currentDestPoint_ = nil,
+		holdPosition = false
 	}	
 	
 	setmetatable(instance,steersman.instance_meta_)
