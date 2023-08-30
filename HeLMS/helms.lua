@@ -936,6 +936,17 @@ helms.dynamic.clearTasks = function(groupName)
 	end
 end
 
+--[[
+Return = Boolean: Does named group have a living active unit in-play
+--]]
+helms.dynamic.setRandomFlags=function(N, ...)
+	local selection = helms.util.removeRandom(arg,N)
+
+	for k,v in pairs (selection) do
+		trigger.action.setUserFlag(v,true)
+	end
+end
+
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.
@@ -1029,10 +1040,6 @@ helms.ui.convert.toAlpha = function(n)
 	return ret
 end
 
-
-
-
-
 --[[
 convert heading to octant string e.g. "North", "Northeast" etc
 hdg must be in the range  0 -360
@@ -1058,9 +1065,6 @@ helms.ui.convert.hdg2Octant = function (hdg)
 	end
 	return ret
 end
-
-
-
 
 --[[
 Describe point relative to airbase e.g. "8Km Northeast of Kutaisi"
@@ -1091,7 +1095,6 @@ helms.ui.convert.MakePointToPointDescriptor = function (pointA, pointB, distance
 		return string.format("%s",octant)
 	end
 end
-
 
 --[[
 return ETA for following a straight path between two points at a given estimated speed
@@ -1292,6 +1295,13 @@ helms.ui.removeItem = function (parentMenuPath, itemIndex)
 			missionCommands.removeItemForCoalition(side,path)
 		end	
 	end
+end
+
+helms.ui.commTriggerSetRandomFlags = function (menuLabel,optionLabel,side, N, ...)
+	local parentMenuPath, _ = helms.ui.ensureSubmenu(side,menuLabel)
+
+    return helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(helms.dynamic.setRandomFlags,helms.catchError),N,unpack(arg))
+
 end
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
