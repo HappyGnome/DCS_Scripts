@@ -58,14 +58,14 @@ Where
 ### Setting random trigger flags
 `helms.dynamic.setRandomFlags` to set a random subset of a list of mission trigger flags to a certain value
 
-Usage: `helms.dynamic.setRandomFlags(<n>,<toValue>, <...>)`
+Usage: `helms.dynamic.setRandomFlags(<n>,<toValue>, ...)`
 
 Where
 * `<n>` the number of flags to randomly select
 * `<toValue>` the value that selected flags will be set to
-* `<...>` a list of flags to slect from
+* `...` a list of flags to slect from
 
-**Example:**  `helms.ui.setRandomFlags(1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` sets one user flag from 'TgtN1','TgtN2','TgtN3', and 'TgtN4' to `true`
+**Example:**  `helms.ui.setRandomFlags(1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` sets one user flag from `'TgtN1'`,`'TgtN2'`,`'TgtN3'`, and `'TgtN4'` to `true`
 
 ### Simplified comms callbacks
 `helms.ui.combo.commsCallback` simplifies the addition of items to the HeLMS comms submenus (mainly aimed at scripting in the mission editor)
