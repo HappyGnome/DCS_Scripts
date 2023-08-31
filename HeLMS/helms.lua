@@ -937,13 +937,13 @@ helms.dynamic.clearTasks = function(groupName)
 end
 
 --[[
-Return = Boolean: Does named group have a living active unit in-play
+
 --]]
-helms.dynamic.setRandomFlags=function(N, ...)
+helms.dynamic.setRandomFlags=function(N, toVal, ...)
 	local selection = helms.util.removeRandom(arg,N)
 
 	for k,v in pairs (selection) do
-		trigger.action.setUserFlag(v,true)
+		trigger.action.setUserFlag(v,toVal)
 	end
 end
 
@@ -1297,11 +1297,17 @@ helms.ui.removeItem = function (parentMenuPath, itemIndex)
 	end
 end
 
-helms.ui.commTriggerSetRandomFlags = function (menuLabel,optionLabel,side, N, ...)
+-- shortcuts for easier use in ME scripts
+helms.ui.combo = {}
+
+helms.ui.combo.commsCallback = function (side,menuLabel,optionLabel, callback, ...)
 	local parentMenuPath, _ = helms.ui.ensureSubmenu(side,menuLabel)
 
-    return helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(helms.dynamic.setRandomFlags,helms.catchError),N,unpack(arg))
-
+	if menuLabel ~= nil and optionLabel ~= nil and callback ~= nil and type(callback) == "function" then
+    	return helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(callback,helms.catchError),unpack(arg))
+	else
+		helms.log_e.log("Invalid arguments for helms.ui.combo.commsCallback")
+	end
 end
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------

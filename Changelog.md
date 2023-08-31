@@ -4,6 +4,7 @@
 * Improved KOTH scoreboard and added disappearing smoke workaround
 * Added steersman zig-zag enable/disable function
 * Added "Hold Position" / "Resume Sailing" options to manually controlled steersman groups
+* Added random trigger flag and simplifed comms scripting utilities for HeLMS
 ## 1.8a
 * Created common comms management logic in HeLMS
 * Steersman comms control option added

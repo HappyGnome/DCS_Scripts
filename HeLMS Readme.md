@@ -54,3 +54,31 @@ Where
 * `<closestUnit>` (unit) is the unit that attains `<distance>` to the `<playerUnit>`
 
 **Example:**  `helms.dynamic.getClosestLateralPlayer("Raider-1",{coalition.side.BLUE}, {unitFilter = Object.inAir})` returns information about the airbourne unit in the group *Raider-1* that's closest to a blue player.
+
+### Setting random trigger flags
+`helms.dynamic.setRandomFlags` to set a random subset of a list of mission trigger flags to a certain value
+
+Usage: `helms.dynamic.setRandomFlags(<n>,<toValue>, <...>)`
+
+Where
+* `<n>` the number of flags to randomly select
+* `<toValue>` the value that selected flags will be set to
+* `<...>` a list of flags to slect from
+
+**Example:**  `helms.ui.setRandomFlags(1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` sets one user flag from 'TgtN1','TgtN2','TgtN3', and 'TgtN4' to `true`
+
+### Simplified comms callbacks
+`helms.ui.combo.commsCallback` simplifies the addition of items to the HeLMS comms submenus (mainly aimed at scripting in the mission editor)
+
+Usage: `helms.ui.combo.commsCallback(<side>,<menuLabel>,<optionLabel>, <callback>, ...)`
+
+Where
+* `<side>` Side receiving the menu option (`coalition.side`) or nil to create comms options for all
+* `<menuLabel>` Label of the submenu of the F10 'Other' comms menu
+* `<optionLabel>` Label of the comms option
+* `<callback>` Function fo call when comms menu item is pressed
+* `...` arguments for the called function
+
+**Example:**  `helms.ui.combo.commsCallback (nil,'Games','North', helms.dynamic.setRandomFlags, 1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` Adds comms option `Other > Games > North` for all players. When selected, one random user flag from `'TgtN1'`,`'TgtN2'`,`'TgtN3'`, and `'TgtN4'` is set to to `true`
+
+
