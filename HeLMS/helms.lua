@@ -649,10 +649,12 @@ helms.mission._convertMeDrawingPoly = function(meDrawing)
 	-- Rect
 	if meDrawing.polygonMode == 'rect' then
 
-		points[1] = {x = -meDrawing.width, y = -meDrawing.height}
-		points[2] = {x = meDrawing.width, y = -meDrawing.height}
-		points[3] = {x = meDrawing.width, y = meDrawing.height}
-		points[4] = {x = -meDrawing.width, y = meDrawing.height}
+		local wBy2 = meDrawing.width/2
+		local hBy2 = meDrawing.height/2
+		points[1] = {x = -wBy2, y = -hBy2}
+		points[2] = {x = wBy2, y = -hBy2}
+		points[3] = {x = wBy2, y = hBy2}
+		points[4] = {x = -wBy2, y = hBy2}
 	else --Free, arrow etc
 		if meDrawing.points == nil or #meDrawing.points<1 then
 			return nil
@@ -1485,14 +1487,15 @@ helms.ui.showDrawing = function (drawingName,coalition)
 	if meDrawing == nil then return end
 
 	if meDrawing.shapeId == 1 then --Line
+		--helms.log_i.log(meDrawing.points) --TODO
 		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id }, meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
 	elseif meDrawing.shapeId == 2 then -- Circle
-		helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
+		--helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
 		trigger.action.circleToAll(helms.util.multiunpack({coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
 	elseif meDrawing.shapeId == 5 then -- Text
 		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id }, meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.fontSize, true, meDrawing.text}))
 	elseif meDrawing.shapeId == 7 then -- Polygon
-		helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
+		--helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
 		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
 	end
 
