@@ -169,6 +169,23 @@ helms.util.multiunpack = function(...)
 	return unpack(ret)
 end
 
+helms.util.hexToRgba = function(hexStr)
+	local rawNum = tonumber(hexStr)
+
+	local res = {[1]=0.0,[2]=0.0,[3]=0.0,[4]=1.0}
+
+	if rawNum == nil then 
+		return res 
+	end
+	res[4] = (rawNum % 256)/256.0
+	rawNum = rawNum / 256
+	res[3] = (rawNum % 256)/256.0
+	rawNum = rawNum / 256
+	res[2] = (rawNum % 256)/256.0
+	rawNum = rawNum / 256
+	res[1] = (rawNum % 256)/256.0
+	return res
+end
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
 helms.logger = {
@@ -260,6 +277,20 @@ helms.maths.dot2D = function(u,v)
 	if uy == nil then uy = u.y end
 	if vy == nil then vy = v.y end
 	return u.x*v.x + uy*vy
+end
+
+helms.maths.applyMat2D = function(u,M)
+	local v = {}
+	v.x = helms.maths.dot2D(u,M[1])
+	v.y = helms.maths.dot2D(u,M[2])
+	return v
+end
+
+helms.maths.makeRotMat2D = function(theta)
+	local M = {{},{}}
+	M[1] = {x = math.cos(theta), y = -math.sin(theta)}
+	M[2] = {x = math.sin(theta), y = math.cos(theta)}
+	return M
 end
 
 helms.maths.wedge2D = function(u,v)
@@ -531,6 +562,146 @@ helms.mission.getKeysByName = function(name)
 	return helms.util.deep_copy(helms.mission._GroupLookup[name])
 end
 
+helms.mission._drawingSideKeys = { ['Common'] = -1, ['Neutral'] = 0, ['Blue'] = 2, ['Red'] = 1 }
+helms.mission._meDrawingList = nil
+
+helms.mission._getDrawingList = function()
+	if helms.mission._meDrawingList == nil then
+		helms.mission._meDrawingList = helms.mission._buildDrawingList()
+	end
+	return helms.mission._meDrawingList
+end
+
+helms.mission._buildDrawingList = function()
+	local drawings = {} -- key = name, value = {shapeId,coalition,colour, fillColour, lineType, points}
+
+	if env.mission.drawings == nil or env.mission.drawings.layers == nil then 
+		return drawings
+	end
+
+	for layerKey,layer in pairs(env.mission.drawings.layers) do
+		local side = helms.mission._drawingSideKeys[layer.name] -- nil for author
+		
+		if layer.objects ~= nil then
+			for objKey,obj in pairs(layer.objects) do
+				local drawing = nil
+
+				if obj.primitiveType == "Line" then
+					drawing = helms.mission._convertMeDrawingLine(obj)
+				elseif obj.primitiveType == "Polygon" then
+					if obj.polygonMode == 'circle'then
+						drawing = helms.mission._convertMeDrawingCircle(obj)
+					elseif obj.polygonMode == 'oval' then
+						drawing = helms.mission._convertMeDrawingOval(obj)
+					else
+						drawing = helms.mission._convertMeDrawingPoly(obj)
+					end
+				elseif obj.primitiveType == "TextBox" then
+					drawing = helms.mission._convertMeDrawingText(obj)
+				end
+
+				if drawing ~=nil then
+					drawing.colour = helms.util.hexToRgba(obj.colorString)
+					drawing.fillColour = helms.util.hexToRgba(obj.fillColorString)
+					drawing.coalition = side
+
+					drawing.lineType = 1 -- Line types don't match between ME and scripting
+										-- for now, make this binary simplification
+					if obj.thickness == 0 then
+						drawing.lineType = 0
+					end
+
+					drawings[obj.name] = drawing
+				end
+			end
+		end
+	end
+
+	return drawings
+end
+
+helms.mission._convertMeDrawingLine = function(meDrawing)
+	local basePoint = helms.maths.as3D({x = meDrawing.mapX, y= meDrawing.mapY})
+	local points = {}
+	local ret = {shapeId = 1, points = points}
+
+	if meDrawing.points == nil or #meDrawing.points<1 then
+		return ret
+	end
+
+	for i = 1, #meDrawing.points do
+		points[#points + 1] = helms.maths.lin3D(basePoint,1,meDrawing.points[i],1)
+	end
+
+	if meDrawing.closed == true then
+		points[#points + 1] = points[1]
+	end
+
+	ret.points = points
+	return ret
+end
+
+helms.mission._convertMeDrawingPoly = function(meDrawing)
+	local basePoint = helms.maths.as3D({x = meDrawing.mapX, y= meDrawing.mapY})
+	local points = {}
+	local ret = {shapeId = 7, points = points}
+
+	-- Rect
+	if meDrawing.polygonMode == 'rect' then
+
+		points[1] = {x = -meDrawing.width, y = -meDrawing.height}
+		points[2] = {x = meDrawing.width, y = -meDrawing.height}
+		points[3] = {x = meDrawing.width, y = meDrawing.height}
+		points[4] = {x = -meDrawing.width, y = meDrawing.height}
+	else --Free, arrow etc
+		if meDrawing.points == nil or #meDrawing.points<1 then
+			return nil
+		end
+
+		for i = 1, #meDrawing.points do
+			points[i] = meDrawing.points[i]
+		end
+	end
+
+	local theta = 0
+	if meDrawing.angle ~= nil then
+		theta = meDrawing.angle * helms.maths.deg2rad
+	end
+	local M = helms.maths.makeRotMat2D(theta)
+	for i = 1, #points do
+		points[i] = helms.maths.lin3D(basePoint,1,helms.maths.applyMat2D(points[i],M),1)
+	end
+
+	ret.points = points
+	return ret
+end
+
+helms.mission._convertMeDrawingCircle = function(meDrawing)
+	local basePoint = helms.maths.as3D({x = meDrawing.mapX, y= meDrawing.mapY})
+	local points = {basePoint}
+	local ret = {shapeId = 2,  points = points}
+
+	ret.shapeId = 2
+	ret.radius = meDrawing.radius
+	return ret
+end
+
+helms.mission._convertMeDrawingOval = function(meDrawing)
+	local basePoint = helms.maths.as3D({x = meDrawing.mapX, y= meDrawing.mapY})
+	local points = {basePoint }
+	local ret = {shapeId = 2, startPos = basePoint, points = points}
+
+	ret.shapeId = 2
+	ret.radius = ( meDrawing.r1 + meDrawing.r1 )/2 -- TODO -- Add support for ovals
+
+	return ret
+end
+
+helms.mission._convertMeDrawingText = function(meDrawing)
+	local basePoint = helms.maths.as3D({x = meDrawing.mapX, y= meDrawing.mapY})
+	local ret = {shapeId = 5, points = {basePoint}, text = meDrawing.text, fontSize = meDrawing.fontSize}
+	return ret
+end
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking
@@ -1002,7 +1173,7 @@ end
 
 helms.ui.convert.getDHMS = function(seconds)
 	if seconds then
-		return {d = math.floor(seconds/86400),h = seconds % 86400, m = seconds % 3600, s = seconds % 60}
+		return {d = math.floor(seconds/86400),h = math.floor(seconds/3600), m = math.floor(seconds/60), s = seconds % 60}
 	end
 end
 --[[
@@ -1294,6 +1465,46 @@ helms.ui.removeItem = function (parentMenuPath, itemIndex)
 		elseif path ~= nil then
 			missionCommands.removeItemForCoalition(side,path)
 		end	
+	end
+end
+
+helms.ui._renderedDrawingIds = {} -- key = name, value = {id = ,active = }
+helms.ui._nextRenderedDrawingId = 2000
+helms.ui.showDrawing = function (drawingName,coalition)
+	local current = helms.ui._renderedDrawingIds[drawingName] 
+	if current ~= nil and current.active == true then return end
+
+	local id = helms.ui._nextRenderedDrawingId 
+
+	local meDrawing = helms.mission._getDrawingList()[drawingName]
+
+	helms.log_i.log({drawingName,meDrawing })--TODO
+
+	if coalition == nil then coalition = meDrawing.coalition end
+
+	if meDrawing == nil then return end
+
+	if meDrawing.shapeId == 1 then --Line
+		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id }, meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
+	elseif meDrawing.shapeId == 2 then -- Circle
+		helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
+		trigger.action.circleToAll(helms.util.multiunpack({coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
+	elseif meDrawing.shapeId == 5 then -- Text
+		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id }, meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.fontSize, true, meDrawing.text}))
+	elseif meDrawing.shapeId == 7 then -- Polygon
+		helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
+		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
+	end
+
+	helms.ui._renderedDrawingIds[drawingName] = {id = id, active = true}
+	helms.ui._nextRenderedDrawingId = helms.ui._nextRenderedDrawingId + 1
+end
+
+helms.ui.removeDrawing = function (drawingName)
+	local current = helms.ui._renderedDrawingIds[drawingName]
+
+	if current ~= nil and current.active == true then
+		trigger.action.removeMark(id)
 	end
 end
 
