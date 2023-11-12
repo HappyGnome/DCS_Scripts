@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.8}
+helms={ version = 1.9}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -480,7 +480,7 @@ helms.mission._buildMEGroupLookup = function()
 							and type(catV.group) == 'table' then
 							for gpK, gpV in pairs(catV.group) do
 								if type(gpV) == 'table' and gpV.name then
-									helms.mission._GroupLookup[gpV.name] = {coa = coaK, ctry = ctryK, ctryId = ctryV.id, cat = catK, gp = gpK, catEnum = helms.mission._catNameToEnum(catK)}
+									helms.mission._GroupLookup[gpV.name] = {coa = coaK, ctry = ctryK, ctryId = ctryV.id, cat = catK, gp = gpK, catEnum = helms.mission._catNameToEnum(catK), startPoint = {x = gpV.x, y = gpV.y}}
 								end
 							end							
 						end
@@ -505,6 +505,38 @@ helms.mission.getMEGroupDataByName = function(name)
 	--helms.log_i.log(helms.util.obj2str(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])) --debug
 	if not keys then return nil end
 	return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
+end
+
+helms.mission.getMEGroupNamesInZone = function(zoneName, coalition)
+
+	local ret = {}
+	local zone = trigger.misc.getZone(zoneName)
+
+	if zone == nil then return ret end
+
+	local centre = {x = zone.point.x, y = zone.point.z}
+	local radius = zone.radius
+
+	local quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
+
+	if coalition ~= nil then
+		coalition = string.lower(coalition)
+	end
+
+	for name,gpData in pairs(helms.mission._GroupLookup) do
+		if  (gpData.coa == coalition or coalition == nil) and
+			gpData.startPoint.x >= quickBounds.xMin and
+			gpData.startPoint.x <= quickBounds.xMax and
+			gpData.startPoint.y >= quickBounds.yMin and
+			gpData.startPoint.y <= quickBounds.yMax and
+			helms.maths.get2DDist(centre,gpData.startPoint) <= radius then
+
+			ret[#ret + 1] = name
+
+		end
+	end
+
+	return ret
 end
 
 helms.mission.getMEGroupSize = function(name)
@@ -627,6 +659,15 @@ helms.dynamic.respawnMEGroupByName = function(name, activate)
 	end
 	helms.dynamic.normalizeUnitNames(gpData)
 	coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
+end
+
+helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, coalition)
+	local names = helms.mission.getMEGroupNamesInZone(zoneName, coalition)
+	if not names or #names == 0 then return end
+
+	for k,name in pairs(names) do
+		helms.dynamic.respawnMEGroupByName(name,activate)
+	end
 end
 
 -- groupData = ME format as returned by getMEGroupDataByName
