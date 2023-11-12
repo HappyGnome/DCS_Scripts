@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.8}
+helms={ version = 1.9}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -560,6 +560,21 @@ end
 
 helms.mission.getKeysByName = function(name)
 	return helms.util.deep_copy(helms.mission._GroupLookup[name])
+end
+
+--[[
+	Get list of drawing names containing a substring
+	
+	substring - substring to search for
+--]]
+helms.mission.getDrawingNamesContaining = function(substring)
+	local ret = {}
+	for name,_ in pairs(helms.mission._getDrawingList) do
+		if string.find(name,substring) ~= nil then
+			table.insert(ret, name)
+		end
+	end
+	return ret
 end
 
 helms.mission._drawingSideKeys = { ['Common'] = -1, ['Neutral'] = 0, ['Blue'] = 2, ['Red'] = 1 }
