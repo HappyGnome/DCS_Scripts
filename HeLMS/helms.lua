@@ -186,6 +186,16 @@ helms.util.hexToRgba = function(hexStr)
 	res[1] = (rawNum % 256)/256.0
 	return res
 end
+
+helms.util.reverse = function(tbl)
+	local res = {}
+
+	for i,v in ipairs(tbl) do
+		res[#tbl - i + 1] = v
+	end
+	
+	return res
+end
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
 helms.logger = {
@@ -741,7 +751,7 @@ helms.mission._convertMeDrawingOval = function(meDrawing)
 	local ret = {shapeId = 2, startPos = basePoint, points = points}
 
 	ret.shapeId = 2
-	ret.radius = ( meDrawing.r1 + meDrawing.r1 )/2 -- TODO -- Add support for ovals
+	ret.radius = ( meDrawing.r1 + meDrawing.r1 )/2
 
 	return ret
 end
@@ -1527,23 +1537,26 @@ helms.ui.removeItem = function (parentMenuPath, itemIndex)
 end
 
 helms.ui._renderedDrawingIds = {} -- key = name, value = {id = ,active = }
-helms.ui._nextRenderedDrawingId = 2000
+helms.ui._nextRenderedDrawingId = nil
+
 helms.ui.showDrawing = function (drawingName,coalition)
 	local current = helms.ui._renderedDrawingIds[drawingName] 
 	if current ~= nil and current.active == true then return end
 
+	local drawings = helms.mission._getDrawingList()
+	local meDrawing = drawings[drawingName]
+
+	if helms.ui._nextRenderedDrawingId == nil then 
+		helms.ui._nextRenderedDrawingId = 2 * #drawings + 1
+	end
 	local id = helms.ui._nextRenderedDrawingId 
-
-	local meDrawing = helms.mission._getDrawingList()[drawingName]
-
-	helms.log_i.log({drawingName,meDrawing })--TODO
+	local idAlt = id
 
 	if coalition == nil then coalition = meDrawing.coalition end
 
 	if meDrawing == nil then return end
 
 	if meDrawing.shapeId == 1 then --Line
-		--helms.log_i.log(meDrawing.points) --TODO
 		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id }, meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
 	elseif meDrawing.shapeId == 2 then -- Circle
 		--helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
@@ -1553,17 +1566,26 @@ helms.ui.showDrawing = function (drawingName,coalition)
 	elseif meDrawing.shapeId == 7 then -- Polygon
 		--helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
 		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
+
+		idAlt = id + 1
+		trigger.action.markupToAll(helms.util.multiunpack({meDrawing.shapeId, coalition, idAlt} , helms.util.reverse(meDrawing.points), {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType}))
 	end
 
-	helms.ui._renderedDrawingIds[drawingName] = {id = id, active = true}
-	helms.ui._nextRenderedDrawingId = helms.ui._nextRenderedDrawingId + 1
+	helms.ui._renderedDrawingIds[drawingName] = {id = id, idAlt = idAlt, active = true}
+	helms.ui._nextRenderedDrawingId = idAlt + 1
 end
 
 helms.ui.removeDrawing = function (drawingName)
 	local current = helms.ui._renderedDrawingIds[drawingName]
 
-	if current ~= nil and current.active == true then
-		trigger.action.removeMark(id)
+	if current ~= nil and current.active == true and  current.id ~= nil then
+		trigger.action.removeMark(current.id)
+
+		if current.idAlt ~= current.id then
+			trigger.action.removeMark(current.idAlt)
+		end
+
+		current.active = false
 	end
 end
 

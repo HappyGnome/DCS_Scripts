@@ -92,3 +92,30 @@ Where
 * `<coalition>` (optional) side of groups to respawn ("red" or "blue"). All units respawn if this is omitted.
 
 **Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, "blue")` respawns and activates all mission groups in zone called "zone1"
+
+### Display mission drawing
+`helms.ui.showDrawing` spawn or respawn all groups in mission with a starting point in a circular trigger zone.
+
+NOTE: This feature has some known limitations, due to limitations of the DCS scripting API. E.g.: 
+* not all line styles work,
+* line thickness doesn't work,
+* some flickering of fill colours may be seen, and
+* ovals are rendered as circles
+
+Usage: `helms.ui.showDrawing(<drawingName>,<coalition>)`
+
+Where
+* `<drawingName>` drawing name from mission editor to add
+* `<coalition>` (optional) coalition.side of side who will see the drawing (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). Defaults to displaying to all players.
+
+**Example:**  `helms.ui.showDrawing('Line-5',coalition.side.RED)` display drawing called "Line-5" to red players.
+
+### Hide mission drawing
+`helms.ui.removeDrawing` hides a drawing added with `helms.ui.showDrawing`.
+
+Usage: `helms.ui.removeDrawing(<drawingName>)`
+
+Where
+* `<drawingName>` drawing name from mission editor to hide (must have been added with `helms.ui.showDrawing`)
+
+**Example:**  `helms.ui.removeDrawing('Polygon-37')` hides drawing called "Polygon-37" previously shown by a call to `helms.ui.showDrawing`
