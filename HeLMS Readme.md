@@ -82,7 +82,7 @@ Where
 **Example:**  `helms.ui.combo.commsCallback (nil,'Games','North', helms.dynamic.setRandomFlags, 1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` Adds comms option `Other > Games > North` for all players. When selected, one random user flag from `'TgtN1'`,`'TgtN2'`,`'TgtN3'`, and `'TgtN4'` is set to to `true`
 
 ### Spawn units in zone
-`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular trigger zone.
+`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
 
 Usage: `helms.dynamic.respawnMEGroupsInZone(<zoneName>, <activate>, <coalition>)`
 
@@ -92,6 +92,17 @@ Where
 * `<coalition>` (optional) side of groups to respawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units respawn if this is omitted.
 
 **Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, coalition.side.RED)` respawns and activates all mission groups in zone called "zone1"
+
+### Despawn units from zone
+`helms.dynamic.despawnMEGroupsInZone` destroy all groups in mission whose spawn point is inside a circular trigger zone. NOTE: Client and player groups CAN be despawned by this method.
+ 
+ Usage: `helms.dynamic.despawnMEGroupsInZone(<zoneName>, <coalition>)`
+
+Where
+* `<zoneName>` trigger zone name
+* `<coalition>` (optional) side of groups to despawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units despawn if this is omitted.
+
+**Example:**  `helms.dynamic.despawnMEGroupsInZone("zone2", coalition.side.RED)` despawns all red units that start inside "zone2"
 
 ### Display mission drawing
 `helms.ui.showDrawing` spawn or respawn all groups in mission with a starting point in a circular trigger zone.

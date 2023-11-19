@@ -605,6 +605,19 @@ helms.mission.getKeysByName = function(name)
 	return helms.util.deep_copy(helms.mission._GroupLookup[name])
 end
 
+helms.mission.groupContainsClient_ = function(gpData)
+	if not gpData or not gpData.units then return false end
+
+	for k,v in pairs(gpData.units) do
+		if v.skill == "Client" then
+			return true
+		end
+	end
+
+	return false
+end
+
+
 --[[
 	Get list of drawing names containing a substring
 	
@@ -858,6 +871,11 @@ helms.dynamic.respawnMEGroupByName = function(name, activate)
 	local gpData = helms.mission.getMEGroupDataByName(name)
 	if not gpData then return end
 
+	if helms.mission.groupContainsClient_(gpData) then 
+		helms.log_e.log("Cannot respawn client group " .. name)
+		return 
+	end
+
 	local keys = helms.mission._GroupLookup[name]
 	if not keys then return end
 	if activate == nil or activate == true then
@@ -882,6 +900,15 @@ helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, side)
 
 	for k,name in pairs(names) do
 		helms.dynamic.respawnMEGroupByName(name,activate)
+	end
+end
+
+helms.dynamic.despawnMEGroupsInZone = function(zoneName, side)
+	local names = helms.mission.getMEGroupNamesInZone(zoneName, side)
+	if not names or #names == 0 then return end
+
+	for k,name in pairs(names) do
+		helms.dynamic.despawnGroupByName(name)
 	end
 end
 
