@@ -548,7 +548,7 @@ helms.mission.getMEGroupDataByName = function(name)
 	return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
 end
 
-helms.mission.getMEGroupNamesInZone = function(zoneName, coalition)
+helms.mission.getMEGroupNamesInZone = function(zoneName, side)
 
 	local ret = {}
 	local zone = trigger.misc.getZone(zoneName)
@@ -560,12 +560,13 @@ helms.mission.getMEGroupNamesInZone = function(zoneName, coalition)
 
 	local quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
 
-	if coalition ~= nil then
-		coalition = string.lower(coalition)
+	local sideKey = nil
+	if side ~= nil then
+		sideKey = helms.mission.sideToString(side)
 	end
 
 	for name,gpData in pairs(helms.mission._GroupLookup) do
-		if  (gpData.coa == coalition or coalition == nil) and
+		if  (gpData.coa == sideKey or sideKey == nil) and
 			gpData.startPoint.x >= quickBounds.xMin and
 			gpData.startPoint.x <= quickBounds.xMax and
 			gpData.startPoint.y >= quickBounds.yMin and
@@ -761,6 +762,22 @@ helms.mission._convertMeDrawingText = function(meDrawing)
 	local ret = {shapeId = 5, points = {basePoint}, text = meDrawing.text, fontSize = meDrawing.fontSize}
 	return ret
 end
+
+--[[
+Convert coalition to "red", "blue", "neutral", or nil if not matched
+Following mission (.miz) coalition keys
+--]]
+helms.mission.sideToString = function(side)
+	if side == coalition.side.RED then
+		return "red"
+	elseif side == coalition.side.BLUE then
+		return "blue"
+	elseif side == coalition.side.NEUTRAL then
+		return "neutrals"
+	else
+		return nil
+	end
+end
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking
@@ -859,8 +876,8 @@ helms.dynamic.respawnMEGroupByName = function(name, activate)
 	coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
 end
 
-helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, coalition)
-	local names = helms.mission.getMEGroupNamesInZone(zoneName, coalition)
+helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, side)
+	local names = helms.mission.getMEGroupNamesInZone(zoneName, side)
 	if not names or #names == 0 then return end
 
 	for k,name in pairs(names) do

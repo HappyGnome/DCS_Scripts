@@ -89,9 +89,9 @@ Usage: `helms.dynamic.respawnMEGroupsInZone(<zoneName>, <activate>, <coalition>)
 Where
 * `<zoneName>` trigger zone name
 * `<activate>` (optional - default true) activate respawned units
-* `<coalition>` (optional) side of groups to respawn ("red" or "blue"). All units respawn if this is omitted.
+* `<coalition>` (optional) side of groups to respawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units respawn if this is omitted.
 
-**Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, "blue")` respawns and activates all mission groups in zone called "zone1"
+**Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, coalition.side.RED)` respawns and activates all mission groups in zone called "zone1"
 
 ### Display mission drawing
 `helms.ui.showDrawing` spawn or respawn all groups in mission with a starting point in a circular trigger zone.
