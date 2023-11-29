@@ -1683,19 +1683,43 @@ helms.ui.removeDrawing = function (drawingName)
 end
 
 -- shortcuts for easier use in ME scripts
-helms.ui.combo = {}
+helms.ui.combo = {registered = {}}
 
 helms.ui.combo.commsCallback = function (side,menuLabel,optionLabel, callback, ...)
 	local parentMenuPath, _ = helms.ui.ensureSubmenu(side,menuLabel)
 
 	if menuLabel ~= nil and optionLabel ~= nil and callback ~= nil and type(callback) == "function" then
-    	return {parentMenuPath,helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(callback,helms.catchError),unpack(arg))}
+
+		local sideKey = side
+		if sideKey == nil then sideKey = "nil" end
+		if not helms.ui.combo.registered[sideKey] then helms.ui.combo.registered[sideKey] = {} end
+		if not helms.ui.combo.registered[sideKey][menuLabel] then helms.ui.combo.registered[sideKey][menuLabel] = {} end
+
+		if helms.ui.combo.registered[sideKey][menuLabel][optionLabel] ~= nil then
+			helms.ui.combo.removeCommsCallback(side,menuLabel,optionLabel)
+		end
+
+		local handle = {parentMenuPath,helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(callback,helms.catchError),unpack(arg))}
+
+		helms.ui.combo.registered[sideKey][menuLabel][optionLabel] = handle
+
+    	return handle
 	else
 		helms.log_e.log("Invalid arguments for helms.ui.combo.commsCallback")
 	end
 end
 
-helms.ui.combo.removeCommsCallback = function (handlePack)
+helms.ui.combo.removeCommsCallback = function (side,menuLabel,optionLabel)
+	local handlePack = nil
+
+	local sideKey = side
+	if sideKey == nil then sideKey = "nil" end
+
+	if helms.ui.combo.registered[sideKey]
+	   and helms.ui.combo.registered[sideKey][menuLabel] then
+		handlePack = helms.ui.combo.registered[sideKey][menuLabel][optionLabel]
+	end
+
 	if not handlePack or #handlePack < 2 then
 		helms.log_e.log("Invalid comms handle pack")
 	end

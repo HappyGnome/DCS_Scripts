@@ -86,12 +86,14 @@ Returns: table that can be passed to `removeCommsCallback`
 ### Remove comms callbacks
 `helms.ui.combo.removeCommsCallback` remove a comms menu option previously added with `helms.ui.combo.commsCallback`
 
-Usage: `helms.ui.combo.removeCommsCallback(<handle>)`
+Usage: `helms.ui.combo.removeCommsCallback(<side>,<menuLabel>,<optionLabel>)`
 
 Where
-* `<handle>` is the table returned by `helms.ui.combo.commsCallback` when adding the comms option
+* `<side>` Side with the menu option (`coalition.side`) or nil to create comms options for all, as passed to `helms.ui.combo.commsCallback`
+* `<menuLabel>` Label of the submenu of the F10 'Other' comms menu, as passed to `helms.ui.combo.commsCallback`
+* `<optionLabel>` Label of the comms option, as passed to `helms.ui.combo.commsCallback`
 
-**Example:**  `helms.ui.combo.removeCommsCallback(item)` where `item` was returned by `helms.ui.combo.commsCallback`
+**Example:**  `helms.ui.combo.removeCommsCallback(nil,'Games','North')`
 
 ### Spawn units in zone
 `helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
