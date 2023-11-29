@@ -515,13 +515,14 @@ helms.mission._buildMEGroupLookup = function()
 						if (catK == "helicopter" 
 							or catK == "ship" 
 							or catK == "plane" 
-							or catK == "vehicle")
+							or catK == "vehicle"
+							or catK == "static")
 							and type(catV) == 'table'
 							and catV.group 
 							and type(catV.group) == 'table' then
 							for gpK, gpV in pairs(catV.group) do
 								if type(gpV) == 'table' and gpV.name then
-									helms.mission._GroupLookup[gpV.name] = {coa = coaK, ctry = ctryK, ctryId = ctryV.id, cat = catK, gp = gpK, catEnum = helms.mission._catNameToEnum(catK), startPoint = {x = gpV.x, y = gpV.y}}
+									helms.mission._GroupLookup[gpV.name] = {coa = coaK, ctry = ctryK, ctryId = ctryV.id, cat = catK, gp = gpK, catEnum = helms.mission._catNameToEnum(catK), startPoint = {x = gpV.x, y = gpV.y}, isStatic = (catK == "static")}
 								end
 							end							
 						end
@@ -548,12 +549,14 @@ helms.mission.getMEGroupDataByName = function(name)
 	return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
 end
 
-helms.mission.getMEGroupNamesInZone = function(zoneName, side)
+helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 
 	local ret = {}
 	local zone = trigger.misc.getZone(zoneName)
 
 	if zone == nil then return ret end
+
+	if includeStatic == nil then includeStatic = true end
 
 	local centre = {x = zone.point.x, y = zone.point.z}
 	local radius = zone.radius
@@ -567,6 +570,7 @@ helms.mission.getMEGroupNamesInZone = function(zoneName, side)
 
 	for name,gpData in pairs(helms.mission._GroupLookup) do
 		if  (gpData.coa == sideKey or sideKey == nil) and
+			(includeStatic or gpData.isStatic ~= true) and
 			gpData.startPoint.x >= quickBounds.xMin and
 			gpData.startPoint.x <= quickBounds.xMax and
 			gpData.startPoint.y >= quickBounds.yMin and
@@ -805,6 +809,12 @@ helms.dynamic.getGroupByName = function(name)
 	return Group.getByName(helms.dynamic.getGroupAlias(name))
 end
 
+helms.dynamic.getStaticByName = function(name)
+	local group = StaticObject.getByName(name)	
+	if group ~= nil then return group end
+	return StaticObject.getByName(helms.dynamic.getGroupAlias(name))
+end
+
 helms.dynamic.createGroupAlias = function(meGroupName, aliasRoot)
 	local index = 0
 	if meGroupName == aliasRoot then return end
@@ -838,7 +848,7 @@ helms.dynamic.normalizeUnitNames = function(gpData)
 			local name = gpName .. "-" .. index
 			index = index + 1
 			local unit = Unit.getByName(name)
-			if unit == nil or unit:getGroup():getName() == gpName then
+			if unit == nil or (gpData.isStatic == false and unit:getGroup():getName() == gpName) then
 				u.name = name
 				break
 			end			
@@ -846,11 +856,26 @@ helms.dynamic.normalizeUnitNames = function(gpData)
 	end
 end
 
-helms.dynamic.despawnGroupByName = function(groupName)
-	local group = helms.dynamic.getGroupByName(groupName)
-	--helms.log_i.log("Deleting " .. groupName) --Debug
-	if group then
-		group:destroy()
+helms.dynamic.despawnMEGroupByName = function(groupName)
+
+	local gpData = helms.mission._GroupLookup[groupName] 
+
+	if not gpData then return end
+
+	if not gpData.isStatic then
+		local group = helms.dynamic.getGroupByName(groupName)
+		if group then group:destroy() end
+	else
+
+		local gpMeData = helms.mission.getMEGroupDataByName(groupName)
+
+		if gpMeData.units then
+			for k,v in pairs(gpMeData.units) do
+				local group = helms.dynamic.getStaticByName(v.name)
+
+				if group then group:destroy() end
+			end
+		end
 	end
 end
 
@@ -889,13 +914,22 @@ helms.dynamic.respawnMEGroupByName = function(name, activate)
 			existingGp:destroy()
 		end
 		gpData.name = alias
+	end	
+
+	if not keys.isStatic then
+		helms.dynamic.normalizeUnitNames(gpData)
+		coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
+	else
+		if gpData.units then
+			for k,v in pairs(gpData.units) do
+				coalition.addStaticObject(keys.ctryId, v)
+			end
+		end
 	end
-	helms.dynamic.normalizeUnitNames(gpData)
-	coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
 end
 
-helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, side)
-	local names = helms.mission.getMEGroupNamesInZone(zoneName, side)
+helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, side, includeStatic)
+	local names = helms.mission.getMEGroupNamesInZone(zoneName, side, includeStatic)
 	if not names or #names == 0 then return end
 
 	for k,name in pairs(names) do
@@ -903,12 +937,22 @@ helms.dynamic.respawnMEGroupsInZone = function(zoneName, activate, side)
 	end
 end
 
-helms.dynamic.despawnMEGroupsInZone = function(zoneName, side)
-	local names = helms.mission.getMEGroupNamesInZone(zoneName, side)
+helms.dynamic.despawnMEGroupsInZone = function(zoneName, side, removeJunk, includeStatic)
+	local names = helms.mission.getMEGroupNamesInZone(zoneName, side, includeStatic)
 	if not names or #names == 0 then return end
 
 	for k,name in pairs(names) do
-		helms.dynamic.despawnGroupByName(name)
+		helms.dynamic.despawnMEGroupByName(name)
+	end
+
+	if removeJunk == nil or removeJunk then
+		local zone = trigger.misc.getZone(zoneName)
+
+		if zone then
+			zone.point.y = land.getHeight(helms.maths.as2D(zone.point))
+			world.removeJunk({id = world.VolumeType.SPHERE,
+						params = zone})
+		end
 	end
 end
 
@@ -931,7 +975,12 @@ helms.dynamic.spawnGroup = function(groupData, keys, activate)
 		groupData.name = alias
 	end
 	helms.dynamic.normalizeUnitNames(groupData)
-	coalition.addGroup(keys.ctryId, keys.catEnum, groupData)
+
+	if not keys.isStatic then
+		coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
+	else
+		coalition.addStaticObject(keys.ctryId, gpData)
+	end
 end
 
 --[[
@@ -1640,10 +1689,18 @@ helms.ui.combo.commsCallback = function (side,menuLabel,optionLabel, callback, .
 	local parentMenuPath, _ = helms.ui.ensureSubmenu(side,menuLabel)
 
 	if menuLabel ~= nil and optionLabel ~= nil and callback ~= nil and type(callback) == "function" then
-    	return helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(callback,helms.catchError),unpack(arg))
+    	return {parentMenuPath,helms.ui.addCommand(parentMenuPath,optionLabel,helms.util.safeCallWrap(callback,helms.catchError),unpack(arg))}
 	else
 		helms.log_e.log("Invalid arguments for helms.ui.combo.commsCallback")
 	end
+end
+
+helms.ui.combo.removeCommsCallback = function (handlePack)
+	if not handlePack or #handlePack < 2 then
+		helms.log_e.log("Invalid comms handle pack")
+	end
+
+	return helms.ui.removeItem(unpack(handlePack))
 end
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
@@ -1709,5 +1766,12 @@ helms.test.explodeUnits = function(groupName, power)
 				trigger.action.explosion(helms.maths.lin3D(v:getPoint(),1,{x = 10,y=0,z=0},1),power)
 			end				
 		end
+	end
+end
+
+helms.test.explodeStatic = function(groupName, power)
+	local gp = helms.dynamic.getStaticByName(groupName)
+	if gp then
+		trigger.action.explosion(helms.maths.lin3D(gp:getPoint(),1,{x = 10,y=0,z=0},1),power)
 	end
 end

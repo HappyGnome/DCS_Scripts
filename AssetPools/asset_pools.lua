@@ -25,9 +25,8 @@ asset_pools.poll_interval=60 --seconds, time between updates of group availabili
 asset_pools.ai_bingo_fuel=0.2 --fraction of internal fuel for ending ai missions
 asset_pools.ai_despawn_exclusion_air = 157000 -- 85 nm
 asset_pools.ai_despawn_exclusion_ground = 60000 -- 60km
-asset_pools.ai_despawn_exclusion_sea = 200000 --200km
+asset_pools.ai_despawn_exclusion_water = 200000 --200km
 ----------------------------------------------------------------------------------------------------------
---TODO expose these options to mission makers
 
 --[[
 List of groups belonging to all pools. Lifecyclye state of all assets is updated at the same time
@@ -212,9 +211,9 @@ asset_pools.doPoll_ = function()
 				local landType = helms.dynamic.landTypeUnderUnit(u);
 				isActive = isActive or u:inAir() and d<asset_pools.ai_despawn_exclusion_air 
 				isActive = isActive or (landType == land.SurfaceType.WATER
-									or landType == land.SurfaceType.SHALLOW_WATER) and 
-						d<asset_pools.ai_despawn_exclusion_water
-				isActive = isActive or d<asset_pools.ai_despawn_exclusion_ground
+									or landType == land.SurfaceType.SHALLOW_WATER) 
+									and d < asset_pools.ai_despawn_exclusion_water
+				isActive = isActive or d < asset_pools.ai_despawn_exclusion_ground
 			end
 		end
 		
@@ -1180,9 +1179,9 @@ unit_repairman.eventHandler = {
 			helms.util.safeCall(unit_repairman.birthHandler,{event.initiator},unit_repairman.catchError)
 		end
 
-		if (event.id == world.event.S_EVENT_UNIT_LOST) then
-			unit_repairman.log_i.log('dead event'.. helms.util.obj2str(event.initiator))--TODO
-		end
+		-- if (event.id == world.event.S_EVENT_UNIT_LOST) then
+		-- 	unit_repairman.log_i.log('dead event'.. helms.util.obj2str(event.initiator))
+		-- end
 	end
 }
 
