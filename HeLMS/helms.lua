@@ -848,7 +848,7 @@ helms.dynamic.normalizeUnitNames = function(gpData)
 			local name = gpName .. "-" .. index
 			index = index + 1
 			local unit = Unit.getByName(name)
-			if unit == nil or (gpData.isStatic == false and unit:getGroup():getName() == gpName) then
+			if unit == nil or unit:getGroup():getName() == gpName then
 				u.name = name
 				break
 			end			
@@ -958,30 +958,30 @@ end
 
 -- groupData = ME format as returned by getMEGroupDataByName
 -- keys = {coat,cat,gp} as returned by getKeysByName
-helms.dynamic.spawnGroup = function(groupData, keys, activate)
-	if not groupData then return end
-	--groupData.task="Nothing"--debug
-	if not keys or not keys.ctry or not keys.cat then return end
-	if activate == nil or activate == true then
-		groupData.lateActivation = false
-	end
+-- helms.dynamic.spawnGroup = function(groupData, keys, activate)
+-- 	if not groupData then return end
+-- 	--groupData.task="Nothing"--debug
+-- 	if not keys or not keys.ctry or not keys.cat then return end
+-- 	if activate == nil or activate == true then
+-- 		groupData.lateActivation = false
+-- 	end
 
-	local alias = helms.dynamic.groupNameMap[groupData.name]
-	if alias ~= nil then
-		local existingGp = Group.getByName(groupData.name)
-		if existingGp ~= nil then
-			existingGp:destroy()
-		end
-		groupData.name = alias
-	end
-	helms.dynamic.normalizeUnitNames(groupData)
+-- 	local alias = helms.dynamic.groupNameMap[groupData.name]
+-- 	if alias ~= nil then
+-- 		local existingGp = Group.getByName(groupData.name)
+-- 		if existingGp ~= nil then
+-- 			existingGp:destroy()
+-- 		end
+-- 		groupData.name = alias
+-- 	end
 
-	if not keys.isStatic then
-		coalition.addGroup(keys.ctryId, keys.catEnum, gpData)
-	else
-		coalition.addStaticObject(keys.ctryId, gpData)
-	end
-end
+-- 	if not keys.isStatic then
+-- 		helms.dynamic.normalizeUnitNames(groupData)
+-- 		coalition.addGroup(keys.ctryId, keys.catEnum, groupData)
+-- 	else
+-- 		coalition.addStaticObject(keys.ctryId, groupData)
+-- 	end
+-- end
 
 --[[
 Return = Boolean: Does named group have a living active unit in-play
