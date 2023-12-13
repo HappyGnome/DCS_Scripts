@@ -355,6 +355,57 @@ helms.maths.randomInCircle = function (r,centre)
 	return { x = centre.x + math.cos(theta) * r, y = centre.y + math.sin(theta) * r}
 end
 
+helms.maths.isPointInPoly = function (point, verts)
+
+	if (not point) or (not verts) or (#verts < 3) then
+		return false
+	end
+
+	local ytol = 0.01 -- added to verts lying on same y value as point
+
+	local winding = 0
+
+	local p1 = helms.maths.lin2D (verts[#verts],point,1,-1)
+	local p2 = helms.maths.lin2D (verts[1],point,1,-1)
+
+	for i = 1,#verts do
+	
+		if (p1.y > -ytol and p1.y < ytol) then
+			p1.y = ytol
+		end
+
+		if (p2.y > -ytol and p2.y < ytol) then
+			p2.y = ytol
+		end
+
+		-- t * p1.y + (1-t) p2.y = 0
+
+		-- t = p2.y / (p2.y - p1.y)
+		
+		-- x = t * p1.x + (1-t) * p2.x = (p1.x * p2.y - p2.x * p1.y) / (p2.y - p1.y)
+
+		-- > 0 if (p1.x * p2.y > p2.x * p1.y and p2.y > 0 > p1.y)   => +1
+		--					or (p1.x * p2.y < p2.x * p1.y and p2.y < 0 < p1.y) => -1
+		-- < 0 if (p1.x * p2.y > p2.x * p1.y and p2.y < 0 < p1.y)   => +1
+		--					or (p1.x * p2.y < p2.x * p1.y and p2.y > 0 > p1.y) => -1
+
+		if (p1.y * p2.y < 0) then
+			if p1.x * p2.y < p2.x * p1.y then
+				winding = winding - 0.5
+			else 
+				winding = winding + 0.5
+			end
+		end 
+
+		if i < #verts then
+			p1 = helms.maths.lin2D (verts[i],point,1,-1)
+			p2 = helms.maths.lin2D (verts[i+1],point,1,-1)
+		end
+	end	  
+
+	return winding ~= 0
+end
+
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
 -- Convert/manage data from mission file
