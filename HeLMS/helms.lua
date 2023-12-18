@@ -365,8 +365,8 @@ helms.maths.isPointInPoly = function (point, verts)
 
 	local winding = 0
 
-	local p1 = helms.maths.lin2D (verts[#verts],point,1,-1)
-	local p2 = helms.maths.lin2D (verts[1],point,1,-1)
+	local p1 = helms.maths.lin2D (verts[#verts],1, point,-1)
+	local p2 = helms.maths.lin2D (verts[1],1,point,-1)
 
 	for i = 1,#verts do
 	
@@ -398,8 +398,8 @@ helms.maths.isPointInPoly = function (point, verts)
 		end 
 
 		if i < #verts then
-			p1 = helms.maths.lin2D (verts[i],point,1,-1)
-			p2 = helms.maths.lin2D (verts[i+1],point,1,-1)
+			p1 = p2
+			p2 = helms.maths.lin2D (verts[i+1],1,point,-1)
 		end
 	end	  
 
@@ -603,16 +603,49 @@ end
 helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 
 	local ret = {}
-	local zone = trigger.misc.getZone(zoneName)
-
-	if zone == nil then return ret end
+	local meZoneData = helms.mission.getMeZoneData(zoneName)
 
 	if includeStatic == nil then includeStatic = true end
 
-	local centre = {x = zone.point.x, y = zone.point.z}
-	local radius = zone.radius
+	local quickBounds = {}
+	local centre = {x = 0, y = 0}
+	local radius = 0
+	local vertices = nil
 
-	local quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
+	helms.log_i.log(meZoneData) -- TODO
+	helms.log_i.log(helms.mission.zoneTypes) -- TODO
+
+	if meZoneData.type == helms.mission.zoneTypes.Quad and meZoneData.verticies then
+		vertices = meZoneData.verticies
+	
+		for k,v in pairs(vertices) do
+			if quickBounds.xMax == nil or quickBounds.xMax < v.x then
+				quickBounds.xMax = v.x
+			end 
+
+			if quickBounds.xMin == nil or quickBounds.xMin > v.x then
+				quickBounds.xMin = v.x
+			end 
+
+			if quickBounds.yMax == nil or quickBounds.yMax < v.y then
+				quickBounds.yMax = v.y
+			end 
+
+			if quickBounds.yMin == nil or quickBounds.xMin > v.y then
+				quickBounds.yMin = v.y
+			end 
+		end
+	else
+		local zone = trigger.misc.getZone(zoneName)
+
+		if zone == nil then return ret end
+	
+		centre = {x = zone.point.x, y = zone.point.z}
+		radius = zone.radius
+	
+		quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
+	
+	end
 
 	local sideKey = nil
 	if side ~= nil then
@@ -625,10 +658,12 @@ helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 			gpData.startPoint.x >= quickBounds.xMin and
 			gpData.startPoint.x <= quickBounds.xMax and
 			gpData.startPoint.y >= quickBounds.yMin and
-			gpData.startPoint.y <= quickBounds.yMax and
-			helms.maths.get2DDist(centre,gpData.startPoint) <= radius then
+			gpData.startPoint.y <= quickBounds.yMax then
 
-			ret[#ret + 1] = name
+			if (vertices == nil and helms.maths.get2DDist(centre,gpData.startPoint) <= radius)
+				or helms.maths.isPointInPoly(gpData.startPoint,vertices) then
+				ret[#ret + 1] = name
+			end
 
 		end
 	end
@@ -744,6 +779,36 @@ helms.mission._buildDrawingList = function()
 	end
 
 	return drawings
+end
+
+helms.mission.zoneTypes = { ['Circle'] = 0, ['Quad'] = 2}
+helms.mission._meZoneNameLookup = nil -- key = zone name, value = id
+
+helms.mission.getMeZoneData = function(zoneName)
+	if helms.mission._meZoneNameLookup == nil then
+		helms.mission._meZoneNameLookup = helms.mission._buildZoneNameLookup()
+	end
+	local ZoneId = helms.mission._meZoneNameLookup[zoneName]
+
+	if ZoneId == nil or env.mission.triggers == nil or env.mission.triggers.zones == nil  then
+		return nil
+	end
+
+	return env.mission.triggers.zones[ZoneId]
+end
+
+helms.mission._buildZoneNameLookup = function()
+	local zones = {}
+
+	if env.mission.triggers == nil or env.mission.triggers.zones == nil then 
+		return zones
+	end
+
+	for k,v in pairs(env.mission.triggers.zones) do
+		zones[v.name] = k
+	end
+
+	return zones 
 end
 
 helms.mission._convertMeDrawingLine = function(meDrawing)
