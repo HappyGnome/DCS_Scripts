@@ -378,17 +378,6 @@ helms.maths.isPointInPoly = function (point, verts)
 			p2.y = ytol
 		end
 
-		-- t * p1.y + (1-t) p2.y = 0
-
-		-- t = p2.y / (p2.y - p1.y)
-		
-		-- x = t * p1.x + (1-t) * p2.x = (p1.x * p2.y - p2.x * p1.y) / (p2.y - p1.y)
-
-		-- > 0 if (p1.x * p2.y > p2.x * p1.y and p2.y > 0 > p1.y)   => +1
-		--					or (p1.x * p2.y < p2.x * p1.y and p2.y < 0 < p1.y) => -1
-		-- < 0 if (p1.x * p2.y > p2.x * p1.y and p2.y < 0 < p1.y)   => +1
-		--					or (p1.x * p2.y < p2.x * p1.y and p2.y > 0 > p1.y) => -1
-
 		if (p1.y * p2.y < 0) then
 			if p1.x * p2.y < p2.x * p1.y then
 				winding = winding - 0.5
@@ -611,9 +600,6 @@ helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 	local centre = {x = 0, y = 0}
 	local radius = 0
 	local vertices = nil
-
-	helms.log_i.log(meZoneData) -- TODO
-	helms.log_i.log(helms.mission.zoneTypes) -- TODO
 
 	if meZoneData.type == helms.mission.zoneTypes.Quad and meZoneData.verticies then
 		vertices = meZoneData.verticies

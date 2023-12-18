@@ -96,7 +96,7 @@ Where
 **Example:**  `helms.ui.combo.removeCommsCallback(nil,'Games','North')`
 
 ### Spawn units in zone
-`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
+`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular or quad trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
 
 Usage: `helms.dynamic.respawnMEGroupsInZone(<zoneName>, <activate>, <coalition>, <includeStatic>)`
 
@@ -109,7 +109,7 @@ Where
 **Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, coalition.side.RED)` respawns and activates all mission groups in zone called "zone1"
 
 ### Despawn units from zone
-`helms.dynamic.despawnMEGroupsInZone` destroy all groups in mission whose spawn point is inside a circular trigger zone. NOTE: Client and player groups CAN be despawned by this method.
+`helms.dynamic.despawnMEGroupsInZone` destroy all groups in mission whose spawn point is inside a circular or quad trigger zone. NOTE: Client and player groups CAN be despawned by this method.
  
  Usage: `helms.dynamic.despawnMEGroupsInZone(<zoneName>, <coalition>, <includeStatic>)`
 
@@ -121,7 +121,7 @@ Where
 **Example:**  `helms.dynamic.despawnMEGroupsInZone("zone2", coalition.side.RED)` despawns all red units that start inside "zone2"
 
 ### Display mission drawing
-`helms.ui.showDrawing` spawn or respawn all groups in mission with a starting point in a circular trigger zone.
+`helms.ui.showDrawing` show drawing defined in mission editor in the running mission (to groups other than those that can see it on mission load).
 
 NOTE: This feature has some known limitations, due to limitations of the DCS scripting API. E.g.: 
 * not all line styles work,
