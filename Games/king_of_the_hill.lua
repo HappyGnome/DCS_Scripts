@@ -17,6 +17,8 @@ end
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
+king_of_the_hill.version = 1.2
+
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
 king_of_the_hill.flare_interval = 10 -- seconds
@@ -27,6 +29,7 @@ king_of_the_hill.max_loss_to_kill_time = 15
 king_of_the_hill.return_to_zone_time = 30
 king_of_the_hill.crown_cap_radius = 500 --m
 king_of_the_hill.score_reminder_cooldown = 60 --seconds
+king_of_the_hill.score_bonus_per_kill = 0.5
 ----------------------------------------------------------------------------------------------------------
 
 king_of_the_hill.running = false
@@ -338,7 +341,7 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
     local killedUnitFriendlyName = killedUnit:getPlayerName()
     if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
 
-    game.rules.kingMultiplier = game.rules.kingMultiplier + 1
+    game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
     trigger.action.outText("King killed  " .. killedUnitFriendlyName,10)
     trigger.action.outText("Multiplier increased to " .. game.rules.kingMultiplier,10)
 end
@@ -399,6 +402,12 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
     -------------------------------------------------------------------
     helms.dynamic.scheduleFunctionSafe(king_of_the_hill.flareOnCrownPeriodic_,{game},now + king_of_the_hill.flare_interval,nil, king_of_the_hill.catchError) -- start flares
     king_of_the_hill.loseCrown_(game, now)
+
+    trigger.action.outText("KING OF THE HILL v" .. king_of_the_hill.version,30)
+
+    local startMessage = "Hold the crown in zone (" .. game.zone.zoneName .. ") to score points.\n"
+    startMessage = startMessage .. "First team to " .. game.rules.firstToScore .. " wins!"
+    trigger.action.outText(startMessage,30)
 end
 
 king_of_the_hill.getFlarePos = function(game)
@@ -546,6 +555,7 @@ king_of_the_hill.crownAppears_ = function(game)
 
     king_of_the_hill.smokeOnCrown_ (game)
     trigger.action.outText("Crown re-appeared!",10)
+    trigger.action.outText("Look for the fires",10)
 end
 
 king_of_the_hill.loseCrown_ = function(game, now)
@@ -592,8 +602,11 @@ king_of_the_hill.scoreThisKing_ = function(game, now)
 end
 
 king_of_the_hill.resetComms_ = function(game)
-    local gamesMenuPath, _ = helms.ui.ensureSubmenu(nil,"Games")
-    game.subMenuPath = helms.ui.ensureSubmenu(gamesMenuPath, game.gameName)
+
+    if game.subMenuPath == nil then
+        local gamesMenuPath, _ = helms.ui.ensureSubmenu(nil,"Games")
+        game.subMenuPath = helms.ui.ensureSubmenu(gamesMenuPath, game.gameName)
+    end 
 
     for k,v in pairs(game.ruleOptions) do
         v.commsIndex = helms.ui.addCommand(game.subMenuPath,v.label,helms.util.safeCallWrap(king_of_the_hill.startGame_,king_of_the_hill.catchError),game.gameName,k)
