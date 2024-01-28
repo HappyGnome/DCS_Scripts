@@ -1081,30 +1081,30 @@ end
 
 -- groupData = ME format as returned by getMEGroupDataByName
 -- keys = {coat,cat,gp} as returned by getKeysByName
--- helms.dynamic.spawnGroup = function(groupData, keys, activate)
--- 	if not groupData then return end
--- 	--groupData.task="Nothing"--debug
--- 	if not keys or not keys.ctry or not keys.cat then return end
--- 	if activate == nil or activate == true then
--- 		groupData.lateActivation = false
--- 	end
+helms.dynamic.spawnGroup = function(groupData, keys, activate)
+	if not groupData then return end
+	--groupData.task="Nothing"--debug
+	if not keys or not keys.ctry or not keys.cat then return end
+	if activate == nil or activate == true then
+		groupData.lateActivation = false
+	end
 
--- 	local alias = helms.dynamic.groupNameMap[groupData.name]
--- 	if alias ~= nil then
--- 		local existingGp = Group.getByName(groupData.name)
--- 		if existingGp ~= nil then
--- 			existingGp:destroy()
--- 		end
--- 		groupData.name = alias
--- 	end
+	local alias = helms.dynamic.groupNameMap[groupData.name]
+	if alias ~= nil then
+		local existingGp = Group.getByName(groupData.name)
+		if existingGp ~= nil then
+			existingGp:destroy()
+		end
+		groupData.name = alias
+	end
 
--- 	if not keys.isStatic then
--- 		helms.dynamic.normalizeUnitNames(groupData)
--- 		coalition.addGroup(keys.ctryId, keys.catEnum, groupData)
--- 	else
--- 		coalition.addStaticObject(keys.ctryId, groupData)
--- 	end
--- end
+	if not keys.isStatic then
+		helms.dynamic.normalizeUnitNames(groupData)
+		coalition.addGroup(keys.ctryId, keys.catEnum, groupData)
+	else
+		coalition.addStaticObject(keys.ctryId, groupData)
+	end
+end
 
 --[[
 Return = Boolean: Does named group have a living active unit in-play
