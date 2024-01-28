@@ -11,27 +11,21 @@ This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scrip
 
 Before using any of the methods detailed below trigger `DO SCRIPT FILE -> helms.lua` in your mission. The easiest time for this is immediately after initializsing MIST.
 
-## Selected Utilities
+## Selected Utilities - helms.ai
 
-### Generating random groups
-`helms.mission.generateGroups` can be used to simplify creating large numbers of groups e.g. for the `constant_pressure_set.new` to make it easier to add variability to missions at runtime.
+### Set Alarm State 
+`helms.ai.setAlarmState` and `helms.ai.setAlarmStateIfNameContains` set the alarm state of a named group or groups
 
-Usage: `helms.mission.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
+Usage: `helms.ai.setAlarmState(<groupName>, <alarmState>)`, or `helms.ai.setAlarmStateIfNameContains(<groupNameContains>, <alarmState>)`
 
 Where
-* `<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
+* `<groupName>` is the name of the group for which to set alarm state
+* `<groupNameContains>` any group whose name contains this substring will have its alarm state set
+* `<alarmState>` alarm state to set `AI.Option.Ground.val.ALARM_STATE` value, e.g. `AI.Option.Ground.val.ALARM_STATE.RED`,`AI.Option.Ground.val.ALARM_STATE.GREEN`, or `AI.Option.Ground.val.ALARM_STATE.AUTO`
 
-* `<count>` is the number of groups to generate
+**Example:**  `helms.ai.setAlarmStateIfNameContains("Ground Target",AI.Option.Ground.val.ALARM_STATE.RED)` puts any group with name containing `Ground Target` (e.g. `Ground Target-1`) on alert.
 
-* `<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
-
-* `<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
-
-**Returns:** An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
-
-**Example:** `constant_pressure_set.new(2,2,1800,3600,10,120, helms.mission.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
-
-**Example:** Use `helms.util.multiunpack` to pass a union of generated groups `constant_pressure_set.new(2,2,1800,3600,10,120, helms.util.multiunpack({ap_utils.generateGroups("F16_B", 5, ap_utils.getNamesContaining("DefF15"), ap_utils.getNamesContaining("DedF16"))},{ap_utils.generateGroups("F16_A", 15, ap_utils.getNamesContaining("DefF16"), ap_utils.getNamesContaining("DedF16"))}) )`
+## Selected Utilities - helms.dynamic
 
 ### Checking for player proximity
 `helms.dynamic.getClosestLateralPlayer` can be used to find the closest player (in lateral coordinates, i.e. ignoring altitude) to a unit from a specified group.
@@ -65,7 +59,56 @@ Where
 * `<toValue>` the value that selected flags will be set to
 * `...` a list of flags to slect from
 
-**Example:**  `helms.ui.setRandomFlags(1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` sets one user flag from `'TgtN1'`,`'TgtN2'`,`'TgtN3'`, and `'TgtN4'` to `true`
+**Example:**  `helms.dynamic.setRandomFlags(1,true, 'TgtN1','TgtN2','TgtN3','TgtN4')` sets one user flag from `'TgtN1'`,`'TgtN2'`,`'TgtN3'`, and `'TgtN4'` to `true`
+
+### Spawn units in zone
+`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular or quad trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
+
+Usage: `helms.dynamic.respawnMEGroupsInZone(<zoneName>, <activate>, <coalition>, <includeStatic>)`
+
+Where
+* `<zoneName>` trigger zone name
+* `<activate>` (optional - default true) activate respawned units
+* `<coalition>` (optional) side of groups to respawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units respawn if this is omitted.
+* `<includeStatic>` (optional - default true) Also respawn static objects in the zone
+
+**Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, coalition.side.RED)` respawns and activates all mission groups in zone called "zone1"
+
+### Despawn units from zone
+`helms.dynamic.despawnMEGroupsInZone` destroy all groups in mission whose spawn point is inside a circular or quad trigger zone. NOTE: Client and player groups CAN be despawned by this method.
+ 
+ Usage: `helms.dynamic.despawnMEGroupsInZone(<zoneName>, <coalition>, <includeStatic>)`
+
+Where
+* `<zoneName>` trigger zone name
+* `<coalition>` (optional) side of groups to despawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units despawn if this is omitted.
+* `<includeStatic>` (optional - default true) Also despawn static objects in the zone
+
+**Example:**  `helms.dynamic.despawnMEGroupsInZone("zone2", coalition.side.RED)` despawns all red units that start inside "zone2"
+
+## Selected Utilities - helms.mission
+
+### Generating random groups
+`helms.mission.generateGroups` can be used to simplify creating large numbers of groups e.g. for the `constant_pressure_set.new` to make it easier to add variability to missions at runtime.
+
+Usage: `helms.mission.generateGroups(<nameRoot>,<count>,<unitDonors>,<taskDonors>)`
+
+Where
+* `<nameRoot>` is a string used to generate names for the new groups e.g. `"EasyGroup"` to generate `EasyGroup-1,EasyGroup-2,...`. This should not clash with other groups in the mission.
+
+* `<count>` is the number of groups to generate
+
+* `<unitDonors>` is an array of group names specifying the groups to be copied (apart from their mission and tasks). I.e. this specifies the strength and unit type etc. **Note:** AI skill will be randomized
+
+* `<taskDonors>` is an array of group names specifying the missions/task lists to give to generated groups
+
+**Returns:** An unpacked list of group names added to the mission. These groups will be inactive. Each consists of the units from a random unit donor with the mission of a random task donor.
+
+**Example:** `constant_pressure_set.new(2,2,1800,3600,10,120, helms.mission.generateGroups("Aerial",7, {"EasyUnits-1","EasyUnits-2"}, {"EasyTask-1","EasyTask-2", "EasyTask-3"}) )`
+
+**Example:** Use `helms.util.multiunpack` to pass a union of generated groups `constant_pressure_set.new(2,2,1800,3600,10,120, helms.util.multiunpack({ap_utils.generateGroups("F16_B", 5, ap_utils.getNamesContaining("DefF15"), ap_utils.getNamesContaining("DedF16"))},{ap_utils.generateGroups("F16_A", 15, ap_utils.getNamesContaining("DefF16"), ap_utils.getNamesContaining("DedF16"))}) )`
+
+## Selected Utilities - helms.ui
 
 ### Add comms callbacks
 `helms.ui.combo.commsCallback` simplifies the addition of items to the HeLMS comms submenus (mainly aimed at scripting in the mission editor)
@@ -94,31 +137,6 @@ Where
 * `<optionLabel>` Label of the comms option, as passed to `helms.ui.combo.commsCallback`
 
 **Example:**  `helms.ui.combo.removeCommsCallback(nil,'Games','North')`
-
-### Spawn units in zone
-`helms.dynamic.respawnMEGroupsInZone` spawn or respawn all groups in mission with a starting point in a circular or quad trigger zone. NOTE: Groups containing "Client" units cannot be respawned this way (but in SP missions, "Player" groups can be).
-
-Usage: `helms.dynamic.respawnMEGroupsInZone(<zoneName>, <activate>, <coalition>, <includeStatic>)`
-
-Where
-* `<zoneName>` trigger zone name
-* `<activate>` (optional - default true) activate respawned units
-* `<coalition>` (optional) side of groups to respawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units respawn if this is omitted.
-* `<includeStatic>` (optional - default true) Also respawn static objects in the zone
-
-**Example:**  `helms.dynamic.respawnMEGroupsInZone("zone1", true, coalition.side.RED)` respawns and activates all mission groups in zone called "zone1"
-
-### Despawn units from zone
-`helms.dynamic.despawnMEGroupsInZone` destroy all groups in mission whose spawn point is inside a circular or quad trigger zone. NOTE: Client and player groups CAN be despawned by this method.
- 
- Usage: `helms.dynamic.despawnMEGroupsInZone(<zoneName>, <coalition>, <includeStatic>)`
-
-Where
-* `<zoneName>` trigger zone name
-* `<coalition>` (optional) side of groups to despawn (e.g. `coalition.side.RED`, or `coalition.side.BLUE`). All units despawn if this is omitted.
-* `<includeStatic>` (optional - default true) Also despawn static objects in the zone
-
-**Example:**  `helms.dynamic.despawnMEGroupsInZone("zone2", coalition.side.RED)` despawns all red units that start inside "zone2"
 
 ### Display mission drawing
 `helms.ui.showDrawing` show drawing defined in mission editor in the running mission (to groups other than those that can see it on mission load).

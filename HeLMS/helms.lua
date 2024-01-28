@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.9}
+helms={ version = 1.10}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -438,6 +438,27 @@ end
 helms.mission.getNamesContainingUpk = function(substring)
 	return unpack(helms.mission.getNamesContaining(substring))
 end
+
+--[[
+	Execute a function for all groups with name containing a substring
+	
+	func signature: func(groupName,...)
+
+	Additional parameters are passed to func
+--]]
+helms.mission.execForGroupNamesContaining = function(func,substring, ...)
+	if func == nil or substring == nil then
+		return
+	end
+
+	local names = helms.mission.getNamesContaining(substring)
+	local safeFunc = helms.util.safeCallWrap(func)
+
+	for _,name in pairs(names) do
+		safeFunc(name,unpack(arg))
+	end
+end
+
 --[[
 	Return true if group activation is pending
 --]]
@@ -1360,14 +1381,11 @@ helms.dynamic.isAirGroup = function(groupName)
 	return false
 end
 
+--[[
+	Wrapper for helms.ai.clearTasks for backwards compatibility
+--]]
 helms.dynamic.clearTasks = function(groupName)
-	local group = helms.dynamic.getGroupByName(groupName)
-	if group ~= nil then
-		local controller = group:getController()
-		if controller ~= nil then
-			controller:setTask({id = 'NoTask',params = {}})
-		end
-	end
+	helms.ai.clearTasks(groupName)
 end
 
 --[[
@@ -1379,6 +1397,54 @@ helms.dynamic.setRandomFlags=function(N, toVal, ...)
 	for k,v in pairs (selection) do
 		trigger.action.setUserFlag(v,toVal)
 	end
+end
+
+----------------------------------------------------------------------------------------------------------
+-- AI ----------------------------------------------------------------------------------------------------
+
+helms.ai = {}
+
+helms.ai._getController = function (groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
+	local controller = nil
+
+	if group ~= nil then
+		controller = group:getController()
+	end
+	return controller, group
+end
+
+--[[
+	Clear tasks for a named group
+--]]
+helms.ai.clearTasks = function(groupName)
+	local controller = helms.ai._getController(groupName)
+
+	if controller ~= nil then
+		controller:setTask({id = 'NoTask',params = {}})
+	end
+end
+
+--[[
+	Set alarm state for named group
+
+	alarm state should be an AI.Option.Ground.val.ALARM_STATE value, e.g. AI.Option.Ground.val.ALARM_STATE.RED
+--]]
+helms.ai.setAlarmState = function(groupName, alarmState)
+	local controller = helms.ai._getController(groupName)
+
+	if controller ~= nil then
+		controller:setOption(AI.Option.Ground.id.ALARM_STATE, alarmState)    
+	end
+end
+
+--[[
+	Set alarm state for groups with name containing a substring
+
+	alarm state should be an AI.Option.Ground.val.ALARM_STATE value, e.g. AI.Option.Ground.val.ALARM_STATE.RED
+--]]
+helms.ai.setAlarmStateIfNameContains = function(groupNameContains, alarmState)
+	helms.mission.execForGroupNamesContaining(helms.ai.setAlarmState,groupNameContains,alarmState)
 end
 
 ----------------------------------------------------------------------------------------------------------

@@ -10,7 +10,7 @@ if king_of_the_hill then
 end
 
 if not helms then return end
-if helms.version < 1.8 then 
+if helms.version < 1.10 then 
 	helms.log_e.log("Invalid HeLMS version for king_of_the_hill")
 end
 

@@ -5,6 +5,7 @@
 * Added optional static object respawns/despawns to the zonal spawning methods
 * Fixed undefined constant in asset_pools
 * Added support for non-circular zones for HeLMS zone-based respawns
+* Added `helms.ai` and `helms.ai.setAlarmState`
 ## 1.9a
 * Improved KOTH scoreboard and added disappearing smoke workaround
 * Added steersman zig-zag enable/disable function

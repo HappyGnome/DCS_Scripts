@@ -13,7 +13,7 @@ if asset_pools then
 end
 
 if not helms then return end
-if helms.version < 1 then 
+if helms.version < 1.10 then 
 	helms.log_e.log("Invalid HeLMS version for Asset_Pools")
 end
 
@@ -851,7 +851,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 		filterSelectHandler_ = function(self, index)
 			if index ~= self.activeFilterIndex_ then
 				for k,v in pairs(self.groupListActive_) do
-					helms.dynamic.clearTasks(k)
+					helms.ai.clearTasks(k)
 				end
 			end
 			self.activeFilterIndex_ = index
