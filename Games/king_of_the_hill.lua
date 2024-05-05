@@ -17,7 +17,7 @@ end
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
-king_of_the_hill.version = 1.2
+king_of_the_hill.version = 1.3
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
@@ -543,7 +543,7 @@ king_of_the_hill.crownAppears_ = function(game)
     if game.rules.kingUnitName then  return end
 
     --king_of_the_hill.log_i.log("Crown appears") 
-    local newPos = helms.maths.randomInCircle(game.zone.radius, game.zone.centre)
+    local newPos = helms.maths.randomInCircle(game.crownSpawnZone.radius, game.crownSpawnZone.centre)
     game.rules.kingUnitName = nil
     game.rules.kingUnitFriendlyName = nil
     --game.rules.lastUnitHitKing = nil
@@ -617,11 +617,12 @@ end
 ----------------------------------------------------------------------------------------------------------
 -- API
 
-king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore)
+king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore, zoneSpawnScale)
     local zone = trigger.misc.getZone(zoneName)
 
 	if zone == nil then return nil end
     if firstToScore == nil then firstToScore = 1800 end
+    if zoneSpawnScale == nil then zoneSpawnScale = 1.0 end
     --Add comms options
     local timeOptions = {[1]={firstToScore = firstToScore, label = "First to "..firstToScore --[[, commsIndex = ]]}}
 
@@ -629,7 +630,11 @@ king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore)
         zone = {
             zoneName = zoneName, 
             centre = {x = zone.point.x, y = zone.point.z},
-            radius = zone.radius
+            radius = zone.radius,
+        },
+        crownSpawnZone = {
+            centre = {x = zone.point.x, y = zone.point.z},
+            radius = zone.radius * zoneSpawnScale,
         },
         --subMenuPath = subMenuPath,
         ruleOptions = timeOptions,
