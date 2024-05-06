@@ -377,7 +377,7 @@ end
 --
 king_of_the_hill.startGame_ = function(gameName, rulesetInd)
 
-    --king_of_the_hill.log_i.log("Pre Poll - 1")
+    --king_of_the_hill.log_i.log(rulesetInd)
     if gameName == nil or rulesetInd == nil  then return end
 
     local game = king_of_the_hill.games[gameName]
@@ -639,6 +639,7 @@ king_of_the_hill.resetComms_ = function(game)
     end 
 
     for k,v in pairs(game.ruleOptions) do
+        if v.commsIndex then helms.ui.removeItem(game.subMenuPath,v.commsIndex) end
         v.commsIndex = helms.ui.addCommand(game.subMenuPath,v.label,helms.util.safeCallWrap(king_of_the_hill.startGame_,king_of_the_hill.catchError),game.gameName,k)
     end
 
@@ -652,44 +653,55 @@ king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore, zoneSpawnS
 
 	if zone == nil then return nil end
     if firstToScore == nil then firstToScore = 1800 end
-    if zoneSpawnScale == nil then zoneSpawnScale = 1.0 end    
+    if zoneSpawnScale == nil then zoneSpawnScale = 1.0 end 
 
-    --Add comms options
-    local timeOptions = {[1]={firstToScore = firstToScore, label = "First to "..firstToScore --[[, commsIndex = ]]}}
+    local timeOptions = {firstToScore = firstToScore, label = "First to "..firstToScore --[[, commsIndex = ]]}
+    local newGame
 
-    local newGame = {
-        zone = {
-            zoneName = zoneName, 
-            centre = {x = zone.point.x, y = zone.point.z},
-            radius = zone.radius,
-        },
-        crownSpawnZone = {
-            centre = {x = zone.point.x, y = zone.point.z},
-            radius = zone.radius * zoneSpawnScale,
-        },
-        --subMenuPath = subMenuPath,
-        ruleOptions = timeOptions,
-        gameName = gameName,
-        running = false,
-        lastScoreReminder = nil,
-        rules = {
-            scores = {blue = 0, red = 0},
-            kingUnitName = nil,
-            kingUnitFriendlyName = nil,
-            prevKingUnitName = nil,
-            --lastUnitHitKing = nil,
-            kingTeam = nil, -- index into scores
-            kingSince = nil,
-            crownHidden = false,
-            crownPoint = {x = 0, y = 0},
-            boundsWarningTime = nil,
-            firstToScore = 0,
-            kingMultiplier = 1,
-            --kingLostAt = nil
+    if not king_of_the_hill.games[gameName] then
+        --Add comms options      
+
+        newGame = {
+            zone = {
+                zoneName = zoneName, 
+                centre = {x = zone.point.x, y = zone.point.z},
+                radius = zone.radius,
+            },
+            crownSpawnZone = {
+                centre = {x = zone.point.x, y = zone.point.z},
+                radius = zone.radius * zoneSpawnScale,
+            },
+            --subMenuPath = subMenuPath,
+            ruleOptions = {[1]=timeOptions},
+            gameName = gameName,
+            running = false,
+            lastScoreReminder = nil,
+            rules = {
+                scores = {blue = 0, red = 0},
+                kingUnitName = nil,
+                kingUnitFriendlyName = nil,
+                prevKingUnitName = nil,
+                --lastUnitHitKing = nil,
+                kingTeam = nil, -- index into scores
+                kingSince = nil,
+                crownHidden = false,
+                crownPoint = {x = 0, y = 0},
+                boundsWarningTime = nil,
+                firstToScore = 0,
+                kingMultiplier = 1,
+                --kingLostAt = nil
+            }
         }
-    }
-    king_of_the_hill.resetComms_ (newGame)
-    king_of_the_hill.games[gameName] = newGame    
+        king_of_the_hill.games[gameName] = newGame  
+    else
+        newGame = king_of_the_hill.games[gameName]
+        newGame.ruleOptions[#newGame.ruleOptions + 1] = timeOptions
+    end
+
+    if not newGame.running then
+        king_of_the_hill.resetComms_ (newGame)
+    end
+      
 end
 
 ----------------------------------------------------------------------------------------------------------
