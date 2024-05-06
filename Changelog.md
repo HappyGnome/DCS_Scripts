@@ -6,6 +6,8 @@
 * Fixed undefined constant in asset_pools
 * Added support for non-circular zones for HeLMS zone-based respawns
 * Added `helms.ai` and `helms.ai.setAlarmState`
+* KOTH 1.3: Kill detection rule improvements
+* KOTH 1.3: Crown spawn zone can be a multiple of the zone of play
 ## 1.9a
 * Improved KOTH scoreboard and added disappearing smoke workaround
 * Added steersman zig-zag enable/disable function
