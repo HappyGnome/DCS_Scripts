@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.10}
+helms={ version = 1.11}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -1447,6 +1447,22 @@ helms.ai.setAlarmStateIfNameContains = function(groupNameContains, alarmState)
 	helms.mission.execForGroupNamesContaining(helms.ai.setAlarmState,groupNameContains,alarmState)
 end
 
+--[[
+	Set immortal flag for named group
+--]]
+helms.ai.setImmortal = function(groupName, immortal)
+	local controller = helms.ai._getController(groupName)
+
+	if controller ~= nil then
+		controller:setCommand({
+			id = 'SetImmortal',
+			params = {
+				value = immortal
+			}
+		})    
+	end
+
+end
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.
@@ -1901,11 +1917,16 @@ end
 
 helms.events = {
 	hitLoggingEnabled_ = false,
-	lastHitBy_ = {} -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
+	lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
+	lastSpawn_ = {}
 }
 
 helms.events.getLastHitBy = function(unitHitName)
 	return helms.events.lastHitBy_[unitHitName]
+end
+
+helms.events.getLastSpawn = function(unitName)
+	return helms.events.lastSpawn_[unitName]
 end
 
 helms.events.hitHandler_ = function(target, initiator,time)
@@ -1916,6 +1937,15 @@ helms.events.hitHandler_ = function(target, initiator,time)
     if target:getCoalition() == initiator:getCoalition() then return end
 
     helms.events.lastHitBy_[tgtName]={time = time, initiatorName = initName}
+end
+
+helms.events.spawnHandler_ = function(initiator,time)
+	if not initiator or time == nil then return end
+	if not initiator.Category==Object.Category.UNIT then return end
+
+    local initName = initiator:getName()
+
+    helms.events.lastSpawn_[initName]={time = time}
 end
 
 helms.events.enableHitLogging = function()
@@ -1931,6 +1961,21 @@ helms.events.enableHitLogging = function()
 	world.addEventHandler(eventHandler)
 
 	helms.events.hitLoggingEnabled_ = true
+end
+
+helms.events.enableSpawnLogging = function()
+	if helms.events.spawnLoggingEnabled_ then return end
+
+	local eventHandler = { 
+		onEvent = function(self,event)
+			if (event.id == world.event.S_EVENT_BIRTH) then
+				helms.util.safeCall(helms.events.spawnHandler_,{event.initiator,event.time},helms.catchError)
+			end
+		end
+	}
+	world.addEventHandler(eventHandler)
+
+	helms.events.spawnLoggingEnabled_ = true
 end
 ---------------------------------------------------------------------------------------------------
 helms.mission._buildMEGroupLookup()
