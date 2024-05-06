@@ -582,7 +582,7 @@ king_of_the_hill.loseCrown_ = function(game, now)
         local initiatorCanSteal = true
         local kingKilledByInitiator = false 
 
-        king_of_the_hill.log_i.log(lastHitEvent) --TODO
+        --king_of_the_hill.log_i.log(lastHitEvent)
         if lastHitEvent then
             local initiatorSpawn = helms.events.getLastSpawn(lastHitEvent.initiatorName)
 
@@ -590,11 +590,11 @@ king_of_the_hill.loseCrown_ = function(game, now)
                 initiatorSpawnedAt = initiatorSpawn.time
             end
 
-            king_of_the_hill.log_i.log(initiatorSpawnedAt) --TODO
+            --king_of_the_hill.log_i.log(initiatorSpawnedAt)
             kingKilledByInitiator = game.rules.kingSince 
                                     and game.rules.kingSince < lastHitEvent.time -- current king was active at the time of the hit 
         
-            king_of_the_hill.log_i.log(initiatorSpawnedAt) --TODO
+            --king_of_the_hill.log_i.log(initiatorSpawnedAt)
             -- Check that the initiator did not just spawn (reduce risk of crown going to the initiator who respawns between firing and impact)
             initiatorCanSteal = initiatorSpawnedAt and initiatorSpawnedAt + king_of_the_hill.enable_crown_stealing_after < lastHitEvent.time
             if kingKilledByInitiator and not initiatorCanSteal then
@@ -603,8 +603,6 @@ king_of_the_hill.loseCrown_ = function(game, now)
                 end
             end
         end
-        king_of_the_hill.log_i.log({kingKilledByInitiator,initiatorCanSteal}) --TODO
-        --king_of_the_hill.log_i.log(lastHitEvent)
         if kingKilledByInitiator and initiatorCanSteal then
             handled = king_of_the_hill.kingKilled_(game,lastHitEvent.initiatorName)
         else
