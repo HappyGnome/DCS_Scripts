@@ -9,6 +9,7 @@
 * KOTH 1.3: Kill detection rule improvements
 * KOTH 1.3: Crown spawn zone can be a multiple of the zone of play
 * KOTH 1.3: Fixed inability to create multiple games with the same name
+* HeLMS: Fixed DespawnGroupByName bug
 ## 1.9a
 * Improved KOTH scoreboard and added disappearing smoke workaround
 * Added steersman zig-zag enable/disable function
