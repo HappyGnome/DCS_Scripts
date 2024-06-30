@@ -979,6 +979,9 @@ helms.dynamic.normalizeUnitNames = function(gpData)
 	end
 end
 
+--[[
+Despawn group using its original name in the mission, supports despawning static groups.
+--]]
 helms.dynamic.despawnMEGroupByName = function(groupName)
 
 	local gpData = helms.mission._GroupLookup[groupName] 
@@ -986,8 +989,7 @@ helms.dynamic.despawnMEGroupByName = function(groupName)
 	if not gpData then return end
 
 	if not gpData.isStatic then
-		local group = helms.dynamic.getGroupByName(groupName)
-		if group then group:destroy() end
+		helms.dynamic.despawnGroupByName(groupName)
 	else
 
 		local gpMeData = helms.mission.getMEGroupDataByName(groupName)
@@ -1000,6 +1002,14 @@ helms.dynamic.despawnMEGroupByName = function(groupName)
 			end
 		end
 	end
+end
+
+--[[
+Despawn group using its name in-game (or alias, if spawned using HeLMS with an alias ). No support for despawning static groups.
+--]]
+helms.dynamic.despawnGroupByName = function(groupName)
+	local group = helms.dynamic.getGroupByName(groupName)
+	if group then group:destroy() end
 end
 
 helms.dynamic.allUnitPredicate = function(groupName, func)
@@ -1030,7 +1040,7 @@ helms.dynamic.respawnMEGroupByName = function(name, activate)
 		gpData.lateActivation = false
 	end
 
-	local alias = helms.dynamic.groupNameMap[name]
+	local alias = helms.dynamic.getGroupAlias(name)
 	if alias ~= nil then
 		local existingGp = Group.getByName(name)
 		if existingGp ~= nil then
@@ -1089,7 +1099,7 @@ helms.dynamic.spawnGroup = function(groupData, keys, activate)
 		groupData.lateActivation = false
 	end
 
-	local alias = helms.dynamic.groupNameMap[groupData.name]
+	local alias = helms.dynamic.getGroupAlias(groupData.name)
 	if alias ~= nil then
 		local existingGp = Group.getByName(groupData.name)
 		if existingGp ~= nil then
