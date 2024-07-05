@@ -1,6 +1,6 @@
 # Changelog
 
-## Latest
+## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods
 * Fixed undefined constant in asset_pools
@@ -10,6 +10,7 @@
 * KOTH 1.3: Crown spawn zone can be a multiple of the zone of play
 * KOTH 1.3: Fixed inability to create multiple games with the same name
 * HeLMS: Fixed DespawnGroupByName bug
+* Added quick suppression script
 ## 1.9a
 * Improved KOTH scoreboard and added disappearing smoke workaround
 * Added steersman zig-zag enable/disable function
