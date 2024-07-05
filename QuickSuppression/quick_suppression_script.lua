@@ -20,7 +20,8 @@ quick_suppression_script={}
 quick_suppression_script.version = 1.0
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-quick_suppression_script.defaultSuppressionSeconds = 120
+quick_suppression_script.defaultMinSuppressionSeconds = 30
+quick_suppression_script.defaultMaxSuppressionSeconds = 180
 quick_suppression_script.resuppressionCooldownSeconds = 30
 ----------------------------------------------------------------------------------------------------------
 
@@ -64,11 +65,18 @@ quick_suppression_script.hitHandler = function(target, initiator)
     local gpName = tgtGroup:getName()
     
     local now = timer.getTime()
-    local resumeTime = now + quick_suppression_script.defaultSuppressionSeconds
-    local prevResumeTime = quick_suppression_script.resumeTimes[gpName]
 
-    if (not prevResumeTime) 
-        or (resumeTime > prevResumeTime + quick_suppression_script.resuppressionCooldownSeconds) then
+    -- Randomize re-activation
+    local minSuppressionSeconds = math.max(quick_suppression_script.defaultMinSuppressionSeconds,1)
+    local maxSuppressionSeconds = math.max(quick_suppression_script.defaultMaxSuppressionSeconds,minSuppressionSeconds)
+
+    local resumeTime = now + minSuppressionSeconds + math.random(maxSuppressionSeconds - minSuppressionSeconds)
+    local prevPause = quick_suppression_script.resumeTimes[gpName]
+
+    -- update re-activation time
+    if (not prevPause) 
+        or (now > prevPause.pauseAt + quick_suppression_script.resuppressionCooldownSeconds
+            and resumeTime > prevPause.resumeAt) then
    
         local tgtController = helms.ai._getController(gpName)
 
@@ -76,7 +84,7 @@ quick_suppression_script.hitHandler = function(target, initiator)
 
    
         quick_suppression_script.log_i.log(gpName .. " suppressed at " .. now .. ". Resuming at " .. resumeTime)
-        quick_suppression_script.resumeTimes[gpName] = resumeTime
+        quick_suppression_script.resumeTimes[gpName] = {pauseAt = now, resumeAt = resumeTime}
         helms.dynamic.scheduleFunctionSafe(quick_suppression_script.checkResume_,{gpName},resumeTime,true, quick_suppression_script.catchError)
     end 
 
@@ -89,7 +97,7 @@ quick_suppression_script.checkResume_ = function(gpName)
 
     local now = timer.getTime()
 
-    if quick_suppression_script.resumeTimes[gpName] <= now + 1 then
+    if quick_suppression_script.resumeTimes[gpName].resumeAt <= now + 1 then
         local tgtController = helms.ai._getController(gpName)
 
         if tgtController then tgtController:setOnOff(true) end
