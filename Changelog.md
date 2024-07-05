@@ -1,5 +1,7 @@
 # Changelog
 
+## Latest
+* Quick suppression script: Randomized reset times
 ## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods
