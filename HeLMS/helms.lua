@@ -638,7 +638,7 @@ helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 				quickBounds.yMax = v.y
 			end 
 
-			if quickBounds.yMin == nil or quickBounds.xMin > v.y then
+			if quickBounds.yMin == nil or quickBounds.yMin > v.y then
 				quickBounds.yMin = v.y
 			end 
 		end
