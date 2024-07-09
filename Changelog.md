@@ -2,6 +2,7 @@
 
 ## Latest
 * Quick suppression script: Randomized reset times
+* Added HeLMS effect category. Added perpetual smoke effects.
 ## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods
