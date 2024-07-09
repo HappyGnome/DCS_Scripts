@@ -1473,6 +1473,109 @@ helms.ai.setImmortal = function(groupName, immortal)
 	end
 
 end
+
+----------------------------------------------------------------------------------------------------------
+-- EFFECTS ----------------------------------------------------------------------------------------------------
+helms.effect = {}
+
+helms.effect._smokes = {} -- keys: integer for non-zone linked effects, string (zone name) for zone-linked effects
+helms.effect._smokeRefreshSeconds = 300
+
+--[[
+Create smoke with auto-refresh at a given point and colour ("red","green","blue","white", or "orange")
+If replaceHandle is specified, the smoke replaces an existing smoke effect
+
+Returns a handle to use with startSmoke or stopSmoke. (This is replaceHandle, if specified)
+]]
+helms.effect.startSmoke = function (point,colour, replaceHandle)
+	if replaceHandle == nil then
+		replaceHandle = #helms.effect._smokes + 1
+	end
+
+	if not helms.effect._stringToSmokeColour(colour) then
+		helms.log_e.log("Smoke colour " .. colour .. " invalid")
+		return nil
+	end
+
+	point = helms.maths.as3D(point)
+	trigger.action.smoke(point,helms.effect._stringToSmokeColour(colour))
+
+	if not helms.effect._smokes[replaceHandle] then
+		helms.dynamic.scheduleFunctionSafe(
+			helms.effect._refreshSmoke,
+			{replaceHandle},
+			timer.getTime() + helms.effect._smokeRefreshSeconds, 
+			false, 
+			helms.catchError)
+
+		helms.log_i.log("Smoke " .. replaceHandle .. " started")
+	else 
+		helms.log_i.log("Smoke " .. replaceHandle .. " updated")
+	end
+
+	helms.effect._smokes[replaceHandle] = {point = point, colour = colour}
+
+	return replaceHandle
+end
+
+helms.effect.startSmokeOnZone = function (zoneName, colour)
+
+	if not zoneName then return end
+
+	local zone = trigger.misc.getZone(zoneName)
+
+	if zone then
+		helms.effect.startSmoke(zone.point,colour, zoneName)
+		return zoneName
+	else
+		helms.log_e.log("Zone " .. zoneName .. " not valid")
+		return nil
+	end
+end
+
+--[[
+Use replaceHandle = zone name to stop refreshing smoke added on a zone
+]]
+helms.effect.stopSmoke = function (replaceHandle)	
+	if helms.effect._smokes[replaceHandle] then
+		helms.effect._smokes[replaceHandle] = nil
+		helms.log_i.log("Smoke " .. replaceHandle .. " stopped")
+	else
+		helms.log_i.log("Zone " .. replaceHandle .. " not valid, or already stopped")	
+	end
+end
+
+helms.effect.stopSmokeOnZone = function (zoneName)	
+	helms.effect.stopSmoke (zoneName)
+end
+
+helms.effect._refreshSmoke = function (handle)
+	if handle == nil or not helms.effect._smokes[handle] then
+		return
+	end
+
+	local smokeData = helms.effect._smokes[handle]
+
+	trigger.action.smoke(smokeData.point,helms.effect._stringToSmokeColour(smokeData.colour))	
+
+	helms.log_i.log("Smoke " .. handle .. " restarted")
+
+	return timer.getTime() + helms.effect._smokeRefreshSeconds
+end
+
+helms.effect._stringToSmokeColour = function(str)
+	local lookup = 
+	{
+		["blue"] = trigger.smokeColor.Blue,
+		["green"] = trigger.smokeColor.Green,
+		["red"] = trigger.smokeColor.Red,
+		["white"] = trigger.smokeColor.White,
+		["orange"] = trigger.smokeColor.Orange,
+	}
+
+	return lookup[string.lower(str)]
+end
+
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.
