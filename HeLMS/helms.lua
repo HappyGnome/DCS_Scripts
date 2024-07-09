@@ -1498,9 +1498,9 @@ helms.effect.startSmoke = function (point,colour, replaceHandle)
 	end
 
 	point = helms.maths.as3D(point)
-	trigger.action.smoke(point,helms.effect._stringToSmokeColour(colour))
 
 	if not helms.effect._smokes[replaceHandle] then
+		trigger.action.smoke(point,helms.effect._stringToSmokeColour(colour))
 		helms.dynamic.scheduleFunctionSafe(
 			helms.effect._refreshSmoke,
 			{replaceHandle},

@@ -164,3 +164,29 @@ Where
 * `<drawingName>` drawing name from mission editor to hide (must have been added with `helms.ui.showDrawing`)
 
 **Example:**  `helms.ui.removeDrawing('Polygon-37')` hides drawing called "Polygon-37" previously shown by a call to `helms.ui.showDrawing`
+
+## Selected Utilities - helms.effect
+### Start smoke effect
+`helms.effect.startSmokeOnZone` starts a smoke effect (using `trigger.action.smoke`) at a named zone centre. This effect is refreshed every 5 minutes to create a perpetual effect. See `helms.effect.stopSmokeOnZone` to cancel an effect. This method can also be called to update the colour of an existing smoke effect (note that the change only occurs the next time the smoke is re-created, which may take up to 5 minutes). 
+
+Usage: `helms.effect.startSmokeOnZone(<zoneName>, <colour>)` where
+
+Where
+* `<zone>` Is the name of a (static) trigger zone
+* `<colour>` is "Red", "Green", "Blue", "White", or "Orange"
+
+Returns: the zone name on success.
+
+**Example:**  `helms.effect.startSmokeOnZone("Zone-1", "Green")`
+
+### Stop smoke effect
+`helms.effect.stopSmokeOnZone` stops a smoke effect created by `helms.effect.startSmokeOnZone` from refreshing. Note that the effect is not immediately stopped. It may take up to 5 minutes for the current smoke effect to stop.
+
+Usage: `helms.effect.stopSmokeOnZone(<zoneName>)` where
+
+Where
+* `<zone>` Is the name of a (static) trigger zone
+
+Returns: None
+
+**Example:**  `helms.effect.stopSmokeOnZone("Zone-1")`
