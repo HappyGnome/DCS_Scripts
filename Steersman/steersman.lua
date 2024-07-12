@@ -108,7 +108,7 @@ steersman.instance_meta_ = {
 			end
 			
 			local dist,playerUnit,closestUnit = helms.dynamic.getClosestLateralPlayer(self.groupName_,{self.side_}, options)	
-			
+
 			local wantOpsMode = false
 
 			if self.opsModeOverride ~= nil then
@@ -152,11 +152,14 @@ steersman.instance_meta_ = {
 						self.currentDestPoint_ = path[-1]
 					end
 				elseif self.turnMode_ and self.currentDestPoint_ ~= nil then -- check whether we're approximately on track to exit turn mode
-					local position = closestUnit:getPosition()
-					if math.abs(helms.maths.thetaToDest(position.x,position.p,self.currentDestPoint_)) < 0.35 then --~20 degrees
-						local pointSpeed = self:GetUpwind_()
-						self:GoToPoint_(pointSpeed,pointSpeed.speed,false, nil,helms.mission.stringsToScriptTasks({self:MakeEndOfOpsRunScript()}))
-						self.turnMode_ = false
+					local position = self:GetUnitPosition_()
+
+					if position then
+						if math.abs(helms.maths.thetaToDest(position.x,position.p,self.currentDestPoint_)) < 0.35 then --~20 degrees
+							local pointSpeed = self:GetUpwind_()
+							self:GoToPoint_(pointSpeed,pointSpeed.speed,false, nil,helms.mission.stringsToScriptTasks({self:MakeEndOfOpsRunScript()}))
+							self.turnMode_ = false
+						end
 					end
 				end
 			end
@@ -458,6 +461,18 @@ steersman.instance_meta_ = {
 			
 			if unit == nil then return nil end
 			return unit:getPoint()
+		end,
+
+		GetUnitPosition_ = function(self)
+					
+			local group = helms.dynamic.getGroupByName(self.groupName_) 
+			
+			if group == nil then return nil end
+			local unit = group:getUnits()[1]		
+			
+			if unit == nil then return nil end
+
+			return unit:getPosition()
 		end,
 		
 		-- return coords of the upwind position at zone edge from the given unit , based on wind at zone centre
