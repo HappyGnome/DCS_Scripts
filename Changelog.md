@@ -3,6 +3,8 @@
 ## Latest
 * Quick suppression script: Randomized reset times
 * Added HeLMS effect category. Added perpetual smoke effects.
+* Fixed missing psi values for generated groups
+* Constant pressure sets now check and spawn units when created using "new"  
 ## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods

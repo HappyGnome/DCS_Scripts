@@ -1004,6 +1004,8 @@ constant_pressure_set.new = function(targetActive, reinforceStrength,idleCooldow
 	end
 	
 	asset_pools.addPoolToPoll_(instance)
+
+	helms.util.safeCall(instance.onTick,{instance,timer.getTime()},asset_pools.catchError) -- Check for the need to spawn groups immediately (don't wait for ap poll)
 	
 	return instance
 end
