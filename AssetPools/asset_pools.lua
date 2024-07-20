@@ -639,6 +639,7 @@ constant_pressure_set={}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 constant_pressure_set.gc_delay_seconds=600 --seconds, time to wait before destroying idle groups
+constant_pressure_set.gc_always_despawn_idle = false -- if true, idle groups are despawned, ignoring all predicates and delays
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -734,7 +735,7 @@ constant_pressure_set.instance_meta_={--Do metatable setup
 			local gc_cutoff = now - constant_pressure_set.gc_delay_seconds
 
 			for k,v in pairs(self.groupListIdleTimes_) do
-				if v < gc_cutoff and helms.dynamic.allUnitPredicate(k, function(unit) return not unit:inAir() end)then
+				if constant_pressure_set.gc_always_despawn_idle or (v < gc_cutoff and helms.dynamic.allUnitPredicate(k, function(unit) return not unit:inAir() end)) then
 					helms.dynamic.despawnGroupByName(k)
 					self.groupListIdleTimes_[k] = nil
 				end
