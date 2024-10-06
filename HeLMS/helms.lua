@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.11}
+helms={ version = 1.12}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -228,6 +228,8 @@ helms.maths = {}
 
 helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.5144
+helms.maths.m2ft = 3.281
+helms.maths.m2nm = 0.000539957
 
 --[[
 True heading point A to point B, in degrees
@@ -249,6 +251,17 @@ helms.maths.getHeading = function (pointA,pointB)
 		hdg = hdg + 360
 	end
 	return hdg	
+end
+
+--[[
+True heading point A to point B, in degrees
+--]]
+helms.maths.getPitch = function (vel)	
+	if not vel then return 0 end
+	
+	vel = helms.maths.as3D(vel)
+
+	return math.atan2(vel.y, math.sqrt(helms.maths.dot2D(vel,vel)))	
 end
 
 helms.maths.as2D = function(u)
@@ -287,6 +300,13 @@ helms.maths.dot2D = function(u,v)
 	if uy == nil then uy = u.y end
 	if vy == nil then vy = v.y end
 	return u.x*v.x + uy*vy
+end
+
+helms.maths.dot3D = function(u,v)
+	local u3 = helms.maths.as3D(u)
+	local v3 = helms.maths.as3D(v)
+
+	return u3.x*v3.x + u3.y*v3.y + u3.z*v3.z
 end
 
 helms.maths.applyMat2D = function(u,M)
@@ -393,6 +413,72 @@ helms.maths.isPointInPoly = function (point, verts)
 	end	  
 
 	return winding ~= 0
+end
+
+----------------------------------------------------------------------------------------------------------
+--PHYSICS---------------------------------------------------------------------------------------------------
+-- Physics-based calculation tools and conversions
+
+helms.physics = {}
+
+helms.physics.specGrav = 9.81
+helms.physics.mach2Coeff = 401.88 -- Estimate of coefficient T/c^2
+
+-- Get specific energy (relative to the surface of the map, in wind's frame of reference)
+helms.physics.getSpecificEnergyWindRel = function (obj)
+	if not obj then return 0 end
+
+	local p = obj:getPoint()
+	local v = obj:getVelocity()
+	local vrel = helms.physics.getWindRelativeVel(v,p) 
+
+	return helms.physics.getSpecificKE(vrel) + helms.physics.getSpecificGPE(p)
+end
+
+helms.physics.getSpecificKE = function (vel)
+	return 0.5 * helms.maths.dot3D(vel,vel)
+end
+
+-- Get specific gravitational potential (relative to the surface of the map)
+helms.physics.getSpecificGPE = function (point)
+	return helms.physics.specGrav * helms.maths.as3D(point).y
+end
+
+helms.physics.estimateMach = function (obj)
+	if not obj then return 0 end
+
+	local p = obj:getPoint()
+	local v = obj:getVelocity()
+
+	local vrel = helms.physics.getWindRelativeVel(v,p) 
+	local c2 = helms.physics.estimateC2(p)
+
+	if c2 > 0 then
+		return math.sqrt(helms.maths.dot3D(vrel,vrel)/c2)
+	else
+		return math.huge
+	end
+end
+
+helms.physics.estimateC2 = function (point)
+	local T,P = atmosphere.getTemperatureAndPressure(helms.maths.as3D(point))
+	return T * helms.physics.mach2Coeff 
+end
+
+helms.physics.getWindRelativeVel = function (vel, point)
+	return helms.maths.lin3D(vel,1,atmosphere.getWind(helms.maths.as3D(point)),-1)
+end
+
+helms.physics.TasKts = function (obj)
+	if not obj then return 0 end
+
+	local p = obj:getPoint()
+	local v = obj:getVelocity()
+
+	local vrel = helms.physics.getWindRelativeVel(v,p) 
+
+	return math.sqrt(helms.maths.dot3D(vrel,vrel)) / helms.maths.kts2mps
+
 end
 
 ----------------------------------------------------------------------------------------------------------
