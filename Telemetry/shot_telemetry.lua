@@ -85,7 +85,7 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
         ,tgtObj =  weapon:getTarget()
         ,tgtlaunchMach = nil
         ,tgtlaunchPoint = nil
-        ,tgtlaunchVel = nil
+        ,tgtLaunchVel = nil
         ,minSlantRangeToTgtm = nil
         ,minSlantRangeToTgtMach = nil
         ,minSlantRangeToTgtTime = nil
@@ -105,10 +105,10 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
     if newShot.tgtObj and newShot.tgtObj:isExist() then 
         newShot.tgtlaunchMach = helms.physics.estimateMach(newShot.tgtObj)
         newShot.tgtlaunchPoint = newShot.tgtObj:getPoint()
-        newShot.tgtlaunchVel = newShot.tgtObj:getVelocity()
-        minSlantRangeToTgtm = helms.maths.get3DDist(p,newShot.tgtObj:getPoint())
-        minSlantRangeToTgtMach = newShot.launchMach
-        minSlantRangeToTgtTime = time
+        newShot.tgtLaunchVel = newShot.tgtObj:getVelocity()
+        newShot.minSlantRangeToTgtm = helms.maths.get3DDist(p,newShot.tgtObj:getPoint())
+        newShot.minSlantRangeToTgtMach = newShot.launchMach
+        newShot.minSlantRangeToTgtTime = time
     end
 
     shot_telemetry.active_missiles[#shot_telemetry.active_missiles + 1] = newShot
@@ -194,11 +194,11 @@ shot_telemetry.pollShot_ = function(shot, now)
                 shot.minSlantRangeToTgtTime = now
             end
 
-            if helms.physics.getSpecificEnergyWindRel(shot.tgtObj) > newE and newE < shot.lastEnergy then
-                nonLethalEnergyPoint = p
-                nonLethalEnergyTime = now
-                nonLethalEnergyDist3Dm = shot.flightDistAccum3Dm
-                nonLethalEnergyDist2Dm = shot.flightDistAccum2Dm
+            if helms.physics.getSpecificEnergyWindRel(shot.tgtObj) > newE and newE <= shot.lastEnergy then
+                shot.nonLethalEnergyPoint = p
+                shot.nonLethalEnergyTime = now
+                shot.nonLethalEnergyDist3Dm = shot.flightDistAccum3Dm
+                shot.nonLethalEnergyDist2Dm = shot.flightDistAccum2Dm
             else
                 lethal = true
             end
@@ -235,12 +235,12 @@ shot_telemetry.colHeadings = function()
     cols[6] = 'maxShotAlt ft'
 
     cols[7] = 'target Mach'
-    cols[8] = 'launch range to target'
+    cols[8] = 'launch range to target nm'
     cols[9] = 'Tgt launch ATA deg'
     cols[10] = 'Tgt launch Aspect deg'
     cols[11] = 'Tgt launch alt ft'
     cols[12] = 'minRangeToTgt ft'
-    cols[13] = 'minRangeToTgtMach '
+    cols[13] = 'minRangeToTgtMach'
     cols[14] = 'minRangeToTgtTime  s'
 
     cols[15] = 'flight time to mach thr s '
@@ -253,8 +253,8 @@ shot_telemetry.colHeadings = function()
     cols[21] = 'flight track miles (2D) to energy thr nm'
     cols[22] = 'flight track miles (3D) to energy thr nm'
 
-    cols[23] = 'launch specific energy (wind relative) J/kg '
-    cols[24] = 'max specific energy (wind relative) J/kg '
+    cols[23] = 'launch specific energy (wind relative) kJ/kg '
+    cols[24] = 'max specific energy (wind relative) kJ/kg '
 
     for i = 1,colCount do
         if cols[i] then
@@ -288,9 +288,11 @@ shot_telemetry.teleRowToString = function(shot)
 
     if shot.tgtlaunchPoint then
         cols[7] = shot.tgtlaunchMach -- target Mach
-        cols[8] = helms.maths.get3DDist(tgtlaunchPoint,shot.launchPoint) -- launch range to target
+        cols[8] = helms.maths.get3DDist(shot.tgtlaunchPoint,shot.launchPoint) * helms.maths.m2nm -- launch range to target
         cols[9] = helms.maths.thetaToDest(shot.launchVel, shot.launchPoint, shot.tgtlaunchPoint)/helms.maths.deg2rad -- Tgt launch ATA
-        cols[10] = helms.maths.thetaToDest(shot.tgtLaunchVel, shot.tgtlaunchPoint, shot.launchPoint)/helms.maths.deg2rad  -- Tgt launch Aspect (off tgt nose)
+        if shot.tgtLaunchVel then
+            cols[10] = helms.maths.thetaToDest(shot.tgtLaunchVel, shot.tgtlaunchPoint, shot.launchPoint)/helms.maths.deg2rad  -- Tgt launch Aspect (off tgt nose)
+        end
         cols[11] = shot.tgtlaunchPoint.y * helms.maths.m2ft -- Tgt launch alt
         cols[12] = shot.minSlantRangeToTgtm * helms.maths.m2ft  -- minRangeToTgt
         cols[13] = shot.minSlantRangeToTgtMach -- minRangeToTgtMach
@@ -312,8 +314,8 @@ shot_telemetry.teleRowToString = function(shot)
         cols[22] = shot.nonLethalEnergyDist3Dm * helms.maths.m2nm -- lethal flight trackMiles3D (energy)
     end
 
-    cols[23] = shot.launchEnergy -- launch Specific Energy (wind relative) J/kg 
-    cols[24] = shot.maxEnergy -- max Specific Energy (wind relative) J/kg 
+    cols[23] = shot.launchEnergy / 1000 -- launch Specific Energy (wind relative) kJ/kg 
+    cols[24] = shot.maxEnergy / 1000 -- max Specific Energy (wind relative) kJ/kg 
 
     for i = 1,colCount do
         if cols[i] then
