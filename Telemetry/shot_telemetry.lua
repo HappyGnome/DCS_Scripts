@@ -21,13 +21,16 @@ shot_telemetry.version = 1.0
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 shot_telemetry.poll_interval = 1 -- seconds
-shot_telemetry.min_lethal_mach = 1.0
+shot_telemetry.mach_threshold_max = 2.0
+shot_telemetry.mach_threshold_min = 0.8
+shot_telemetry.mach_log_min_delta = 0.1
 ----------------------------------------------------------------------------------------------------------
 
 shot_telemetry.active_missiles={} -- {wpnObj, lastMach, launchTime, launchPoint, launchVel, [type data], nonLethalMachTime, nonLethalMachPoint, nonLethalMachDist, flightDistAccum, tgtObj, nonLethalEnergyTime, nonLethalEnergyTime, nonLethalEnergyTime, lastPoint, lastEnergy}
 
 shot_telemetry.history_missiles={} -- {wpnObj, lastMach, launchTime, launchPoint, launchVel, [type data], nonLethalMachTime, nonLethalMachPoint, nonLethalMachDist, flightDistAccum, tgtObj, nonLethalEnergyTime, nonLethalEnergyTime, nonLethalEnergyTime, lastPoint, lastEnergy}
 
+shot_telemetry.next_shot_id = 0
 
 --[[
 Loggers for this module
@@ -60,13 +63,12 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
     if not weapon then return end
     if not initiator then return end
 
-    -- {wpnObj, launchMach, launchTime, launchPoint, launchVel, [type data], nonLethalMachTime, nonLethalMachPoint, nonLethalMachDist, flightDistAccum, tgtObj, nonLethalEnergyTime, nonLethalEnergyTime, nonLethalEnergyTime, lastPoint, lastEnergy}
-
     local p = weapon:getPoint()
 
     local newShot =
     {
         wpnObj = weapon
+        ,shotId = shot_telemetry.next_shot_id 
         ,launchEnergy = helms.physics.getSpecificEnergyWindRel(initiator)
         ,launchMach = helms.physics.estimateMach(initiator)
         ,launchTAS = helms.physics.TasKts(initiator)
@@ -76,28 +78,20 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
         ,maxEnergy = 0
         ,launchVel = initiator:getVelocity()
         ,typeName = weapon:getTypeName()
-        ,nonLethalMachTime = nil
-        ,nonLethalMachPoint = nil
-        ,nonLethalMachDist2Dmm = nil
-        ,nonLethalMachDist3Dmm = nil
         ,flightDistAccum3Dm = 0
         ,flightDistAccum2Dm = 0
-        ,tgtObj =  weapon:getTarget()
-        ,tgtlaunchMach = nil
-        ,tgtlaunchPoint = nil
-        ,tgtLaunchVel = nil
-        ,minSlantRangeToTgtm = nil
-        ,minSlantRangeToTgtMach = nil
-        ,minSlantRangeToTgtTime = nil
-        ,minSlantRangeToTgtPoint = nil
-        ,minSlantRangeToTgtDist3Dm = 0
-        ,minSlantRangeToTgtDist2Dm = 0
-        ,tgtMachMinSlantRange = nil
-        ,tgtPointMinSlantRange = nil
-        ,nonLethalEnergyPoint = nil
-        ,nonLethalEnergyTime = nil
-        ,nonLethalEnergyDist3Dm = nil
-        ,nonLethalEnergyDist2Dm = nil
+
+        ,samples = {
+            -- {
+            -- mach = 
+            -- ,time = 
+            -- ,point = {x,y,z}
+            -- ,dist2Dm = 
+            -- ,dist3Dm = 
+            -- ,vel = {x,y,z}
+            -- ,specEnergy =
+            --}
+        }
         ,lastPoint = p
         ,lastEnergy = 0
         ,lastMach = 0
@@ -106,22 +100,9 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
     newShot.lastMach = newShot.launchMach
     newShot.lastEnergy = newShot.launchEnergy
     newShot.maxEnergy = newShot.launchEnergy
-
-    if newShot.tgtObj and newShot.tgtObj:isExist() then 
-        newShot.tgtlaunchMach = helms.physics.estimateMach(newShot.tgtObj)
-        newShot.tgtlaunchPoint = newShot.tgtObj:getPoint()
-        newShot.tgtLaunchVel = newShot.tgtObj:getVelocity()
-        newShot.minSlantRangeToTgtm = helms.maths.get3DDist(p,newShot.tgtObj:getPoint())
-        newShot.minSlantRangeToTgtMach = newShot.launchMach
-        newShot.minSlantRangeToTgtTime = time
-        newShot.minSlantRangeToTgtPoint = newShot.launchPoint
-    end
-
-    newShot.tgtMachMinSlantRange = newShot.tgtlaunchMach
-    newShot.tgtPointMinSlantRange = newShot.tgtlaunchPoint
-
+    
     shot_telemetry.active_missiles[#shot_telemetry.active_missiles + 1] = newShot
-
+    shot_telemetry.next_shot_id = shot_telemetry.next_shot_id + 1
 end
 
 
@@ -130,11 +111,15 @@ shot_telemetry.missionEndHandler = function()
     shot_telemetry.log_i.log(shot_telemetry.colHeadings())
 
     for k,v in pairs( shot_telemetry.active_missiles) do
-        shot_telemetry.log_i.log(shot_telemetry.teleRowToString(v))
+        for l,w in pairs (v.samples) do
+            shot_telemetry.log_i.log(shot_telemetry.teleRowToString(v,w))
+        end
     end
 
     for k,v in pairs(shot_telemetry.history_missiles) do
-        shot_telemetry.log_i.log(shot_telemetry.teleRowToString(v))
+        for l,w in pairs (v.samples) do
+            shot_telemetry.log_i.log(shot_telemetry.teleRowToString(v, w))
+        end
     end
 end
 
@@ -180,43 +165,34 @@ shot_telemetry.pollShot_ = function(shot, now)
         shot.maxEnergy = newE
     end
 
+    local lastSample = nil
+    if shot.samples then
+        lastSample = shot.samples[#shot.samples]  
+    else
+        shot.samples = {}
+    end
+
     if continueTrack then
         local newMach = helms.physics.estimateMach(weapon)
         local lethal = false
 
-        if newMach < shot_telemetry.min_lethal_mach and shot.nonLethalMachTime == nil and newE < shot.lastEnergy then
-            shot.nonLethalMachTime = now
-            shot.nonLethalMachPoint = p
-            shot.nonLethalMachDist2Dm = shot.flightDistAccum2Dm
-            shot.nonLethalMachDist3Dm = shot.flightDistAccum3Dm
-        else 
+        if newMach >= shot_telemetry.mach_threshold_min or newE >= shot.lastEnergy then
             lethal = true
         end
 
-        if shot.tgtObj and shot.tgtObj:isExist() then
+        if (not lastSample )
+                or (math.abs(lastSample.mach - newMach) => shot_telemetry.mach_log_min_delta )
+                or (not lethal) then
 
-            local dist2Tgt = helms.maths.get3DDist(shot.tgtObj:getPoint() ,p)
-
-            if shot.minSlantRangeToTgtm > dist2Tgt then
-                shot.minSlantRangeToTgtm = dist2Tgt
-                shot.minSlantRangeToTgtMach = newMach
-                shot.minSlantRangeToTgtTime = now
-                shot.minSlantRangeToTgtPoint = p
-                shot.minSlantRangeToTgtDist3Dm = shot.flightDistAccum3Dm
-                shot.minSlantRangeToTgtDist2Dm = shot.flightDistAccum2Dm
-
-                shot.tgtMachMinSlantRange = helms.physics.estimateMach(shot.tgtObj)
-                shot.tgtPointMinSlantRange = shot.tgtObj:getPoint()
-            end
-
-            if helms.physics.getSpecificEnergyWindRel(shot.tgtObj) > newE and newE <= shot.lastEnergy then
-                shot.nonLethalEnergyPoint = p
-                shot.nonLethalEnergyTime = now
-                shot.nonLethalEnergyDist3Dm = shot.flightDistAccum3Dm
-                shot.nonLethalEnergyDist2Dm = shot.flightDistAccum2Dm
-            else
-                lethal = true
-            end
+            shot.samples[#shot.samples] = 
+            {
+                mach = newMach
+                ,time = now
+                ,point = p
+                ,dist2Dm = shot.flightDistAccum2Dm
+                ,dist3Dm = shot.flightDistAccum3Dm
+                ,vel = weapon:getVelocity()
+            }     
         end
 
         shot.lastPoint = p
@@ -241,7 +217,7 @@ shot_telemetry.colHeadings = function()
     for i = 1,colCount do
         cols[i] = ""
     end
-
+--TODO update
     cols[1] = 'type  '
     cols[2] = 'launch Mach'
     cols[3] = 'launch TAS kts'
@@ -288,7 +264,7 @@ shot_telemetry.colHeadings = function()
     return result
 end
 
-shot_telemetry.teleRowToString = function(shot)
+shot_telemetry.teleRowToString = function(shot, sample)
     local result = ''
 
     if not shot then return result end
@@ -300,7 +276,7 @@ shot_telemetry.teleRowToString = function(shot)
     for i = 1,colCount do
         cols[i] = ""
     end
-
+--TODO update
     cols[1] = shot.typeName    
     cols[2] = shot.launchMach
     cols[3] = shot.launchTAS -- TAS kts
