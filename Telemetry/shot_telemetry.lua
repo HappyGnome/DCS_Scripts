@@ -90,6 +90,7 @@ shot_telemetry.shotHandler = function(initiator, time, weapon)
             -- ,dist3Dm = 
             -- ,vel = {x,y,z}
             -- ,specEnergy =
+            -- ,tas_kts =
             --}
         }
         ,lastPoint = p
@@ -150,7 +151,7 @@ shot_telemetry.pollShot_ = function(shot, now)
     local continueTrack = true
     local p = weapon:getPoint()
 
-    if (not p) then continueTrack = false end
+    if (not p) then return false end
 
     shot.flightDistAccum2Dm =  shot.flightDistAccum2Dm + helms.maths.get2DDist(shot.lastPoint, p)
     shot.flightDistAccum3Dm =  shot.flightDistAccum3Dm + helms.maths.get3DDist(shot.lastPoint, p)
@@ -172,34 +173,47 @@ shot_telemetry.pollShot_ = function(shot, now)
         shot.samples = {}
     end
 
-    if continueTrack then
-        local newMach = helms.physics.estimateMach(weapon)
-        local lethal = false
+    local newMach = helms.physics.estimateMach(weapon)
+    local sampleStarted = false
 
-        if newMach >= shot_telemetry.mach_threshold_min or newE >= shot.lastEnergy then
-            lethal = true
+    if newE < shot.lastEnergy then
+        if newMach < shot_telemetry.mach_threshold_min then
+            continueTrack = false
         end
-
-        if (not lastSample )
-                or (math.abs(lastSample.mach - newMach) => shot_telemetry.mach_log_min_delta )
-                or (not lethal) then
-
-            shot.samples[#shot.samples] = 
-            {
-                mach = newMach
-                ,time = now
-                ,point = p
-                ,dist2Dm = shot.flightDistAccum2Dm
-                ,dist3Dm = shot.flightDistAccum3Dm
-                ,vel = weapon:getVelocity()
-            }     
+        
+        if newMach <= shot_telemetry.mach_threshold_max then
+            sampleStarted = true
         end
-
-        shot.lastPoint = p
-        shot.lastEnergy = newE 
-        shot.lastMach = newMach
-        continueTrack = lethal
     end
+
+    if 
+    (
+            sampleStarted
+        and
+        (       
+                (not lastSample)
+            or  (math.abs(lastSample.mach - newMach) >= shot_telemetry.mach_log_min_delta )
+            or  (not continueTrack) 
+        )
+            
+    ) then
+
+        shot.samples[#shot.samples + 1] = 
+        {
+            mach = newMach
+            ,time = now
+            ,point = p
+            ,dist2Dm = shot.flightDistAccum2Dm
+            ,dist3Dm = shot.flightDistAccum3Dm
+            ,vel = weapon:getVelocity()
+            ,tas_kts = helms.physics.TasKts(weapon)
+            ,specEnergy  = newE
+        }     
+    end
+
+    shot.lastPoint = p
+    shot.lastEnergy = newE 
+    shot.lastMach = newMach
 
     return continueTrack
 
@@ -211,48 +225,33 @@ shot_telemetry.colHeadings = function()
     local result = ''
 
     local cols = {}
-    local colCount = 30
+    local colCount = 18
 
     local i
     for i = 1,colCount do
         cols[i] = ""
     end
---TODO update
-    cols[1] = 'type  '
-    cols[2] = 'launch Mach'
-    cols[3] = 'launch TAS kts'
-    cols[4] = 'launch alt ft'
-    cols[5] = 'loft deg'
-    cols[6] = 'maxShotAlt ft'
 
-    cols[7] = 'target Mach'
-    cols[8] = 'launch range to target nm'
-    cols[9] = 'Tgt launch ATA deg'
-    cols[10] = 'Tgt launch Aspect deg'
-    cols[11] = 'Tgt launch alt ft'
+    cols[1] = 'type'
+    cols[2] = 'shot_id'
+    cols[3] = 'lnch_mach'
+    cols[4] = 'lnch_tas_kts'
+    cols[5] = 'lnch_alt_ft'
+    cols[6] = 'lnch_loft_deg'
+    cols[7] = 'lnch_spec_e_kj_kg'
+    
+    cols[8] = 'max_alt_ft'
+    cols[9] = 'max_spec_e_kj_kg'
 
-    cols[12] = 'minRangeToTgt nm'
-    cols[13] = 'minRangeToTgt Alt ft'
-    cols[14] = 'tgt Alt at min range'
-    cols[15] = 'minRangeToTgt Mach'
-    cols[16] = 'tgt Mach at min range'
-    cols[17] = 'minRangeToTgtTime  s'
-    cols[18] = 'flight dist minRangeToTgt nm'
-    cols[19] = 'flight track miles (2D) to minRangeToTgt nm'
-    cols[20] = 'flight track miles (3D) to minRangeToTgt nm'
-
-    cols[21] = 'flight time to mach thr s '
-    cols[22] = 'flight dist to mach thr nm'
-    cols[23] = 'flight track miles (2D) to mach thr nm'
-    cols[24] = 'flight track miles (3D) to mach thr nm'
-
-    cols[25] = 'flight time to energy thr s '
-    cols[26] = 'flight dist to energy thr nm'
-    cols[27] = 'flight track miles (2D) to energy thr nm'
-    cols[28] = 'flight track miles (3D) to energy thr nm'
-
-    cols[29] = 'launch specific energy (wind relative) kJ/kg '
-    cols[30] = 'max specific energy (wind relative) kJ/kg '
+    cols[10] = 'flgt_time_s'
+    cols[11] = 'flgt_dist_nm'
+    cols[12] = 'trk_dist_2d_nm'
+    cols[13] = 'trk_dist_3d_nm'
+    cols[14] = 'alt_ft'
+    cols[15] = 'spec_e_kj_kg'
+    cols[16] = 'mach'
+    cols[17] = 'tas_kts'
+    cols[18] = 'vs_fpm'
 
     for i = 1,colCount do
         if cols[i] then
@@ -270,58 +269,33 @@ shot_telemetry.teleRowToString = function(shot, sample)
     if not shot then return result end
 
     local cols = {}
-    local colCount = 30
+    local colCount = 18
 
     local i
     for i = 1,colCount do
         cols[i] = ""
     end
---TODO update
+
     cols[1] = shot.typeName    
-    cols[2] = shot.launchMach
-    cols[3] = shot.launchTAS -- TAS kts
-    cols[4] = shot.launchPoint.y * helms.maths.m2ft -- alt ft
-    cols[5] = helms.maths.getPitch(shot.launchVel)/helms.maths.deg2rad -- loft degrees 
-    cols[6] = shot.maxShotAltm * helms.maths.m2ft -- maxShotAlt
+    cols[2] = shot.shotId  
+    cols[3] = shot.launchMach
+    cols[4] = shot.launchTAS -- TAS kts
+    cols[5] = shot.launchPoint.y * helms.maths.m2ft -- alt ft
+    cols[6] = helms.maths.getPitch(shot.launchVel)/helms.maths.deg2rad -- loft degrees 
+    cols[7] = shot.launchEnergy / 1000 -- launch Specific Energy (wind relative) kJ/kg 
 
-    if shot.tgtlaunchPoint then
-        cols[7] = shot.tgtlaunchMach -- target Mach
-        cols[8] = helms.maths.get3DDist(shot.tgtlaunchPoint,shot.launchPoint) * helms.maths.m2nm -- launch range to target
-        cols[9] = helms.maths.thetaToDest(shot.launchVel, shot.launchPoint, shot.tgtlaunchPoint)/helms.maths.deg2rad -- Tgt launch ATA
-        if shot.tgtLaunchVel then
-            cols[10] = helms.maths.thetaToDest(shot.tgtLaunchVel, shot.tgtlaunchPoint, shot.launchPoint)/helms.maths.deg2rad  -- Tgt launch Aspect (off tgt nose)
-        end
-        cols[11] = shot.tgtlaunchPoint.y * helms.maths.m2ft -- Tgt launch alt
+    cols[8] = shot.maxShotAltm * helms.maths.m2ft -- maxShotAlt
+    cols[9] = shot.maxEnergy / 1000 -- max Specific Energy (wind relative) kJ/kg 
 
-        cols[12] = shot.minSlantRangeToTgtm * helms.maths.m2nm  -- minRangeToTgt nm
-        cols[13] = shot.minSlantRangeToTgtPoint.y * helms.maths.m2ft -- 'minRangeToTgt Alt ft'
-        cols[14] = shot.tgtPointMinSlantRange.y * helms.maths.m2ft -- 'tgt Alt at min range'
-        cols[15] = shot.minSlantRangeToTgtMach -- minRangeToTgtMach
-        cols[16] = shot.tgtMachMinSlantRange  --'tgt Mach at min range'
-        cols[17] = shot.minSlantRangeToTgtTime - shot.launchTime -- minRangeToTgtTime 
-
-        cols[18] = helms.maths.get2DDist(shot.minSlantRangeToTgtPoint, shot.launchPoint) * helms.maths.m2nm  --'flight dist minRangeToTgt nm'
-        cols[19] = shot.minSlantRangeToTgtDist2Dm * helms.maths.m2nm --'flight track miles (2D) to minRangeToTgt nm'
-        cols[20] = shot.minSlantRangeToTgtDist3Dm * helms.maths.m2nm --'flight track miles (3D) to minRangeToTgt nm'
-    end
-
-
-    if shot.nonLethalMachTime then
-        cols[21] = shot.nonLethalMachTime - shot.launchTime -- lethal flight time (mach)
-        cols[22] = helms.maths.get2DDist(shot.nonLethalMachPoint, shot.launchPoint) * helms.maths.m2nm -- lethal flight range (mach)
-        cols[23] = shot.nonLethalMachDist2Dm * helms.maths.m2nm -- lethal flight trackMiles2D (mach)
-        cols[24] = shot.nonLethalMachDist3Dm * helms.maths.m2nm -- lethal flight trackMiles3D (mach)
-    end
-
-    if shot.nonLethalEnergyTime then
-        cols[25] = shot.nonLethalEnergyTime - shot.launchTime -- lethal flight time (energy)
-        cols[26] = helms.maths.get2DDist(shot.nonLethalEnergyPoint, shot.launchPoint) * helms.maths.m2nm -- lethal flight range (energy)
-        cols[27] = shot.nonLethalEnergyDist2Dm * helms.maths.m2nm -- lethal flight trackMiles2D (energy)
-        cols[28] = shot.nonLethalEnergyDist3Dm * helms.maths.m2nm -- lethal flight trackMiles3D (energy)
-    end
-
-    cols[29] = shot.launchEnergy / 1000 -- launch Specific Energy (wind relative) kJ/kg 
-    cols[30] = shot.maxEnergy / 1000 -- max Specific Energy (wind relative) kJ/kg 
+    cols[10] = sample.time - shot.launchTime        --'flgt_time_s'
+    cols[11] = helms.maths.get2DDist(sample.point, shot.launchPoint) * helms.maths.m2nm --'flgt_dist_nm'
+    cols[12] = sample.dist2Dm * helms.maths.m2nm    --'trk_dist_2d_nm'
+    cols[13] = sample.dist3Dm * helms.maths.m2nm    --'trk_dist_3d_nm'
+    cols[14] = sample.point.y * helms.maths.m2ft    --'alt_ft'
+    cols[15] = sample.specEnergy / 1000             --'spec_e_kj_kg'
+    cols[16] = sample.mach                          --'mach'
+    cols[17] = sample.tas_kts                       --'tas_kts'
+    cols[18] = sample.vel.y * helms.maths.m2ft * 60 --'vs_fpm'    
 
     for i = 1,colCount do
         if cols[i] then

@@ -227,7 +227,7 @@ end
 helms.maths = {}
 
 helms.maths.deg2rad = 0.01745329
-helms.maths.kts2mps = 0.5144
+helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
 
