@@ -198,14 +198,12 @@ helms.util.reverse = function(tbl)
 end
 
 helms.util.uuid = function()
-
-	local N32 = 4294967295 -- 2^32 - 1
+	
 	local N16 = 65535 -- 2^16 - 1
 	local N12 = 4095 -- 2^12 - 1 (byte 7 starts 0100(base 2) for UUID variant 4.x)
 	local N14 = 16383 -- 2^14 - 1
 	local K = 32768 -- 2^15   (byte 9 starts 10(base 2) for UUID variant 4.1 )
-
-	return string.format("%08x-%04x-4%03x-%04x-%04x%08x",math.random(0,N32),math.random(0,N16),math.random(0,N12),math.random(0,N14)+K,math.random(0,N16),math.random(0,N32))
+	return string.format("%04x%04x-%04x-4%03x-%04x-%04x%04x%04x",math.random(0,N16),math.random(0,N16),math.random(0,N16),math.random(0,N12),math.random(0,N14)+K,math.random(0,N16),math.random(0,N16),math.random(0,N16))
 end
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
