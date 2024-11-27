@@ -31,6 +31,7 @@ king_of_the_hill.crown_cap_radius = 500 --m
 king_of_the_hill.score_reminder_cooldown = 60 --seconds
 king_of_the_hill.score_bonus_per_kill = 0.5
 king_of_the_hill.enable_crown_stealing_after = 60 -- seconds since spawn
+king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets. Multiplier indefinite if it's <=0
 ----------------------------------------------------------------------------------------------------------
 
 king_of_the_hill.running = false
@@ -191,13 +192,45 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
 
     king_of_the_hill.refreshCtfSmokeOnCrown_(game)
 
-    -- check for win
-    local scoreThisKing = king_of_the_hill.scoreThisKing_(game,now)
+     -- update scores on multiplier cooldown
+    local runningTeamScore = 0 
 
-    if game.rules.kingTeam  and game.rules.scores[game.rules.kingTeam] + scoreThisKing >= game.rules.firstToScore then
-        game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + scoreThisKing
-        king_of_the_hill.endGame_ (game)
+    if game.rules.kingTeam then
+        runningTeamScore = king_of_the_hill.currentScoreSegment_(game,now) + game.rules.scores[game.rules.kingTeam]
     end
+
+    -- check for win or check for multiplier change
+    if game.rules.kingTeam and runningTeamScore >= game.rules.firstToScore then
+
+        game.rules.scores[game.rules.kingTeam] = game.rules.firstToScore
+        king_of_the_hill.endGame_ (game)
+
+    elseif game.rules.kingMultiplierUntil and  game.rules.kingMultiplierUntil < now and runningTeamScore > 0 then
+
+        king_of_the_hill.nextScoreSegment(now,true) 
+
+    end
+
+end
+
+king_of_the_hill.nextScoreSegment = function(now, clearMultiplier)
+
+    king_of_the_hill.endScoreSegment(now, clearMultiplier)
+
+    game.rules.scoreSegmentStart = now
+end
+
+king_of_the_hill.endScoreSegment = function(now, clearMultiplier)
+
+    if game.rules.kingTeam then
+        game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.currentScoreSegment_(game,now)
+    end    
+
+    if clearMultiplier then
+        game.rules.kingMultiplierUntil = nil
+        game.rules.kingMultiplier = 1
+    end 
+
 end
 
 king_of_the_hill.printScore_ = function(game, t, now)
@@ -205,7 +238,7 @@ king_of_the_hill.printScore_ = function(game, t, now)
     local suffix = {['red'] = '', ['blue'] = ''}
 
     if game.rules.kingTeam and now then
-        score[game.rules.kingTeam] = score[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
+        score[game.rules.kingTeam] = score[game.rules.kingTeam] + king_of_the_hill.currentScoreSegment_(game,now)
         suffix[game.rules.kingTeam] = '↑'
         if game.rules.kingMultiplier > 1 then
             suffix[game.rules.kingTeam]  = suffix[game.rules.kingTeam]  .. '×' .. game.rules.kingMultiplier
@@ -260,6 +293,7 @@ king_of_the_hill.pollGameWithoutKing_ = function(game, now)
     local kingTeam = king_of_the_hill.unitTeamString_(unit)
     if not kingTeam then return false end
 
+    king_of_the_hill.nextScoreSegment(now,true)
     king_of_the_hill.setNewKing_(game, now, unit:getName(),unit:getPlayerName(), kingTeam)
 
     trigger.action.outText(string.upper(game.rules.kingTeam) .. " player " .. game.rules.kingUnitFriendlyName .. " is King!",10)
@@ -282,8 +316,8 @@ king_of_the_hill.setNewKing_ = function (game, now, kingUnitName, kingFriendlyNa
         game.rules.kingSince = nil
         game.rules.crownHidden = true
     end
+
     game.rules.boundsWarningTime = nil
-    game.rules.kingMultiplier = 1
     game.rules.kingTeam = kingTeam
 
     king_of_the_hill.smokeOnCrown_(game)
@@ -327,11 +361,18 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     trigger.action.outText(string.upper(newKingTeam) .. " player " .. killedByUnitFriendlyName .. " is King!",10)
 
     -- update scores
+    if killedByUnitName
+        king_of_the_hill.nextScoreSegment(now,true)
+    else
+        king_of_the_hill.endScoreSegment(now,true)
+    end
+
     if game.rules.kingUnitName and game.rules.kingTeam then
-        game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
+
         if game.rules.scores[game.rules.kingTeam] >= game.rules.firstToScore then
             king_of_the_hill.endGame_ (game)
         end
+
         game.rules.prevKingUnitName = game.rules.kingUnitName
     end
 
@@ -352,7 +393,16 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
     local killedUnitFriendlyName = killedUnit:getPlayerName()
     if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
 
+    local now = timer.getTime()
+
+    king_of_the_hill.nextScoreSegment(now,false) --no multiplier reset
+
     game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
+    
+    if king_of_the_hill.multiplier_reset_time > 0 then  
+        game.rules.kingMultiplierUntil = now + king_of_the_hill.multiplier_reset_time
+    end 
+
     trigger.action.outText("King killed  " .. killedUnitFriendlyName,10)
     trigger.action.outText("Multiplier increased to " .. game.rules.kingMultiplier,10)
 end
@@ -391,12 +441,14 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
         prevKingUnitName = nil,
         kingTeam = nil, -- index into scores
         kingSince = nil,
+        scoreSegmentStart = nil,
         crownHidden = false,
         crownPoint = {x = 0, y = 0},
         boundsWarningTime = nil,
         firstToScore = game.ruleOptions[rulesetInd].firstToScore,
         --kingLostAt = nil,
         kingMultiplier = 1
+        kingMultiplierUntil = nil
     }
     game.lastScoreReminder = now
 
@@ -561,6 +613,7 @@ king_of_the_hill.crownAppears_ = function(game)
     game.rules.kingUnitFriendlyName = nil
     --game.rules.lastUnitHitKing = nil
     game.rules.kingMultiplier = 1
+    game.rules.kingMultiplierUntil = nil
     game.rules.crownPoint = newPos
     game.rules.crownHidden = false
     --game.rules.kingLostAt = nil
@@ -616,19 +669,21 @@ king_of_the_hill.loseCrown_ = function(game, now)
     if not handled then
         helms.dynamic.scheduleFunctionSafe(king_of_the_hill.crownAppears_,{game},now + king_of_the_hill.crown_respawn_delay, nil, king_of_the_hill.catchError)
 
+        king_of_the_hill.endScoreSegment(now,true)
+
         -- update scores
         if game.rules.kingUnitName and game.rules.kingTeam then
-            game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.scoreThisKing_(game,now)
             game.rules.prevKingUnitName = game.rules.kingUnitName
+            
         end
 
         king_of_the_hill.setNewKing_ (game, now, nil, nil, nil)
     end
 end
 
-king_of_the_hill.scoreThisKing_ = function(game, now)
-    if not game.rules.kingSince then return 0 end
-    return math.floor(now - game.rules.kingSince) * game.rules.kingMultiplier
+king_of_the_hill.currentScoreSegment_ = function(game, now)
+    if not game.rules.scoreSegmentStart then return 0 end
+    return math.floor(now - game.rules.scoreSegmentStart) * game.rules.kingMultiplier
 end
 
 king_of_the_hill.resetComms_ = function(game)
@@ -684,11 +739,13 @@ king_of_the_hill.AddGame = function(zoneName, gameName, firstToScore, zoneSpawnS
                 --lastUnitHitKing = nil,
                 kingTeam = nil, -- index into scores
                 kingSince = nil,
+                scoreSegmentStart = nil,
                 crownHidden = false,
                 crownPoint = {x = 0, y = 0},
                 boundsWarningTime = nil,
                 firstToScore = 0,
                 kingMultiplier = 1,
+                kingMultiplierUntil = nil
                 --kingLostAt = nil
             }
         }
