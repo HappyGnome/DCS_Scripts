@@ -190,3 +190,42 @@ Where
 Returns: None
 
 **Example:**  `helms.effect.stopSmokeOnZone("Zone-1")`
+
+
+## Predicate helpers - helms.predicate
+### Basic predicates - unitExists
+`helms.predicate.unitExists` is the basis of the unit predicates in HeLMS. This method allows an optional zone, coalition (`coalition.side`) and category (`Group.Category`) to be specified. More complex predicates are built by passing in other functions to check. N.B.: in the current vesions, only circular zones are supported.
+
+**Example 1:** In the `CONDITIONS` for a trigger, add a `LUA PREDICATE`, and set the `TEXT` to 
+
+`return helms.predicate.unitExists(nil,nil,"Zone-1")`
+
+**Example 2:** To trigger on only blue units, set the `TEXT` to 
+
+`return helms.predicate.unitExists(coalition.side.BLUE,nil,"Zone-2")`
+
+**Example 3:** To trigger helicopters anywhere on the map, add a `LUA PREDICATE`, and set the `TEXT` to 
+
+`return helms.predicate.unitExists(nil,Group.Category.HELICOPTER,nil)`
+
+### Predicate extension - makeSpeedRange
+One or more additional conditions can be added, which must also be met by the unit triggering the condition:
+
+`helms.predicate.makeSpeedRange(<min kts>,<max kts>)`
+
+Where
+* `<min kts>` Lower bound on unit ground speed in kts for the condition to trigger
+* `<max kts>` Upper bound on unit ground speed in kts for the condition to trigger
+
+**Example:** `return helms.predicate.unitExists(nil,nil,"Zone-3", helms.predicate.makeSpeedRange(260,290))`
+
+### Predicate extensions - makeSpeedRange
+
+`helms.predicate.makeAltRange(<min ft>,<max ft>)`
+
+Where
+* `<min ft>` Lower bound on unit altitude ft MSL for the condition to trigger
+* `<max ft>` Upper bound on unit altitude ft MSL for the condition to trigger
+
+**Example:** `return helms.predicate.unitExists(coalition.side.RED,nil,"Zone-3", helms.predicate.makeAltRange(0,5000))`
+
