@@ -219,7 +219,7 @@ Where
 
 **Example:** `return helms.predicate.unitExists(nil,nil,"Zone-3", helms.predicate.makeSpeedRange(260,290))`
 
-### Predicate extensions - makeSpeedRange
+### Predicate extensions - makeAltRange
 
 `helms.predicate.makeAltRange(<min ft>,<max ft>)`
 
