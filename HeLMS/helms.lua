@@ -197,6 +197,16 @@ helms.util.reverse = function(tbl)
 	return res
 end
 
+helms.util.kvflip = function(tbl)
+	local res = {}
+
+	for k,v in pairs(tbl) do
+		res[v] = k
+	end
+	
+	return res
+end
+
 helms.util.uuid = function()
 	
 	local N16 = 65535 -- 2^16 - 1
@@ -489,6 +499,13 @@ helms.physics.TasKts = function (obj)
 	return math.sqrt(helms.maths.dot3D(vrel,vrel)) / helms.maths.kts2mps
 
 end
+
+----------------------------------------------------------------------------------------------------------
+--CONST------------------------------------------------------------------------------------------------
+helms.const ={}
+
+helms.const.GroupCatRev = helms.util.kvflip (Group.Category)
+helms.const.CoalitionSideRev = helms.util.kvflip (coalition.side)
 
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
@@ -1024,9 +1041,12 @@ helms.predicate = {}
 -- set coa == nil to check BLUE and RED units
 helms.predicate.unitExists = function(coa,cat,zoneName,...)
 
+	-- Validate enums
+	if cat  and not helms.const.GroupCatRev[cat]  then return false end
+	if coa and not helms.const.CoalitionSideRev[coa]  then return false end
+
 	local searchGroups = function(groups,zoneName, ...)
 		if groups == nil then 
-			helms.log_i.log("No Gps ")	--TODO
 			return false
 		end
 
@@ -1040,7 +1060,6 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 		end
 
 		if zone ~= nil then
-			helms.log_i.log("Zone exists ")	--TODO
 			centre = {x = zone.point.x, y = zone.point.z}
 			radius = zone.radius
 		
@@ -1053,7 +1072,6 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 			if units ~= nil then
 				for k, unit in pairs(units) do
 
-					helms.log_i.log("Check unit ")	--TODO
 					local fail = false
 					local point = unit:getPoint()
 
@@ -1066,7 +1084,6 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 							helms.maths.get2DDist(centre,point) > radius 
 						)then
 						
-						helms.log_i.log("Not in zone " .. zoneName)	--TODO
 						fail = true -- skip this one, it's out of the zone
 					end
 
@@ -1087,12 +1104,10 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 		return false
 	end
 
-
-	if coa ~= nil then
+	if coa then
 		return searchGroups (coalition.getGroups(coa,cat),zoneName, unpack(arg))		
 
 	else
-		helms.log_i.log("All coa ")	--TODO
 		return searchGroups (coalition.getGroups(coalition.side.BLUE,cat),zoneName, unpack(arg)) 
 			or searchGroups (coalition.getGroups(coalition.side.RED,cat),zoneName, unpack(arg))
 
