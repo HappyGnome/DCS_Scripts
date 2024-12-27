@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.12}
+helms={ version = 1.13}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -192,6 +192,16 @@ helms.util.reverse = function(tbl)
 
 	for i,v in ipairs(tbl) do
 		res[#tbl - i + 1] = v
+	end
+	
+	return res
+end
+
+helms.util.kvflip = function(tbl)
+	local res = {}
+
+	for k,v in pairs(tbl) do
+		res[v] = k
 	end
 	
 	return res
@@ -489,6 +499,13 @@ helms.physics.TasKts = function (obj)
 	return math.sqrt(helms.maths.dot3D(vrel,vrel)) / helms.maths.kts2mps
 
 end
+
+----------------------------------------------------------------------------------------------------------
+--CONST------------------------------------------------------------------------------------------------
+helms.const ={}
+
+helms.const.GroupCatRev = helms.util.kvflip (Group.Category)
+helms.const.CoalitionSideRev = helms.util.kvflip (coalition.side)
 
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
@@ -1014,6 +1031,110 @@ helms.mission.sideToString = function(side)
 		return nil
 	end
 end
+
+----------------------------------------------------------------------------------------------------------
+--PREDICATE-------------------------------------------------------------------------------------------------
+
+helms.predicate = {}
+
+-- Circular zones only at the moment (zone can be nil to check all units)
+-- set coa == nil to check BLUE and RED units
+helms.predicate.unitExists = function(coa,cat,zoneName,...)
+
+	-- Validate enums
+	if cat  and not helms.const.GroupCatRev[cat]  then return false end
+	if coa and not helms.const.CoalitionSideRev[coa]  then return false end
+
+	local searchGroups = function(groups,zoneName, ...)
+		if groups == nil then 
+			return false
+		end
+
+		local zone = nil
+		local centre = nil
+		local radius = nil
+		local quickBounds = nil
+
+		if zoneName then
+			zone = trigger.misc.getZone(zoneName)
+		end
+
+		if zone ~= nil then
+			centre = {x = zone.point.x, y = zone.point.z}
+			radius = zone.radius
+		
+			quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
+		end
+
+		for k,group in pairs(groups) do
+			units = group:getUnits() 
+
+			if units ~= nil then
+				for k, unit in pairs(units) do
+
+					local fail = false
+					local point = unit:getPoint()
+
+					if 	quickBounds ~= nil and
+						(
+							point.x < quickBounds.xMin or
+							point.x > quickBounds.xMax or
+							point.z < quickBounds.yMin or
+							point.z > quickBounds.yMax or
+							helms.maths.get2DDist(centre,point) > radius 
+						)then
+						
+						fail = true -- skip this one, it's out of the zone
+					end
+
+					if (not fail) and arg then
+						for kp,pred in pairs(arg) do
+							if (not fail) and type(pred) =='function' and (not pred(unit)) then
+								fail = true
+							end
+						end
+					end
+
+					if not fail then return true end -- unit found
+				end
+			end
+	
+		end
+
+		return false
+	end
+
+	if coa then
+		return searchGroups (coalition.getGroups(coa,cat),zoneName, unpack(arg))		
+
+	else
+		return searchGroups (coalition.getGroups(coalition.side.BLUE,cat),zoneName, unpack(arg)) 
+			or searchGroups (coalition.getGroups(coalition.side.RED,cat),zoneName, unpack(arg))
+
+	end
+end
+
+
+helms.predicate.makeSpeedRange = function(minKt, maxKt)
+	return function(unit)
+		local v = unit:getVelocity()
+
+		local kt = math.sqrt (helms.maths.dot2D(v,v)) / helms.maths.kts2mps
+
+		return kt >= minKt and kt <= maxKt
+	end
+end
+
+helms.predicate.makeAltRange = function(minFt, maxFt)
+	return function(unit)
+		local point = unit:getPoint()
+
+		local alt = point.y * helms.maths.m2ft
+
+		return alt >= minFt and alt <= maxFt
+	end
+end
+
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking

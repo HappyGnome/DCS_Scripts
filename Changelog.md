@@ -5,6 +5,7 @@
 * Added HeLMS effect category. Added perpetual smoke effects.
 * Fixed missing psi values for generated groups
 * Constant pressure sets now check and spawn units when created using "new"  
+* Added some basic predicate helpers
 ## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods
