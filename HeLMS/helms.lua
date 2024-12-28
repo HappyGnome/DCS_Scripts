@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.13}
+helms={ version = 1.14}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -295,6 +295,16 @@ helms.maths.as3D = function(u)
 	if uz == nil then
 		uz = u.y
 		uy = 0
+	end
+	return {x = u.x, y= uy,z = uz}
+end
+
+helms.maths.as3DHeight = function(u, h)
+	local uz = u.z
+	local uy = u.y
+	if uz == nil then
+		uz = u.y
+		uy = h + land.getHeight(u)
 	end
 	return {x = u.x, y= uy,z = uz}
 end
@@ -1747,7 +1757,9 @@ helms.effect.startSmokePoints_ = function (pointcolours, replaceHandle)
 			return nil
 		end
 
-		pcRefined[k] = {point = helms.maths.as3D(p.point), colour = colour}
+		local p3 = helms.maths.as3DHeight(p.point,0)
+
+		pcRefined[k] = {point = p3 , colour = colour}
 
 	end
 
@@ -1759,8 +1771,6 @@ helms.effect.startSmokePoints_ = function (pointcolours, replaceHandle)
 			timer.getTime() + 1, 
 			false, 
 			helms.catchError)
-
-		helms.log_i.log("Smoke " .. replaceHandle .. " started")
 	else 
 		helms.log_i.log("Smoke " .. replaceHandle .. " updated")
 	end
@@ -1838,7 +1848,7 @@ helms.effect._refreshSmoke = function (handle)
 		trigger.action.smoke(pc.point,pc.colour)	
 	end
 
-	helms.log_i.log("Smoke " .. handle .. " restarted")
+	helms.log_i.log("Smoke " .. handle .. " (re)started")
 
 	return timer.getTime() + helms.effect._smokeRefreshSeconds
 end

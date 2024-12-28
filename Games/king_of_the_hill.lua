@@ -10,7 +10,7 @@ if king_of_the_hill then
 end
 
 if not helms then return end
-if helms.version < 1.11 then 
+if helms.version < 1.14 then 
 	helms.log_e.log("Invalid HeLMS version for king_of_the_hill")
 end
 
@@ -33,7 +33,10 @@ king_of_the_hill.score_bonus_per_kill = 0.5
 king_of_the_hill.enable_crown_stealing_after = 60 -- seconds since spawn
 king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets. Multiplier indefinite if it's <=0
 
--- TODO - King can be insta-killed?
+king_of_the_hill.zone_border_smokes = 24
+king_of_the_hill.zonde_border_smoke_colour = "RED"
+
+-- Suggested feature: - King can be insta-killed
 ----------------------------------------------------------------------------------------------------------
 
 king_of_the_hill.running = false
@@ -431,6 +434,8 @@ king_of_the_hill.endGame_ = function(game)
     king_of_the_hill.smokeOnCrown_(game)
     game.running = false
 
+    helms.effect.stopSmokeOnZone(game.zone.zoneName)
+
     king_of_the_hill.resetComms_ (game)
 end
 --
@@ -479,6 +484,9 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
 
     local startMessage = "Hold the crown in zone (" .. game.zone.zoneName .. ") to score points.\n"
     startMessage = startMessage .. "First team to " .. game.rules.firstToScore .. " wins!"
+
+    helms.effect.startSmokeOnZone(game.zone.zoneName, nil, king_of_the_hill.zonde_border_smoke_colour, king_of_the_hill.zone_border_smokes)
+
     trigger.action.outText(startMessage,30)
 end
 
@@ -793,10 +801,11 @@ end
 king_of_the_hill.Test_KingGetKill = function(gameName, unitKilledName)
     local unit
 
-    if unitName then
-        unit = Unit.getByName(unitName)
+    if unitKilledName then
+        unit = Unit.getByName(unitKilledName)
     end
     if king_of_the_hill.games[gameName] and unit then
+        helms.log_i.log("Test_KingGetKill " .. gameName .." " .. unitKilledName)
         king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unit)
     end
 end
