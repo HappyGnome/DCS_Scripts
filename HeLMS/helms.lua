@@ -394,6 +394,26 @@ helms.maths.randomInCircle = function (r,centre)
 	return { x = centre.x + math.cos(theta) * r, y = centre.y + math.sin(theta) * r}
 end
 
+helms.maths.pointsCircleBorder = function (r,centre, count)
+	centre = helms.maths.as2D(centre)
+
+	local ret = {}
+
+	if count <= 0 then 
+		return ret
+	end
+
+	local theta = 2 * math.pi / count
+
+	local i
+
+	for i = 1,count do
+		ret[#ret + 1] = { x = centre.x + math.cos(i*theta) * r, y = centre.y + math.sin(i*theta) * r}
+	end
+
+	return ret
+end
+
 helms.maths.isPointInPoly = function (point, verts)
 
 	if (not point) or (not verts) or (#verts < 3) then
@@ -1697,6 +1717,8 @@ helms.effect = {}
 
 helms.effect._smokes = {} -- keys: integer for non-zone linked effects, string (zone name) for zone-linked effects
 helms.effect._smokeRefreshSeconds = 300
+helms.effect._minimumBorderSmokes = 4
+helms.effect._defaultBorderSmokes = 8
 
 --[[
 Create smoke with auto-refresh at a given point and colour ("red","green","blue","white", or "orange")
@@ -1705,23 +1727,36 @@ If replaceHandle is specified, the smoke replaces an existing smoke effect
 Returns a handle to use with startSmoke or stopSmoke. (This is replaceHandle, if specified)
 ]]
 helms.effect.startSmoke = function (point,colour, replaceHandle)
+	return helms.effect.startSmokePoints_({{point = point, colour = colour}}, replaceHandle)
+end
+
+
+helms.effect.startSmokePoints_ = function (pointcolours, replaceHandle)
 	if replaceHandle == nil then
 		replaceHandle = #helms.effect._smokes + 1
 	end
 
-	if not helms.effect._stringToSmokeColour(colour) then
-		helms.log_e.log("Smoke colour " .. colour .. " invalid")
-		return nil
+	local pcRefined = {}
+
+	for k,p in pairs (pointcolours) do
+
+		local colour = helms.effect._stringToSmokeColour(p.colour)
+
+		if not colour then
+			helms.log_e.log("Smoke colour " .. p.colour .. " invalid")
+			return nil
+		end
+
+		pcRefined[k] = {point = helms.maths.as3D(p.point), colour = colour}
+
 	end
 
-	point = helms.maths.as3D(point)
-
 	if not helms.effect._smokes[replaceHandle] then
-		trigger.action.smoke(point,helms.effect._stringToSmokeColour(colour))
+		
 		helms.dynamic.scheduleFunctionSafe(
 			helms.effect._refreshSmoke,
 			{replaceHandle},
-			timer.getTime() + helms.effect._smokeRefreshSeconds, 
+			timer.getTime() + 1, 
 			false, 
 			helms.catchError)
 
@@ -1730,24 +1765,50 @@ helms.effect.startSmoke = function (point,colour, replaceHandle)
 		helms.log_i.log("Smoke " .. replaceHandle .. " updated")
 	end
 
-	helms.effect._smokes[replaceHandle] = {point = point, colour = colour}
+	helms.effect._smokes[replaceHandle] = pcRefined
 
 	return replaceHandle
 end
 
-helms.effect.startSmokeOnZone = function (zoneName, colour)
+helms.effect.startSmokeOnZone = function (zoneName, colour, borderColour, borderSmokes)
 
 	if not zoneName then return end
 
 	local zone = trigger.misc.getZone(zoneName)
-
-	if zone then
-		helms.effect.startSmoke(zone.point,colour, zoneName)
-		return zoneName
-	else
+	
+	if not zone then
 		helms.log_e.log("Zone " .. zoneName .. " not valid")
 		return nil
 	end
+
+	local zoneCtr = zone.point
+	local zoneRad = zone.radius
+
+	local pointcolours = {}
+
+	if borderColour ~= nil then
+		if borderSmokes == nil then
+			borderSmokes = helms.effect._defaultBorderSmokes
+		elseif borderSmokes < helms.effect._minimumBorderSmokes then
+			borderSmokes = helms.effect._minimumBorderSmokes
+		end
+
+		for _,p in pairs(helms.maths.pointsCircleBorder(zoneRad,zoneCtr, borderSmokes)) do
+			pointcolours [#pointcolours + 1] = {point = p,colour = borderColour}
+		end
+	end
+
+	if colour ~= nil then
+		pointcolours [#pointcolours + 1] = {point = zoneCtr,colour = colour}
+	end
+
+	if pointcolours then
+		helms.effect.startSmokePoints_(pointcolours, zoneName)
+		return zoneName
+	end
+
+	return nil
+
 end
 
 --[[
@@ -1773,7 +1834,9 @@ helms.effect._refreshSmoke = function (handle)
 
 	local smokeData = helms.effect._smokes[handle]
 
-	trigger.action.smoke(smokeData.point,helms.effect._stringToSmokeColour(smokeData.colour))	
+	for _,pc in pairs(smokeData) do
+		trigger.action.smoke(pc.point,pc.colour)	
+	end
 
 	helms.log_i.log("Smoke " .. handle .. " restarted")
 

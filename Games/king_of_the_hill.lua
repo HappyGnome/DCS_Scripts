@@ -17,7 +17,7 @@ end
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
-king_of_the_hill.version = 1.3
+king_of_the_hill.version = 1.4
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
@@ -32,6 +32,8 @@ king_of_the_hill.score_reminder_cooldown = 60 --seconds
 king_of_the_hill.score_bonus_per_kill = 0.5
 king_of_the_hill.enable_crown_stealing_after = 60 -- seconds since spawn
 king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets. Multiplier indefinite if it's <=0
+
+-- TODO - King can be insta-killed?
 ----------------------------------------------------------------------------------------------------------
 
 king_of_the_hill.running = false
@@ -207,20 +209,22 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
 
     elseif game.rules.kingMultiplierUntil and  game.rules.kingMultiplierUntil < now and runningTeamScore > 0 then
 
-        king_of_the_hill.nextScoreSegment(now,true) 
+        king_of_the_hill.nextScoreSegment(game, now, true) 
+
+        trigger.action.outText("Multiplier reset!",10)
 
     end
 
 end
 
-king_of_the_hill.nextScoreSegment = function(now, clearMultiplier)
+king_of_the_hill.nextScoreSegment = function(game, now, clearMultiplier)
 
-    king_of_the_hill.endScoreSegment(now, clearMultiplier)
+    king_of_the_hill.endScoreSegment(game, now, clearMultiplier)
 
     game.rules.scoreSegmentStart = now
 end
 
-king_of_the_hill.endScoreSegment = function(now, clearMultiplier)
+king_of_the_hill.endScoreSegment = function(game, now, clearMultiplier)
 
     if game.rules.kingTeam then
         game.rules.scores[game.rules.kingTeam] = game.rules.scores[game.rules.kingTeam] + king_of_the_hill.currentScoreSegment_(game,now)
@@ -237,14 +241,19 @@ king_of_the_hill.printScore_ = function(game, t, now)
     local score = {blue = game.rules.scores.blue, red = game.rules.scores.red}
     local suffix = {['red'] = '', ['blue'] = ''}
 
+    local kingName = ""
+
     if game.rules.kingTeam and now then
         score[game.rules.kingTeam] = score[game.rules.kingTeam] + king_of_the_hill.currentScoreSegment_(game,now)
         suffix[game.rules.kingTeam] = '↑'
         if game.rules.kingMultiplier > 1 then
             suffix[game.rules.kingTeam]  = suffix[game.rules.kingTeam]  .. '×' .. game.rules.kingMultiplier
         end
+         suffix[game.rules.kingTeam] =  suffix[game.rules.kingTeam]
+
+        kingName = ' | ♔' .. game.rules.kingUnitFriendlyName
     end
-    trigger.action.outText("BLUE: "..score.blue..suffix['blue'].." | RED: "  .. score.red  .. suffix['red'],t)
+    trigger.action.outText("BLUE: "..score.blue..suffix['blue'].." | RED: "  .. score.red  .. suffix['red'] .. kingName,t)
     game.lastScoreReminder = now
 end
 
@@ -293,7 +302,7 @@ king_of_the_hill.pollGameWithoutKing_ = function(game, now)
     local kingTeam = king_of_the_hill.unitTeamString_(unit)
     if not kingTeam then return false end
 
-    king_of_the_hill.nextScoreSegment(now,true)
+    king_of_the_hill.nextScoreSegment(game, now, true)
     king_of_the_hill.setNewKing_(game, now, unit:getName(),unit:getPlayerName(), kingTeam)
 
     trigger.action.outText(string.upper(game.rules.kingTeam) .. " player " .. game.rules.kingUnitFriendlyName .. " is King!",10)
@@ -361,10 +370,10 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     trigger.action.outText(string.upper(newKingTeam) .. " player " .. killedByUnitFriendlyName .. " is King!",10)
 
     -- update scores
-    if killedByUnitName
-        king_of_the_hill.nextScoreSegment(now,true)
+    if killedByUnitName then
+        king_of_the_hill.nextScoreSegment(game, now, true)
     else
-        king_of_the_hill.endScoreSegment(now,true)
+        king_of_the_hill.endScoreSegment(game, now, true)
     end
 
     if game.rules.kingUnitName and game.rules.kingTeam then
@@ -395,7 +404,7 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
 
     local now = timer.getTime()
 
-    king_of_the_hill.nextScoreSegment(now,false) --no multiplier reset
+    king_of_the_hill.nextScoreSegment(game, now, false) --no multiplier reset
 
     game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
     
@@ -447,7 +456,7 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
         boundsWarningTime = nil,
         firstToScore = game.ruleOptions[rulesetInd].firstToScore,
         --kingLostAt = nil,
-        kingMultiplier = 1
+        kingMultiplier = 1,
         kingMultiplierUntil = nil
     }
     game.lastScoreReminder = now
@@ -629,7 +638,7 @@ king_of_the_hill.loseCrown_ = function(game, now)
     local handled = false
     if game.rules.kingUnitName then
 
-        local lastHitEvent = helms.events.getLastHitBy(game.rules.kingUnitName) 
+        local lastHitEvent = helms.events.getLastHitBy(game.rules.kingUnitName)
 
         local initiatorSpawnedAt = nil
         local initiatorCanSteal = true
@@ -669,7 +678,7 @@ king_of_the_hill.loseCrown_ = function(game, now)
     if not handled then
         helms.dynamic.scheduleFunctionSafe(king_of_the_hill.crownAppears_,{game},now + king_of_the_hill.crown_respawn_delay, nil, king_of_the_hill.catchError)
 
-        king_of_the_hill.endScoreSegment(now,true)
+        king_of_the_hill.endScoreSegment(game, now, true)
 
         -- update scores
         if game.rules.kingUnitName and game.rules.kingTeam then
@@ -771,7 +780,38 @@ king_of_the_hill.Test_SetKing = function(gameName, unitName)
         unit = Unit.getByName(unitName)
     end
     if king_of_the_hill.games[gameName] and unit then
-        king_of_the_hill.setNewKing_(king_of_the_hill.games[gameName], timer.getTime(), unitName, unitName, king_of_the_hill.unitTeamString_(unit))
+
+        local game = king_of_the_hill.games[gameName]
+        local now = timer.getTime()
+
+        king_of_the_hill.nextScoreSegment(game, now, true)
+
+        king_of_the_hill.setNewKing_(game, now, unitName, unitName, king_of_the_hill.unitTeamString_(unit))
+    end
+end
+
+king_of_the_hill.Test_KingGetKill = function(gameName, unitKilledName)
+    local unit
+
+    if unitName then
+        unit = Unit.getByName(unitName)
+    end
+    if king_of_the_hill.games[gameName] and unit then
+        king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unit)
+    end
+end
+
+king_of_the_hill.Test_KingKilled = function(gameName, unitKilledName)
+
+    if king_of_the_hill.games[gameName] and unitName then
+        king_of_the_hill.kingKilled_(king_of_the_hill.games[gameName], unitName)
+    end
+end
+
+king_of_the_hill.Test_LoseCrown = function(gameName)
+
+    if king_of_the_hill.games[gameName]then
+        king_of_the_hill.loseCrown_(king_of_the_hill.games[gameName], timer.getTime())
     end
 end
 
