@@ -1,11 +1,15 @@
 # Changelog
 
 ## Latest
+## 1.11a
 * Quick suppression script: Randomized reset times
 * Added HeLMS effect category. Added perpetual smoke effects.
 * Fixed missing psi values for generated groups
 * Constant pressure sets now check and spawn units when created using "new"  
 * Added some basic predicate helpers
+* Added smoke effects on (circular)zone boundaries
+* KOTH scoring logic refined
+* Smoke effects added for KOTH
 ## 1.10a
 * Added removeCommsCallback to HeLMS
 * Added optional static object respawns/despawns to the zonal spawning methods
