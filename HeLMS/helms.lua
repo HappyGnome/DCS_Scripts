@@ -1072,7 +1072,7 @@ helms.predicate = {}
 helms.predicate.unitExists = function(coa,cat,zoneName,...)
 
 	-- Validate enums
-	if cat  and not helms.const.GroupCatRev[cat]  then return false end
+	if cat and not helms.const.GroupCatRev[cat]  then return false end
 	if coa and not helms.const.CoalitionSideRev[coa]  then return false end
 
 	local searchGroups = function(groups,zoneName, ...)
@@ -1080,53 +1080,13 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 			return false
 		end
 
-		local zone = nil
-		local centre = nil
-		local radius = nil
-		local quickBounds = nil
-
-		if zoneName then
-			zone = trigger.misc.getZone(zoneName)
-		end
-
-		if zone ~= nil then
-			centre = {x = zone.point.x, y = zone.point.z}
-			radius = zone.radius
-		
-			quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
-		end
+		local zoneDesc = helms.predicate.makeZoneDesc_(zoneName)
 
 		for k,group in pairs(groups) do
 			units = group:getUnits() 
 
-			if units ~= nil then
-				for k, unit in pairs(units) do
-
-					local fail = false
-					local point = unit:getPoint()
-
-					if 	quickBounds ~= nil and
-						(
-							point.x < quickBounds.xMin or
-							point.x > quickBounds.xMax or
-							point.z < quickBounds.yMin or
-							point.z > quickBounds.yMax or
-							helms.maths.get2DDist(centre,point) > radius 
-						)then
-						
-						fail = true -- skip this one, it's out of the zone
-					end
-
-					if (not fail) and arg then
-						for kp,pred in pairs(arg) do
-							if (not fail) and type(pred) =='function' and (not pred(unit)) then
-								fail = true
-							end
-						end
-					end
-
-					if not fail then return true end -- unit found
-				end
+			if helms.predicate.hasObjectMatch(units, zoneDesc, unpack(arg)) then
+				return true
 			end
 	
 		end
@@ -1144,6 +1104,141 @@ helms.predicate.unitExists = function(coa,cat,zoneName,...)
 	end
 end
 
+
+helms.predicate.staticExists = function(coa,zoneName,...)
+
+	-- Validate enums
+	if coa and not helms.const.CoalitionSideRev[coa]  then return false end
+
+	local searchObjs = function(objs,zoneName, ...)
+		if objs == nil then 
+			return false
+		end
+
+		local zoneDesc = helms.predicate.makeZoneDesc_(zoneName)
+
+		return helms.predicate.hasObjectMatch(units, zoneDesc, unpack(arg)) 
+
+	end
+
+	if coa then
+		return searchObjs (coalition.getStaticObjects(coa),zoneName, unpack(arg))		
+
+	else
+		return searchObjs (coalition.getStaticObjects(coalition.side.BLUE),zoneName, unpack(arg)) 
+			or searchObjs (coalition.getStaticObjects(coalition.side.RED),zoneName, unpack(arg))
+
+	end
+end
+
+
+helms.predicate.makeZoneDesc_ = function(zoneName)
+
+	local zone = nil
+	local centre = nil
+	local radius = nil
+	local quickBounds = nil
+
+	local result = {}
+
+	if zoneName then
+		zone = trigger.misc.getZone(zoneName)
+	end
+
+	if zone ~= nil then
+		centre = {x = zone.point.x, y = zone.point.z}
+		radius = zone.radius
+	
+		quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
+		
+		result = {centre=centre,radius=radius,quickBounds=quickBounds}
+	end
+	return result
+end
+
+helms.predicate.hasObjectMatch = function(objs,zoneDesc,...)
+	if objs == nil then
+		return false
+	end
+
+	for k, obj in pairs(objs) do
+
+		local fail = false
+		local point = obj:getPoint()
+
+		if 	zoneDesc.quickBounds ~= nil and
+			(
+				point.x < zoneDesc.quickBounds.xMin or
+				point.x > zoneDesc.quickBounds.xMax or
+				point.z < zoneDesc.quickBounds.yMin or
+				point.z > zoneDesc.quickBounds.yMax or
+				helms.maths.get2DDist(zoneDesc.centre,point) > zoneDesc.radius 
+			)then
+			
+			fail = true -- skip this one, it's out of the zone
+		end
+
+		if (not fail) and arg then
+			for kp,pred in pairs(arg) do
+				if (not fail) then
+					if type(pred) =='function' and (not pred(obj)) then
+						fail = true
+					elseif type(pred) =='table' and (not pred.eval(obj)) then
+						fail = true
+					end
+				end
+			end
+		end
+
+		if not fail then -- obj found
+			if type(pred) =='table' then
+				pred.triggered(obj)
+			end
+			return true 
+		end 
+	end
+
+	return false
+end
+
+helms.predicate.limitUnitRecount = function(maxCount, resetOnSpawn)
+	
+	if maxCount == nil then maxCount = 1 end
+	if resetOnSpawn == nil then resetOnSpawn = false end
+
+	local predTbl = { counted = {}}
+
+	predTbl.triggered = function(unit)
+		local unitKey = unit:getName()
+		local curCount = predTbl.counted[unitKey] 
+		if curCount == nil then
+			predTbl.counted[unitKey] = 1
+		else
+			predTbl.counted[unitKey] = curCount + 1
+		end
+	end
+
+	pretTbl.pred = function(unit)
+		local count = predTbl.counted[unit:getName()]
+		return count == nil or count < maxCount
+	end	
+
+	if resetOnSpawn then
+		local resetCount = function(unitKey)
+			predTbl.counted[unitKey] = nil
+		end
+		local eventHandler = { 
+			onEvent = function(self,event)
+				if (event.id == world.event.S_EVENT_BIRTH) then
+					helms.util.safeCall(resetCount,{event.initiator:getName()},helms.catchError)
+				end
+			end
+		}
+		world.addEventHandler(eventHandler)
+	end 
+
+	return predTbl
+end
 
 helms.predicate.makeSpeedRange = function(minKt, maxKt)
 	return function(unit)
