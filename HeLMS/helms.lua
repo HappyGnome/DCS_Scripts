@@ -756,64 +756,22 @@ end
 helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
 
 	local ret = {}
-	local meZoneData = helms.mission.getMeZoneData(zoneName)
 
 	if includeStatic == nil then includeStatic = true end
-
-	local quickBounds = {}
-	local centre = {x = 0, y = 0}
-	local radius = 0
-	local vertices = nil
-
-	if meZoneData.type == helms.mission.zoneTypes.Quad and meZoneData.verticies then
-		vertices = meZoneData.verticies
-	
-		for k,v in pairs(vertices) do
-			if quickBounds.xMax == nil or quickBounds.xMax < v.x then
-				quickBounds.xMax = v.x
-			end 
-
-			if quickBounds.xMin == nil or quickBounds.xMin > v.x then
-				quickBounds.xMin = v.x
-			end 
-
-			if quickBounds.yMax == nil or quickBounds.yMax < v.y then
-				quickBounds.yMax = v.y
-			end 
-
-			if quickBounds.yMin == nil or quickBounds.yMin > v.y then
-				quickBounds.yMin = v.y
-			end 
-		end
-	else
-		local zone = trigger.misc.getZone(zoneName)
-
-		if zone == nil then return ret end
-	
-		centre = {x = zone.point.x, y = zone.point.z}
-		radius = zone.radius
-	
-		quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
-	
-	end
 
 	local sideKey = nil
 	if side ~= nil then
 		sideKey = helms.mission.sideToString(side)
 	end
 
+	local zoneDesc = helms.predicate.makeZoneDesc_(zoneName)
+
 	for name,gpData in pairs(helms.mission._GroupLookup) do
 		if  (gpData.coa == sideKey or sideKey == nil) and
 			(includeStatic or gpData.isStatic ~= true) and
-			gpData.startPoint.x >= quickBounds.xMin and
-			gpData.startPoint.x <= quickBounds.xMax and
-			gpData.startPoint.y >= quickBounds.yMin and
-			gpData.startPoint.y <= quickBounds.yMax then
+			helms.predicate.pointInZone_(gpData.startPoint, zoneDesc) then
 
-			if (vertices == nil and helms.maths.get2DDist(centre,gpData.startPoint) <= radius)
-				or helms.maths.isPointInPoly(gpData.startPoint,vertices) then
 				ret[#ret + 1] = name
-			end
 
 		end
 	end
@@ -1131,28 +1089,76 @@ helms.predicate.staticExists = function(coa,zoneName,...)
 	end
 end
 
+helms.predicate.pointInZone_ = function(point, zoneDesc)
+	
+	point = helms.maths.as2D(point)
+
+	if	(not zoneDesc) or
+		(not zoneDesc.quickBounds) or	
+		point.x < zoneDesc.quickBounds.xMin or
+		point.x > zoneDesc.quickBounds.xMax or
+		point.y < zoneDesc.quickBounds.yMin or
+		point.y > zoneDesc.quickBounds.yMax then
+	
+			return false
+	end
+
+	if (not zoneDesc.vertices) and ((not zoneDesc.centre) or (not zoneDesc.radius)) then
+		return false
+	end
+
+	return ((not zoneDesc.vertices) and helms.maths.get2DDist(zoneDesc.centre,point) <= zoneDesc.radius)
+		or helms.maths.isPointInPoly(point,zoneDesc.vertices)
+end
 
 helms.predicate.makeZoneDesc_ = function(zoneName)
 
-	local zone = nil
-	local centre = nil
-	local radius = nil
-	local quickBounds = nil
-
 	local result = {}
 
-	if zoneName then
-		zone = trigger.misc.getZone(zoneName)
-	end
+	local quickBounds = {}
+	local centre = {x = 0, y = 0}
+	local radius = 0
+	local vertices = nil
 
-	if zone ~= nil then
+	local meZoneData = helms.mission.getMeZoneData(zoneName)
+
+	if meZoneData == nil then return result end
+
+	if meZoneData.type == helms.mission.zoneTypes.Quad and meZoneData.verticies then
+		vertices = meZoneData.verticies
+	
+		for k,v in pairs(vertices) do
+			if quickBounds.xMax == nil or quickBounds.xMax < v.x then
+				quickBounds.xMax = v.x
+			end 
+
+			if quickBounds.xMin == nil or quickBounds.xMin > v.x then
+				quickBounds.xMin = v.x
+			end 
+
+			if quickBounds.yMax == nil or quickBounds.yMax < v.y then
+				quickBounds.yMax = v.y
+			end 
+
+			if quickBounds.yMin == nil or quickBounds.yMin > v.y then
+				quickBounds.yMin = v.y
+			end 
+		end
+
+		result = {quickBounds = quickBounds, vertices = vertices}
+	else
+		local zone = trigger.misc.getZone(zoneName)
+
+		if zone == nil then return result end
+	
 		centre = {x = zone.point.x, y = zone.point.z}
 		radius = zone.radius
 	
 		quickBounds = {xMax = centre.x + radius, xMin = centre.x - radius, yMax = centre.y + radius, yMin = centre.y - radius}
-		
+	
 		result = {centre=centre,radius=radius,quickBounds=quickBounds}
 	end
+
 	return result
 end
 
@@ -1163,20 +1169,7 @@ helms.predicate.hasObjectMatch = function(objs,zoneDesc,...)
 
 	for k, obj in pairs(objs) do
 
-		local fail = false
-		local point = obj:getPoint()
-
-		if 	zoneDesc.quickBounds ~= nil and
-			(
-				point.x < zoneDesc.quickBounds.xMin or
-				point.x > zoneDesc.quickBounds.xMax or
-				point.z < zoneDesc.quickBounds.yMin or
-				point.z > zoneDesc.quickBounds.yMax or
-				helms.maths.get2DDist(zoneDesc.centre,point) > zoneDesc.radius 
-			)then
-			
-			fail = true -- skip this one, it's out of the zone
-		end
+		local fail = not helms.predicate.pointInZone_(obj:getPoint(),zoneDesc)
 
 		if (not fail) and arg then
 			for kp,pred in pairs(arg) do
