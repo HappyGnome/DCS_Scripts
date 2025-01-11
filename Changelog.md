@@ -1,6 +1,7 @@
 # Changelog
 
 ## Latest
+* Added static detection to HeLMS predicates
 ## 1.11a
 * Quick suppression script: Randomized reset times
 * Added HeLMS effect category. Added perpetual smoke effects.
