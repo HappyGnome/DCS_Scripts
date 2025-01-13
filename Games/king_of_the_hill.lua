@@ -34,7 +34,7 @@ king_of_the_hill.enable_crown_stealing_after = 60 -- seconds since spawn
 king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets. Multiplier indefinite if it's <=0
 
 king_of_the_hill.zone_border_smokes = 24
-king_of_the_hill.zonde_border_smoke_colour = "RED"
+king_of_the_hill.zone_border_smoke_colour = "RED"
 
 -- Suggested feature: - King can be insta-killed
 ----------------------------------------------------------------------------------------------------------
@@ -485,7 +485,7 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
     local startMessage = "Hold the crown in zone (" .. game.zone.zoneName .. ") to score points.\n"
     startMessage = startMessage .. "First team to " .. game.rules.firstToScore .. " wins!"
 
-    helms.effect.startSmokeOnZone(game.zone.zoneName, nil, king_of_the_hill.zonde_border_smoke_colour, king_of_the_hill.zone_border_smokes)
+    helms.effect.startSmokeOnZone(game.zone.zoneName, nil, king_of_the_hill.zone_border_smoke_colour, king_of_the_hill.zone_border_smokes)
 
     trigger.action.outText(startMessage,30)
 end
