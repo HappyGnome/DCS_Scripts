@@ -1267,6 +1267,36 @@ helms.predicate.makeAltRange = function(minFt, maxFt)
 	end
 end
 
+helms.predicate.not = function(pred)
+	return function(unit)
+
+		return not pred (unit)
+	end
+end
+
+helms.predicate.and = function(...)
+	return function(unit)
+		for _, pred in pairs(arg) do
+			if not pred(unit) then
+				return false
+			end
+		end
+		
+		return true
+	end
+end
+
+helms.predicate.or = function(...)
+	return function(unit)
+		for _, pred in pairs(arg) do
+			if pred(unit) then
+				return true
+			end
+		end
+		
+		return false
+	end
+end
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking
