@@ -62,6 +62,8 @@ game_builder.deadHandler = function(initiator, time)
     end
 end -- TODO optionally make dying/respawning in specified zones or friendly airbases to not count as a kill
 
+--TODO: Add comms menu, basic win conditions and api for adding to team scores (points for kills later)
+
 -----------------------------------------------------------------------------------------------------------
 game_builder.doPoll_ = function() local now = timer.getTime()
 
