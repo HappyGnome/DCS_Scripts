@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES---------------------------------------------------------------------------------------------- 
-helms={ version = 1.14}
+helms={ version = 1.15}
 
 ----------------------------------------------------------------------------------------------------------
 --LUA EXTENSIONS------------------------------------------------------------------------------------------
@@ -215,6 +215,21 @@ helms.util.uuid = function()
 	local K = 32768 -- 2^15   (byte 9 starts 10(base 2) for UUID variant 4.1 )
 	return string.format("%04x%04x-%04x-4%03x-%04x-%04x%04x%04x",math.random(0,N16),math.random(0,N16),math.random(0,N16),math.random(0,N12),math.random(0,N14)+K,math.random(0,N16),math.random(0,N16),math.random(0,N16))
 end
+
+helms.util.striJoin = function (delim,tbl)
+	local ret = ""
+
+	if not tbl or not tbl[1] then return ret end
+
+	ret = tbl[1]
+
+	for i = 2,#tbl do
+		ret = ret .. delim .. tbl[i]
+	end
+
+	return ret
+end
+
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
 helms.logger = {
@@ -1253,6 +1268,36 @@ helms.predicate.makeAltRange = function(minFt, maxFt)
 	end
 end
 
+helms.predicate.pnot = function(pred)
+	return function(unit)
+
+		return not pred (unit)
+	end
+end
+
+helms.predicate.pand = function(...)
+	return function(unit)
+		for _, pred in pairs(arg) do
+			if not pred(unit) then
+				return false
+			end
+		end
+		
+		return true
+	end
+end
+
+helms.predicate.por = function(...)
+	return function(unit)
+		for _, pred in pairs(arg) do
+			if pred(unit) then
+				return true
+			end
+		end
+		
+		return false
+	end
+end
 ----------------------------------------------------------------------------------------------------------
 --DYNAMIC-------------------------------------------------------------------------------------------------
 -- E.g. spawning units, setting tasking
@@ -1962,12 +2007,13 @@ helms.ui = {}
 
 --[[
 Print message to the given coalition.side, or to all players if side==nil
+cls is optional - if true, the screen is cleared
 --]]
-helms.ui.messageForCoalitionOrAll = function(side,message,delay)
+helms.ui.messageForCoalitionOrAll = function(side,message,delay,cls)
 	if side then
-		trigger.action.outTextForCoalition(side,message,delay)
+		trigger.action.outTextForCoalition(side,message,delay,cls)
 	else
-		trigger.action.outText(message,5)
+		trigger.action.outText(message,delay,cls)
 	end
 end
 
@@ -2401,6 +2447,120 @@ helms.ui.combo.removeCommsCallback = function (side,menuLabel,optionLabel)
 
 	return helms.ui.removeItem(unpack(handlePack))
 end
+
+-- UI.SCOREBOARD
+helms.ui.scoreboard = {
+	nextPrintTime = 0
+	,scoreboardLooping = false
+	,gameCount = 0
+}
+
+helms.ui.scoreboard.printIntervalSeconds = 60
+helms.ui.scoreboard.messageDisplaySeconds = 10
+helms.ui.scoreboard.clearScreen = false
+
+helms.ui.scoreboard.games = {} -- handle = {name= string, scoreCallback = function, tagCallback, hintCallback}
+
+-- Start a scoreboard that is periodically displayed until helms.ui.scoreboard.endGame is called
+-- handle - used to refer to this game later (in endGame)
+-- name - Display name of this game (displayed if multiple scoreboards are active)
+-- scoreCallback = function() - returns {["TeamName"] = Score/string}
+-- tagCallback (optional) = function() - returns  a tag for the end opf the score line
+-- hintCallback (optional) = function() - returns hint line to print after the score
+helms.ui.scoreboard.startGame = function(handle, name, scoreCallback, tagCallback, hintCallback)
+	if helms.ui.scoreboard.games[handle] then 
+		return
+	end
+	
+	helms.ui.scoreboard.gameCount = helms.ui.scoreboard.gameCount + 1
+	helms.ui.scoreboard.games[handle] = {name = name, scoreCallback = scoreCallback, tagCallback = tagCallback, hintCallback = hintCallback}
+	
+	if not helms.ui.scoreboard.scoreboardLooping then
+		helms.ui.scoreboard.scoreboardLooping = true	
+
+		helms.dynamic.scheduleFunction(helms.ui.scoreboard.printLoop,nil,timer.getTime() + 1, false)
+	end
+end 
+
+helms.ui.scoreboard.endGame = function(handle, message)
+	
+	if not helms.ui.scoreboard.games[handle] then 
+		return
+	end
+
+	if message then
+		helms.ui.messageForCoalitionOrAll (nil, message, helms.ui.scoreboard.messageDisplaySeconds)
+	end 
+
+	helms.ui.scoreboard.gameCount = helms.ui.scoreboard.gameCount - 1
+	helms.ui.scoreboard.games[handle] = nil
+end
+
+helms.ui.scoreboard.printLoop = function()
+	if not helms.ui.scoreboard.games then
+		helms.ui.scoreboard.scoreboardLooping = false
+		return
+	end
+
+	local printScoreLine = function(game)
+		if not game.scoreCallback then
+			return 
+		end
+
+		local segs = {}
+
+		local teamScores = game.scoreCallback()
+		for k,v in pairs(teamScores) do
+			segs[#segs+1] = k .. ": " .. v
+		end
+
+		if game.tagCallback then
+			local tag = game.tagCallback()
+			if tag then
+				segs[#segs + 1] = tag
+			end	
+		end
+
+		game.msgLines[#game.msgLines + 1] = helms.util.striJoin(" | ", segs)
+				
+	end
+
+	local printHintLine = function(game)
+		if not game.hintCallback then
+			return 
+		end
+		game.msgLines[#game.msgLines + 1] = game.hintCallback()
+			
+	end
+
+	local now = timer.getTime()
+
+	local showGameNames = helms.ui.scoreboard.gameCount > 1
+	local clearScreen = helms.ui.scoreboard.clearScreen
+	
+	for _, game in pairs (helms.ui.scoreboard.games) do
+		game.msgLines = {}
+
+		if showGameNames then 
+
+			game.msgLines = {game.name}
+
+		end
+
+		helms.util.safeCall(printScoreLine,{game},helms.catchError)
+		helms.util.safeCall(printHintLine,{game},helms.catchError)
+
+		if game.msgLines then
+			helms.ui.messageForCoalitionOrAll (nil,helms.util.striJoin("\n",game.msgLines),helms.ui.scoreboard.messageDisplaySeconds, clearScreen)
+			clearScreen = false
+		end
+	end
+
+	helms.ui.nextPrintTime = now + helms.ui.scoreboard.printIntervalSeconds
+
+	return helms.ui.nextPrintTime
+end
+
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------
