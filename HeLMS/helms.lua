@@ -1267,14 +1267,14 @@ helms.predicate.makeAltRange = function(minFt, maxFt)
 	end
 end
 
-helms.predicate.not = function(pred)
+helms.predicate.pnot = function(pred)
 	return function(unit)
 
 		return not pred (unit)
 	end
 end
 
-helms.predicate.and = function(...)
+helms.predicate.pand = function(...)
 	return function(unit)
 		for _, pred in pairs(arg) do
 			if not pred(unit) then
@@ -1286,7 +1286,7 @@ helms.predicate.and = function(...)
 	end
 end
 
-helms.predicate.or = function(...)
+helms.predicate.por = function(...)
 	return function(unit)
 		for _, pred in pairs(arg) do
 			if pred(unit) then
