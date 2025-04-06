@@ -10,6 +10,7 @@ This readme is for the [latest versions](https://github.com/HappyGnome/DCS_Scrip
 ### HeLMS
 Add the trigger `MISSION START -> DO SCRIPT FILE -> helms.lua`
 **Before** calls to any of these scripts
+
 \* `MISSION START` can be replaced by another event, as long as it will happen before using any of these scripts
 
 ## Initialization
