@@ -2,6 +2,7 @@
 
 ## Latest
 * Added static detection to HeLMS predicates
+* Added Training Aids module
 ## 1.11a
 * Quick suppression script: Randomized reset times
 * Added HeLMS effect category. Added perpetual smoke effects.

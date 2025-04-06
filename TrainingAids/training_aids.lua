@@ -96,7 +96,7 @@ training_aids.doPoll_=function()
 	
 	for k,v in pairs(training_aids.features) do
 
-		local task = training_aids.pollTasks[k]
+		local task = v.onPoll
 		if v and v.enabled and task then
 			task(now)
 		end
@@ -106,50 +106,22 @@ training_aids.doPoll_=function()
 	return now + training_aids.poll_interval
 end
 
-training_aids.pollTasks = {}
-
---------------------------------------------------------------------------------------------------
-training_aids.features["missileDefeatHints"] = 
-{
-	enabled = false, 
-	commsIndex = nil, 
-	commsText = "Missile Defeat Hints",
-	onEnable = nil,--callbacks
-	onDisable = nil
-}
-
-training_aids.pollTasks["missileDefeatHints"] = function(now)
-	local pollShot = function(wpn,tgt, key)
-
-		local keep = false
-
-		if wpn and tgt and tgt:isExist() then
-			keep = wpn:isExist() and (helms.physics.estimateMach(wpn) - helms.physics.estimateMach(tgt) > training_aids.missile_defeat_mach_diff )
-		end
-
-		if not keep then 
-			if tgt:isExist() then trigger.action.outTextForUnit(tgt:getID(), "Missile defeated!",5,false) end
-			training_aids.trackedShots_[key] = nil 
-		end
-	end
-	
-	--do group poll
-	for k,v in pairs(training_aids.trackedShots_) do
-        if now > v.shotTime + training_aids.missile_defeat_activation_s then
-			helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, k},training_aids.catchError)
-		end
-	end
-end
 ----------------------------------------------------------------------------------------------------
 
-training_aids.toggleFeature = function(featureName,enable)
+training_aids.toggleFeature = function(featureName,enable, showComms)
 	local feature = training_aids.features[featureName]
 	
 	if not feature then return end
 
+	if showComms == nil then
+		showComms = feature.showComms
+	else
+		feature.showComms = showComms
+	end
+	
 	feature.enabled = enable
-	if enable and feature.onEnable~=nil then feature.onEnable() end
-	if (not enable) and feature.onDisable~=nil then feature.onDisable() end
+	if enable and feature.onEnable~=nil then helms.util.safeCall(feature.onEnable,{},training_aids.catchError) end
+	if (not enable) and feature.onDisable~=nil then helms.util.safeCall(feature.onDisable,{},training_aids.catchError) end
 
 	local msg = feature.commsText
 	local prefix = "- "
@@ -163,22 +135,60 @@ training_aids.toggleFeature = function(featureName,enable)
 
 	helms.ui.messageForCoalitionOrAll(nil,msg,10,false) -- no clear screen
 
-	helms.ui.removeItem(training_aids.commsPathBase, feature.commsIndex)
-	feature.commsIndex = helms.ui.addCommand(training_aids.commsPathBase,prefix .. feature.commsText,training_aids.toggleFeature,featureName,not enable)
+	if feature.showComms then
+		training_aids.commsPathBase = helms.ui.ensureSubmenu(nil, "Training Aids")
+
+		if feature.commsIndex then helms.ui.removeItem(training_aids.commsPathBase, feature.commsIndex) end
+
+		feature.commsIndex = helms.ui.addCommand(training_aids.commsPathBase,prefix .. feature.commsText,training_aids.toggleFeature,featureName,not enable)
+	end 
 end
 
-training_aids.addComms = function()
+--------------------------------------------------------------------------------------------------
+-- Feature definitions
 
-	training_aids.commsPathBase = helms.ui.ensureSubmenu(nil, "Training Aids")
+-- missile defeat hints
+training_aids.features["missileDefeatHints"] = 
+{
+	enabled = false, 
+	showComms = false,
+	commsIndex = nil, 
+	commsText = "Missile Defeat Hints",
+	--callbacks
+	onEnable = function()
+		for k,v in pairs(training_aids.trackedShots_) do
+			if (not v.wpnObj) or (not v.wpnObj:isExist()) then
+				training_aids.trackedShots_[k] = nil
+			end
+		end
+	end,
+	onDisable = nil,
 
-	for k,v in pairs(training_aids.features) do
-		v.commsIndex = helms.ui.addCommand(training_aids.commsPathBase,"+ " .. v.commsText,training_aids.toggleFeature,k,true)
+	onPoll = function(now)
+		local pollShot = function(wpn,tgt, key)
+
+			local keep = false
+
+			if wpn and tgt and tgt:isExist() then
+				keep = wpn:isExist() and (helms.physics.estimateMach(wpn) - helms.physics.estimateMach(tgt) > training_aids.missile_defeat_mach_diff )
+			end
+
+			if not keep then 
+				if tgt:isExist() then trigger.action.outTextForUnit(tgt:getID(), "Missile defeated!",5,false) end
+				training_aids.trackedShots_[key] = nil 
+			end
+		end
+		
+		--do group poll
+		for k,v in pairs(training_aids.trackedShots_) do
+			if now > v.shotTime + training_aids.missile_defeat_activation_s then
+				helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, k},training_aids.catchError)
+			end
+		end
 	end
-end
-
+}
 --#######################################################################################################
 -- training_aids(PART 2)
 
 helms.dynamic.scheduleFunction(training_aids.doPoll_,nil,timer.getTime()+training_aids.poll_interval)
-training_aids.addComms()
 return training_aids
