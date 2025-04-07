@@ -23,7 +23,7 @@ At any point in the mission after initialization, activate a training aid with t
 
 Where
 * `<featureName>` is the name of the feature as documented.
-* `<enable>` is `true` or `false` to activate/de-activate the feature right away
+* `<enable>` is `true` or `false` to activate/de-activate the feature right away - CAUTION: this parameter is part of WIP and will be changind
 * `<enableCommsControl>` is `true` or `false` to show/hide the comms menu options to enable/disable the aid.
 
 #### Example

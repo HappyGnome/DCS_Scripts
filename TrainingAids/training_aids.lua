@@ -97,7 +97,7 @@ training_aids.doPoll_=function()
 	for k,v in pairs(training_aids.features) do
 
 		local task = v.onPoll
-		if v and v.enabled and task then
+		if task then
 			task(now)
 		end
 	end	
@@ -108,39 +108,75 @@ end
 
 ----------------------------------------------------------------------------------------------------
 
-training_aids.toggleFeature = function(featureName,enable, showComms)
+-- stateName can be a string index into the named feature, or the integer value that that index points to
+training_aids.toggleFeature = function(featureName, stateName, showComms)
 	local feature = training_aids.features[featureName]
 	
-	if not feature then return end
+	-- Validation
 
+	if (not feature) or (not feature.stateConfig) then
+		training_aids.log_e.log({"Feature name not found", featureName,stateName})
+		return 
+	end
+
+	local stateHandle = stateName
+	if type(stateName) == "string" then
+		stateHandle = feature[stateName]
+	end
+
+	if (not stateHandle) then 
+		training_aids.log_e.log({"Feature state handle invalid", featureName,stateName})
+		return 
+	end
+	
+	local newStateConfig = feature.stateConfig[stateHandle]
+	if (not newStateConfig) then
+		training_aids.log_e.log({"Feature not configured properly", featureName,stateName})
+		return 
+	end
+
+	-- Update state and do callbacks
 	if showComms == nil then
 		showComms = feature.showComms
 	else
 		feature.showComms = showComms
 	end
 	
-	feature.enabled = enable
-	if enable and feature.onEnable~=nil then helms.util.safeCall(feature.onEnable,{},training_aids.catchError) end
-	if (not enable) and feature.onDisable~=nil then helms.util.safeCall(feature.onDisable,{},training_aids.catchError) end
+	local callback = feature[newStateConfig.callback]
+	if feature.currentState ~= stateHandle and callback then
+	
+		helms.util.safeCall(callback,{},training_aids.catchError) 
+	end 
+
+	feature.currentState = stateHandle
+
+	training_aids.log_i.log({"Feature mode changed", featureName,feature.currentState})
+
+	-- Update comms menus
+
+	if type(feature.commsText) ~= "string" then return end
 
 	local msg = feature.commsText
-	local prefix = "- "
 	
-	if enable then
-		msg = msg .. " enabled"
-	else
-		msg = msg .." disabled"
-		prefix = "+ "
+	if type(newStateConfig.msgText) == "string" then
+		msg = msg .. ": " .. newStateConfig.msgText
+		helms.ui.messageForCoalitionOrAll(nil,msg,10,false) -- no clear screen
 	end
-
-	helms.ui.messageForCoalitionOrAll(nil,msg,10,false) -- no clear screen
 
 	if feature.showComms then
 		training_aids.commsPathBase = helms.ui.ensureSubmenu(nil, "Training Aids")
+		feature.commsSubmenuPath = helms.ui.ensureSubmenu(training_aids.commsPathBase, feature.commsText)
 
-		if feature.commsIndex then helms.ui.removeItem(training_aids.commsPathBase, feature.commsIndex) end
+		for k,v in pairs(feature.stateConfig) do
 
-		feature.commsIndex = helms.ui.addCommand(training_aids.commsPathBase,prefix .. feature.commsText,training_aids.toggleFeature,featureName,not enable)
+			if (v.commsIndex) then helms.ui.removeItem(feature.commsSubmenuPath, v.commsIndex) end 
+
+			if k == feature.currentState then
+				v.commsIndex = nil
+			elseif v.commsLabel then
+				v.commsIndex = helms.ui.addCommand(feature.commsSubmenuPath,v.commsLabel,training_aids.toggleFeature,featureName,k)
+			end
+		end
 	end 
 end
 
@@ -148,23 +184,32 @@ end
 -- Feature definitions
 
 -- missile defeat hints
-training_aids.features["missileDefeatHints"] = 
-{
-	enabled = false, 
-	showComms = false,
-	commsIndex = nil, 
-	commsText = "Missile Defeat Hints",
+training_aids.features["missileDefeatHints"] = (function()
+	local builder = 
+	{
+		--state handles (also defines comms menu order)
+		["ENABLED"] = 1,
+		["DISABLED"] = 2,
+		--
+
+		showComms = false,
+		commsSubmenuPath = nil, 
+		commsText = "Missile Defeat Hints"
+	}
+
 	--callbacks
-	onEnable = function()
+	builder.onEnable = function()
 		for k,v in pairs(training_aids.trackedShots_) do
 			if (not v.wpnObj) or (not v.wpnObj:isExist()) then
 				training_aids.trackedShots_[k] = nil
 			end
 		end
-	end,
-	onDisable = nil,
+	end
 
-	onPoll = function(now)
+	builder.onPoll = function(now)
+		
+		if builder.currentState ~= builder.ENABLED then return end
+
 		local pollShot = function(wpn,tgt, key)
 
 			local keep = false
@@ -186,7 +231,20 @@ training_aids.features["missileDefeatHints"] =
 			end
 		end
 	end
-}
+
+
+	builder.stateConfig = 
+	{
+		[builder.ENABLED] = {commsLabel = "Enable", msgText = "Enabled", callback = "onEnable", commsIndex = nil},
+		[builder.DISABLED] = {commsLabel = "Disable", msgText = "Disabled", commsIndex = nil }
+	}
+	builder.currentState = builder.DISABLED
+
+	return builder
+end)()
+
+---------
+
 --#######################################################################################################
 -- training_aids(PART 2)
 

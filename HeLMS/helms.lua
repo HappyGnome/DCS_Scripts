@@ -2186,6 +2186,10 @@ Get page with space in comms submenu with given text label, relative to parent p
 parentMenuPath = coalition.side, nil for neutral, or object returned by previous call or nil. If included specifies the submenu to add the new menu to, side is inferred from parent.
 label = radio item text
 prependCoa (bool) = if true, add coalition name to label text
+
+returns: path - a path table for future calls to ensureSubmenu, addCommand, etc.
+		 <unused>
+		 subMenuAdded - indicates if a new menu option was added. I.e. this submenu did not already exist.
 --]]
 helms.ui.ensureSubmenu=function(parentMenuPath, label, prependCoa)
 	local retPath = {}
