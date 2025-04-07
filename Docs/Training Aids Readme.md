@@ -1,4 +1,4 @@
-# Trainin Aids Readme
+# Training Aids Readme
 
 The Training Aids module adds some functionality specific for building training/practice missions. For example, cues to help situational awareness when training missile defense.
 
