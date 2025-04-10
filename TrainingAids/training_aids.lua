@@ -16,8 +16,10 @@ end
 training_aids = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-training_aids.poll_interval = 1 --seconds, time between updates of group availability
+training_aids.poll_interval = 0.3 --seconds, time between updates of group availability
 training_aids.missile_defeat_mach_diff = 0.2
+training_aids.missile_pitbull_range_nm = 8
+training_aids.missile_defeat_ATA = 80
 training_aids.missile_defeat_activation_s = 2
 ----------------------------------------------------------------------------------------------------------
 
@@ -210,24 +212,69 @@ training_aids.features["missileDefeatHints"] = (function()
 		
 		if builder.currentState ~= builder.ENABLED then return end
 
+		local clearScreen = true
+
 		local pollShot = function(wpn,tgt, key)
 
-			local keep = false
-
-			if wpn and tgt and tgt:isExist() then
-				keep = wpn:isExist() and (helms.physics.estimateMach(wpn) - helms.physics.estimateMach(tgt) > training_aids.missile_defeat_mach_diff )
-			end
-
-			if not keep then 
-				if tgt:isExist() then trigger.action.outTextForUnit(tgt:getID(), "Missile defeated!",5,false) end
+			if (not wpn) or (not wpn:isExist()) or (not tgt) or (not tgt:isExist()) then
 				training_aids.trackedShots_[key] = nil 
+				return
+			end 
+
+			local wpnPos = wpn:getPosition()
+			local r =  helms.maths.lin3D(wpnPos.p, 1, tgt:getPoint(), -1)
+
+			local dist = math.sqrt(helms.maths.dot3D(r,r))
+
+			if dist <= 0.1 then dist = 1 end
+
+			local rvel = helms.maths.lin3D(wpn:getVelocity(),1, tgt:getVelocity(), -1)
+
+			local closureMps = -helms.maths.dot3D(r,rvel)/dist
+
+			local wpnMach = helms.physics.estimateMach(wpn)
+			local tgtMach = helms.physics.estimateMach(tgt)
+
+			local cosAta = -helms.maths.dot3D(r,wpnPos.x)/dist
+
+			local ata = math.acos(cosAta) / helms.maths.deg2rad
+
+			local defeated_mach = wpnMach - tgtMach < training_aids.missile_defeat_mach_diff 
+			local defeated_ata = ata > training_aids.missile_defeat_ATA
+
+			local tHitS = -1  
+			local tPitS = -1  
+			if closureMps > 0 then 
+				tHitS = dist/closureMps 
+				tPitS = (dist - training_aids.missile_pitbull_range_nm / helms.maths.m2nm) / closureMps
 			end
+
+			local msg = string.format("Range (nm): %.1f", dist * helms.maths.m2nm)
+			msg = msg .. string.format("\nMach: %.1f", wpnMach)
+			if (tPitS>0) then
+				msg = msg .. string.format("\nA: %d" ,tPitS)
+			elseif (tHitS > 0) then
+				msg = msg .. string.format("\nT: %d" ,tHitS)
+			end
+
+			msg = msg .. string.format("\nATA: %d", ata)
+			if (defeated_ata) then
+				msg = msg .. " (OUT OF SEEKER)"
+			end
+
+			msg = msg .. string.format("\nΔM: %.1f", (wpnMach - tgtMach))
+			if (defeated_mach) then
+				msg = msg .. " (DEFEATED)"
+			end
+			
+			trigger.action.outTextForUnit(tgt:getID(),msg,5,clearScreen) 
+			clearScreen = false
 		end
 		
 		--do group poll
 		for k,v in pairs(training_aids.trackedShots_) do
 			if now > v.shotTime + training_aids.missile_defeat_activation_s then
-				helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, k},training_aids.catchError)
+				helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, k, cls},training_aids.catchError)
 			end
 		end
 	end
