@@ -20,7 +20,7 @@ training_aids.poll_interval = 0.3 --seconds, time between updates of group avail
 training_aids.missile_defeat_mach_diff = 0.2
 training_aids.missile_pitbull_range_nm = 8
 training_aids.missile_defeat_ATA = 80
-training_aids.missile_defeat_activation_s = 2
+training_aids.missile_defeat_activation_s = 2.5
 ----------------------------------------------------------------------------------------------------------
 
 --[[
@@ -75,6 +75,7 @@ training_aids.shotHandler = function(initiator, time, weapon)
     {
         wpnObj = weapon
 		,tgtObj = tgt
+		,shooterObj = initiator
 		,shotTime = now
 	}
 
@@ -190,8 +191,10 @@ training_aids.features["missileDefeatHints"] = (function()
 	local builder = 
 	{
 		--state handles (also defines comms menu order)
-		["ENABLED"] = 1,
-		["DISABLED"] = 2,
+		["IN_RAIL"] = 1,
+		["IN_ACT"] = 2,
+		["OUT"] = 3,
+		["DISABLED"] = 4,
 		--
 
 		showComms = false,
@@ -210,11 +213,11 @@ training_aids.features["missileDefeatHints"] = (function()
 
 	builder.onPoll = function(now)
 		
-		if builder.currentState ~= builder.ENABLED then return end
+		if builder.currentState == builder.DISABLED then return end
 
 		local clearScreen = true
 
-		local pollShot = function(wpn,tgt, key)
+		local pollShot = function(wpn,tgt,shooter, key)
 
 			if (not wpn) or (not wpn:isExist()) or (not tgt) or (not tgt:isExist()) then
 				training_aids.trackedShots_[key] = nil 
@@ -227,6 +230,11 @@ training_aids.features["missileDefeatHints"] = (function()
 			local dist = math.sqrt(helms.maths.dot3D(r,r))
 
 			if dist <= 0.1 then dist = 1 end
+			local distToActNm = (dist * helms.maths.m2nm) - training_aids.missile_pitbull_range_nm  
+
+			if builder.currentState == builder.IN_ACT and distToActNm > 0 then
+				return
+			end
 
 			local rvel = helms.maths.lin3D(wpn:getVelocity(),1, tgt:getVelocity(), -1)
 
@@ -246,7 +254,7 @@ training_aids.features["missileDefeatHints"] = (function()
 			local tPitS = -1  
 			if closureMps > 0 then 
 				tHitS = dist/closureMps 
-				tPitS = (dist - training_aids.missile_pitbull_range_nm / helms.maths.m2nm) / closureMps
+				tPitS = distToActNm / (helms.maths.m2nm * closureMps)
 			end
 
 			local msg = string.format("Range (nm): %.1f", dist * helms.maths.m2nm)
@@ -267,14 +275,21 @@ training_aids.features["missileDefeatHints"] = (function()
 				msg = msg .. " (DEFEATED)"
 			end
 			
-			trigger.action.outTextForUnit(tgt:getID(),msg,5,clearScreen) 
+			if builder.currentState == builder.OUT then
+				if shooter and shooter:isExist() then
+					trigger.action.outTextForUnit(shooter:getID(),msg,5,clearScreen) 
+				end
+			else
+				trigger.action.outTextForUnit(tgt:getID(),msg,5,clearScreen) 
+			end
+
 			clearScreen = false
 		end
 		
 		--do group poll
 		for k,v in pairs(training_aids.trackedShots_) do
 			if now > v.shotTime + training_aids.missile_defeat_activation_s then
-				helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, k, cls},training_aids.catchError)
+				helms.util.safeCall(pollShot,{v.wpnObj,v.tgtObj, v.shooterObj, k},training_aids.catchError)
 			end
 		end
 	end
@@ -282,7 +297,9 @@ training_aids.features["missileDefeatHints"] = (function()
 
 	builder.stateConfig = 
 	{
-		[builder.ENABLED] = {commsLabel = "Enable", msgText = "Enabled", callback = "onEnable", commsIndex = nil},
+		[builder.IN_RAIL] = {commsLabel = "All incoming", msgText = "All incoming", callback = "onEnable", commsIndex = nil},
+		[builder.IN_ACT] = {commsLabel = "Active incoming", msgText = "Active incoming", callback = "onEnable", commsIndex = nil},
+		[builder.OUT] = {commsLabel = "Outgoing", msgText = "Outgoing", callback = "onEnable", commsIndex = nil},
 		[builder.DISABLED] = {commsLabel = "Disable", msgText = "Disabled", commsIndex = nil }
 	}
 	builder.currentState = builder.DISABLED
