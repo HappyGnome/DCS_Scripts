@@ -2340,7 +2340,7 @@ helms.ui.removeItem = function (parentMenuPath, itemIndex)
 		else -- remove parent menu
 			path = dcsParentPath
 			local parent2CommsMenus, _, _, nextKey = helms.ui.unpackCommsPath_ (parentMenuPath,1)
-			if parent2CommsMenus ~= nil then
+			if parent2CommsMenus ~= nil and nextKey~=nil then
 				parent2CommsMenus[3][nextKey] = nil
 				parent2CommsMenus[1] = parent2CommsMenus[1] - 1
 			end			    
