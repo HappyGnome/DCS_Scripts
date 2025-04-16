@@ -2189,7 +2189,7 @@ helms.ui.ensureSubmenu = function(parentMenuPath, label, prependCoa)
     local parentCommsMenusBase, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
     local parentCommsMenus
     if parentCommsMenusBase then
-        parentCommsMenus = parentCommsMenusBase[3]
+        parentCommsMenus = parentCommsMenusBase.childItems
     else
         parentCommsMenus = helms.ui.commsMenus_
     end
@@ -2207,15 +2207,20 @@ helms.ui.ensureSubmenu = function(parentMenuPath, label, prependCoa)
         menu, _, dcsParentPath = helms.ui.getPageWithSpace_(parentCommsMenusBase, retPath)
         local menuItems = parentCommsMenus
 
-        if menu then menuItems = menu[3] end
+        if menu then menuItems = menu.childItems end
         if side then
-            menuItems[menuName] = { 0, missionCommands.addSubMenuForCoalition(side, menuNameRootText, dcsParentPath), {},
-                side }
+            menuItems[menuName] = { itemCount = 0,
+                dcsPath = missionCommands.addSubMenuForCoalition(side, menuNameRootText, dcsParentPath),
+                childItems = {},
+                coa = side }
         else
-            menuItems[menuName] = { 0, missionCommands.addSubMenu(menuNameRootText, dcsParentPath), {}, nil }
+            menuItems[menuName] = {itemCount = 0,
+                dcsPath = missionCommands.addSubMenu(menuNameRootText, dcsParentPath),
+                childItems = {},
+                coa = nil }
         end
         if menu then
-            menu[1] = menu[1] + 1
+            menu.itemCount = menu.itemCount + 1
         end
         subMenuAdded = true
         retPath[#retPath + 1] = menuName
@@ -2232,21 +2237,26 @@ helms.ui.getPageWithSpace_ = function(commsMenus, pathBuilder)
         return nil, {}, nil
     end
     if pathBuilder == nil then pathBuilder = {} end
-    while commsMenus[1] >= 9 do --create overflow if no space here
+    while commsMenus.itemCount >= 9 do --create overflow if no space here
         local newMenuName = "__NEXT__"
-        local side = commsMenus[4]
-        if commsMenus[3][newMenuName] == nil then --create submenu of menu at menuName
+        local side = commsMenus.coa
+        if commsMenus.childItems[newMenuName] == nil then --create submenu of menu at menuName
             if side then
-                commsMenus[3][newMenuName] = { 0, missionCommands.addSubMenuForCoalition(side, "Next", commsMenus[2]), {},
-                    side }
+                commsMenus.childItems[newMenuName] = { itemCount = 0,
+                    dcsPath = missionCommands.addSubMenuForCoalition(side, "Next", commsMenus.dcsPath),
+                    childItems ={},
+                    coa = side }
             else
-                commsMenus[3][newMenuName] = { 0, missionCommands.addSubMenu("Next", commsMenus[2]), {}, nil }
+                commsMenus.childItems[newMenuName] = { itemCount = 0,
+                    dcsPath = missionCommands.addSubMenu("Next", commsMenus.dcsPath),
+                    childItems = {},
+                    coa = nil }
             end
         end
-        commsMenus = commsMenus[3][newMenuName]
+        commsMenus = commsMenus.childItems[newMenuName]
         pathBuilder[#pathBuilder + 1] = newMenuName
     end
-    return commsMenus, pathBuilder, commsMenus[2]
+    return commsMenus, pathBuilder, commsMenus.dcsPath
 end
 
 helms.ui.unpackCommsPath_ = function(parentMenuPath, upLevels)
@@ -2266,16 +2276,16 @@ helms.ui.unpackCommsPath_ = function(parentMenuPath, upLevels)
                 nextItemKey = v
                 break
             elseif k > 1 then
-                if parentCommsMenus[3] and parentCommsMenus[3][v] then
-                    parentCommsMenus = parentCommsMenus[3][v]
+                if parentCommsMenus.childItems and parentCommsMenus.childItems[v] then
+                    parentCommsMenus = parentCommsMenus.childItems[v]
                 end
             else -- parentCommsMenus = helms.ui.commsMenus_
                 parentCommsMenus = helms.ui.commsMenus_[v]
             end
         end
         if parentCommsMenus then
-            dcsParentPath = parentCommsMenus[2]
-            side = parentCommsMenus[4]
+            dcsParentPath = parentCommsMenus.dcsPath
+            side = parentCommsMenus.coa
         end
     elseif parentMenuPath ~= nil then
         side = parentMenuPath
@@ -2311,29 +2321,30 @@ helms.ui.addCommand = function(parentMenuPath, label, handler, ...)
             handler, unpack(arg))
     end
 
-    local newIndex = parentCommsMenus[1] + 1
-    parentCommsMenus[1] = newIndex
-    parentCommsMenus[3][newIndex] = newDcsPath
+    local newIndex = parentCommsMenus.itemCount + 1
+    parentCommsMenus.itemCount = newIndex
+    parentCommsMenus.childItems[newIndex] = newDcsPath
     return newIndex
 end
 
 helms.ui.removeItem = function(parentMenuPath, itemIndex)
     local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
 
+    -- helms.log_i.log({parentCommsMenus,side,dcsParentPath, "TODO"})
     if parentCommsMenus ~= nil then
         local path
         if itemIndex ~= nil then
-            path = parentCommsMenus[3][itemIndex]
+            path = parentCommsMenus.childItems[itemIndex]
             if path ~= nil then
-                parentCommsMenus[3][itemIndex] = nil
-                parentCommsMenus[1] = parentCommsMenus[1] - 1
+                parentCommsMenus.childItems[itemIndex] = nil
+                parentCommsMenus.itemCount = parentCommsMenus.itemCount - 1
             end
         else -- remove parent menu
             path = dcsParentPath
             local parent2CommsMenus, _, _, nextKey = helms.ui.unpackCommsPath_(parentMenuPath, 1)
             if parent2CommsMenus ~= nil and nextKey ~= nil then
-                parent2CommsMenus[3][nextKey] = nil
-                parent2CommsMenus[1] = parent2CommsMenus[1] - 1
+                parent2CommsMenus.childItems[nextKey] = nil
+                parent2CommsMenus.itemCount = parent2CommsMenus.itemCount - 1
             end
         end
 
