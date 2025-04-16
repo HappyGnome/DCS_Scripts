@@ -172,12 +172,18 @@ training_aids.toggleFeature = function(featureName, stateName, showComms)
         training_aids.commsPathBase = helms.ui.ensureSubmenu(nil, "Training Aids")
         feature.commsSubmenuPath = helms.ui.ensureSubmenu(training_aids.commsPathBase, feature.commsText)
 
+        -- Clear comms submenu
         for k, v in pairs(feature.stateConfig) do
+
             if (v.commsIndex) then helms.ui.removeItem(feature.commsSubmenuPath, v.commsIndex) end
 
-            if k == feature.currentState then
-                v.commsIndex = nil
-            elseif v.commsLabel then
+            v.commsIndex = nil
+        end
+
+        -- Re-add comms options that now apply
+        for k, v in pairs(feature.stateConfig) do
+
+            if k ~= feature.currentState then
                 v.commsIndex = helms.ui.addCommand(feature.commsSubmenuPath, v.commsLabel,
                     training_aids.toggleFeature, featureName, k)
             end

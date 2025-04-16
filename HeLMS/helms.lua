@@ -2330,7 +2330,6 @@ end
 helms.ui.removeItem = function(parentMenuPath, itemIndex)
     local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
 
-    -- helms.log_i.log({parentCommsMenus,side,dcsParentPath, "TODO"})
     if parentCommsMenus ~= nil then
         local path
         if itemIndex ~= nil then
