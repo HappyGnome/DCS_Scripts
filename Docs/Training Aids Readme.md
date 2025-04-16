@@ -19,11 +19,11 @@ Before using any of the methods detailed below trigger `DO SCRIPT FILE -> traini
 
 ### Toggle a training aid
 
-At any point in the mission after initialization, activate a training aid with the trigger `DO SCRIPT -> "training_aids.toggleFeature(<featureName>,<enable>, <enableCommsControl>)"` 
+At any point in the mission after initialization, activate a training aid with the trigger `DO SCRIPT -> "training_aids.toggleFeature(<featureName>,<modeName>, <enableCommsControl>)"` 
 
 Where
 * `<featureName>` is the name of the feature as documented.
-* `<enable>` is `true` or `false` to activate/de-activate the feature right away - CAUTION: this parameter is part of WIP and will be changind
+* `<modeName>` is the name of the mode (case-sensitive) to set for the training aid
 * `<enableCommsControl>` is `true` or `false` to show/hide the comms menu options to enable/disable the aid.
 
 #### Example
@@ -32,7 +32,7 @@ Where
 |---|---|---|
 |MISSION START|DO SCRIPT FILE|helms.lua|
 |MISSION START|DO SCRIPT FILE|training_aids.lua|
-|MISSION START|DO SCRIPT|`training_aids.toggleFeature("missileDefeatHints",false,true)`|
+|MISSION START|DO SCRIPT|`training_aids.toggleFeature("missileDefeatHints","DISABLED",true)`|
 
 Allows users to activate the missile defeat hints aid, but does not enable it.
 
@@ -40,10 +40,24 @@ Allows users to activate the missile defeat hints aid, but does not enable it.
 
 #### missileDefeatHints
 
-When active, this feature displays a message to the user when a missile fired at them is destroyed, or when the missile's mach number is less than the target's mach number plus a specified threshold (default threshold is 0.2M).
+When active, this feature displays messages to either the shooter, or the target of shots. The following information is included:
+* Range to target (nm)
+* Missile mach
+* Estimated time to pitbull range ("A") or to impact ("T") - Note that the same pitbull range is used for this estimate. Currently all missiles behave the same, not just Fox-3 missiles.
+* Antenna Train Angle of target from the missile "(OUT OF SEEKER)" also displays if ATA > 75°
+* Mach difference missile to target. "(DEFEATED)" is displayed when less than a set threshold (default threshold is 0.2M).
 
 ##### Configuration 
-Change the defeat mach threshold by setting `training_aids.missile_defeat_mach_diff`. Default is 0.2.
+* Change the defeat mach threshold by setting `training_aids.missile_defeat_mach_diff`. Default is 0.2.
+* Change the defeat ATA by setting `training_aids.missile_defeat_ATA`. Default is 75.
+* Change the expected pitbull range by setting `training_aids.missile_pitbull_range_nm`. Default is 8.
+
+##### Modes
+
+* `IN_RAIL` - Show target players information about incoming missiles shortly after the shot (missile has left the rails).
+* `IN_ACT` - Show target players information about incoming missiles at the time the missile gets within "pitbull range" (approx)
+* `OUT` - Shows players information about their own shots.
+* `DISABLED` - No players receive any missile defeat information.
 
 ##### Example
-`training_aids.toggleFeature("missileDefeatHints",false,true)`
+`training_aids.toggleFeature("missileDefeatHints","IN_RAIL",true)`

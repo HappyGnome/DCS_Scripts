@@ -19,7 +19,7 @@ training_aids = {}
 training_aids.poll_interval = 0.3 --seconds, time between updates of group availability
 training_aids.missile_defeat_mach_diff = 0.2
 training_aids.missile_pitbull_range_nm = 8
-training_aids.missile_defeat_ATA = 80
+training_aids.missile_defeat_ATA = 75
 training_aids.missile_defeat_activation_s = 2.5
 ----------------------------------------------------------------------------------------------------------
 
