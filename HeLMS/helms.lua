@@ -16,7 +16,7 @@ helms = { version = 1.15 }
 
 helms.util = {}
 
---[[ 
+--[[
 Call a function, unpacking args table as its arguments.
 Args:
     func: function to call
@@ -35,15 +35,15 @@ helms.util.safeCall = function(func, args, errorHandler)
 end
 
 --[[
-Wrap a function, returning a function of the same signature, 
-but where errors are caught and passed to errorHandler. 
+Wrap a function, returning a function of the same signature,
+but where errors are caught and passed to errorHandler.
 --]]
 helms.util.safeCallWrap = function(func, errorHandler)
     return function(...) return helms.util.safeCall(func, arg, errorHandler) end
 end
 
 --[[
-Basic recursive Lua serializer 
+Basic recursive Lua serializer
 (serializeable values are strings, numbers, or tables containing serializeable values)
 --]]
 helms.util.obj2str = function(obj)
@@ -125,7 +125,7 @@ end
 
 --[[
 Exchange keys and values:
-Return a table whose keys are the values from the original table, 
+Return a table whose keys are the values from the original table,
 and values are corresponding keys.
 --]]
 helms.util.transposeTable = function(set)
@@ -2243,15 +2243,19 @@ helms.ui.ensureSubmenu = function(parentMenuPath, label, prependCoa)
 
         if menu then menuItems = menu.childItems end
         if side then
-            menuItems[menuName] = { itemCount = 0,
+            menuItems[menuName] = {
+                itemCount = 0,
                 dcsPath = missionCommands.addSubMenuForCoalition(side, menuNameRootText, dcsParentPath),
                 childItems = {},
-                coa = side }
+                coa = side
+            }
         else
-            menuItems[menuName] = {itemCount = 0,
+            menuItems[menuName] = {
+                itemCount = 0,
                 dcsPath = missionCommands.addSubMenu(menuNameRootText, dcsParentPath),
                 childItems = {},
-                coa = nil }
+                coa = nil
+            }
         end
         if menu then
             menu.itemCount = menu.itemCount + 1
@@ -2276,15 +2280,19 @@ helms.ui.getPageWithSpace_ = function(commsMenus, pathBuilder)
         local side = commsMenus.coa
         if commsMenus.childItems[newMenuName] == nil then --create submenu of menu at menuName
             if side then
-                commsMenus.childItems[newMenuName] = { itemCount = 0,
+                commsMenus.childItems[newMenuName] = {
+                    itemCount = 0,
                     dcsPath = missionCommands.addSubMenuForCoalition(side, "Next", commsMenus.dcsPath),
-                    childItems ={},
-                    coa = side }
+                    childItems = {},
+                    coa = side
+                }
             else
-                commsMenus.childItems[newMenuName] = { itemCount = 0,
+                commsMenus.childItems[newMenuName] = {
+                    itemCount = 0,
                     dcsPath = missionCommands.addSubMenu("Next", commsMenus.dcsPath),
                     childItems = {},
-                    coa = nil }
+                    coa = nil
+                }
             end
         end
         commsMenus = commsMenus.childItems[newMenuName]
@@ -2389,9 +2397,14 @@ helms.ui.removeItem = function(parentMenuPath, itemIndex)
     end
 end
 
-helms.ui._renderedDrawingIds = {} -- key = name, value = {id = ,active = }
+helms.ui._renderedDrawingIds = {}     -- key = name, value = {id = ,active = }
+helms.ui._renderedZoneDrawingIds = {} -- key = zoneName, value = {id = ,active = } (matches _renderedDrawingIds)
+
 helms.ui._nextRenderedDrawingId = nil
 
+--[[
+Show named ME drawing for coalition
+--]]
 helms.ui.showDrawing = function(drawingName, coalition)
     local current = helms.ui._renderedDrawingIds[drawingName]
     if current ~= nil and current.active == true then return end
@@ -2399,51 +2412,94 @@ helms.ui.showDrawing = function(drawingName, coalition)
     local drawings = helms.mission._getDrawingList()
     local meDrawing = drawings[drawingName]
 
+    helms.ui._renderedDrawingIds[drawingName] = helms.ui._doShowDrawing(meDrawing,coalition)
+end
+
+--[[
+Show named zone as drawing for coalition.
+`opts` = {colour = ..., fillColour = ..., lineType = ...} or nil
+--]]
+helms.ui.showZoneAsDrawing = function(zoneName, coalition, opts)
+    local current = helms.ui._renderedZoneDrawingIds[zoneName]
+    if current ~= nil and current.active == true then return end
+
+    local meDrawing = {colour = 'white'} --TODO
+
+    helms.ui._renderedZoneDrawingIds[zoneName] = helms.ui._doShowDrawing(meDrawing,coalition)
+end
+
+helms.ui._doShowDrawing = function(drawingData, coalition)
+
     if helms.ui._nextRenderedDrawingId == nil then
-        helms.ui._nextRenderedDrawingId = 2 * #drawings + 1
+        -- Needs to be deconflicted from F10 map marks and other drawings
+        -- But there may be ways to improve this
+        helms.ui._nextRenderedDrawingId = 2 * #(helms.mission._getDrawingList()) + 1
     end
+
     local id = helms.ui._nextRenderedDrawingId
     local idAlt = id
 
-    if coalition == nil then coalition = meDrawing.coalition end
+    if drawingData == nil then return end
 
-    if meDrawing == nil then return end
+    if coalition == nil then coalition = drawingData.coalition end
 
-    if meDrawing.shapeId == 1 then --Line
-        trigger.action.markupToAll(helms.util.multiunpack({ meDrawing.shapeId, coalition, id }, meDrawing.points,
-            { meDrawing.colour, meDrawing.fillColour, meDrawing.lineType }))
-    elseif meDrawing.shapeId == 2 then -- Circle
-        --helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.radius, meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
-        trigger.action.circleToAll(helms.util.multiunpack({ coalition, id }, meDrawing.points,
-            { meDrawing.radius, meDrawing.colour, meDrawing.fillColour, meDrawing.lineType }))
-    elseif meDrawing.shapeId == 5 then -- Text
-        trigger.action.markupToAll(helms.util.multiunpack({ meDrawing.shapeId, coalition, id }, meDrawing.points,
-            { meDrawing.colour, meDrawing.fillColour, meDrawing.fontSize, true, meDrawing.text }))
-    elseif meDrawing.shapeId == 7 then -- Polygon
-        --helms.log_i.log({helms.util.multiunpack({meDrawing.shapeId, coalition, id} , meDrawing.points, {meDrawing.colour , meDrawing.fillColour , meDrawing.lineType})})
-        trigger.action.markupToAll(helms.util.multiunpack({ meDrawing.shapeId, coalition, id }, meDrawing.points,
-            { meDrawing.colour, meDrawing.fillColour, meDrawing.lineType }))
+    if drawingData.shapeId == 1 then --Line
+        trigger.action.markupToAll(
+            helms.util.multiunpack(
+                { drawingData.shapeId, coalition, id }, drawingData.points,
+                { drawingData.colour, drawingData.fillColour, drawingData.lineType }))
+    elseif drawingData.shapeId == 2 then -- Circle
+        trigger.action.circleToAll(
+            helms.util.multiunpack(
+                { coalition, id }, drawingData.points,
+                { drawingData.radius, drawingData.colour, drawingData.fillColour, drawingData.lineType }))
+    elseif drawingData.shapeId == 5 then -- Text
+        trigger.action.markupToAll(
+            helms.util.multiunpack(
+                { drawingData.shapeId, coalition, id }, drawingData.points,
+                { drawingData.colour, drawingData.fillColour, drawingData.fontSize, true, drawingData.text }))
+    elseif drawingData.shapeId == 7 then -- Polygon
+        -- Draw forward and reverse vertex order, reducing artefacts caused by backface culling
+        trigger.action.markupToAll(
+            helms.util.multiunpack(
+                { drawingData.shapeId, coalition, id }, drawingData.points,
+                { drawingData.colour, drawingData.fillColour, drawingData.lineType }))
 
         idAlt = id + 1
-        trigger.action.markupToAll(helms.util.multiunpack({ meDrawing.shapeId, coalition, idAlt },
-            helms.util.reverse(meDrawing.points), { meDrawing.colour, meDrawing.fillColour, meDrawing.lineType }))
+        trigger.action.markupToAll(
+            helms.util.multiunpack(
+                { drawingData.shapeId, coalition, idAlt }, helms.util.reverse(drawingData.points),
+                { drawingData.colour, drawingData.fillColour, drawingData.lineType }))
     end
 
-    helms.ui._renderedDrawingIds[drawingName] = { id = id, idAlt = idAlt, active = true }
     helms.ui._nextRenderedDrawingId = idAlt + 1
+    return { id = id, idAlt = idAlt, active = true }
 end
 
 helms.ui.removeDrawing = function(drawingName)
     local current = helms.ui._renderedDrawingIds[drawingName]
 
-    if current ~= nil and current.active == true and current.id ~= nil then
-        trigger.action.removeMark(current.id)
+    helms.ui._removeDrawingObj(current)
+end
 
-        if current.idAlt ~= current.id then
-            trigger.action.removeMark(current.idAlt)
+helms.ui.removeDrawingZone = function(zoneName)
+    local current = helms.ui._renderedZoneDrawingIds[zoneName]
+
+    helms.ui._removeDrawingObj(current)
+end
+
+--[[
+Private: Hide a drawing, given its entry from _renderedDrawingIds
+--]]
+helms.ui._removeDrawingObj = function(obj)
+    if obj ~= nil and obj.active == true and obj.id ~= nil then
+        trigger.action.removeMark(obj.id)
+
+        if obj.idAlt ~= obj.id then
+            trigger.action.removeMark(obj.idAlt)
         end
 
-        current.active = false
+        obj.active = false
     end
 end
 
