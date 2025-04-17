@@ -1,5 +1,5 @@
 --#######################################################################################################
--- HeLMS v1.0 -  Helpful Library of Mission Scripts
+-- HeLMS v1.15 -  Helpful Library of Mission Scripts
 --
 -- Common utilities for scripts by HappyGnome. Lightweight replacement for some MIST features.
 --
@@ -10,11 +10,19 @@
 helms = { version = 1.15 }
 
 ----------------------------------------------------------------------------------------------------------
---LUA EXTENSIONS------------------------------------------------------------------------------------------
+--helms.util - LUA EXTENSIONS-----------------------------------------------------------------------------
+--
 -- Table manipulation etc
 
 helms.util = {}
 
+--[[ 
+Call a function, unpacking args table as its arguments.
+Args:
+    func: function to call
+    args: table containing arguments for func
+    errorHandler: function(err) (see xpcall)
+--]]
 helms.util.safeCall = function(func, args, errorHandler)
     --helms.log_i.log("sc1")
     local op = function()
@@ -26,10 +34,18 @@ helms.util.safeCall = function(func, args, errorHandler)
     return result
 end
 
+--[[
+Wrap a function, returning a function of the same signature, 
+but where errors are caught and passed to errorHandler. 
+--]]
 helms.util.safeCallWrap = function(func, errorHandler)
     return function(...) return helms.util.safeCall(func, arg, errorHandler) end
 end
 
+--[[
+Basic recursive Lua serializer 
+(serializeable values are strings, numbers, or tables containing serializeable values)
+--]]
 helms.util.obj2str = function(obj)
     if obj == nil then
         return 'nil'
@@ -107,6 +123,11 @@ helms.util.eraseByPredicate = function(s, pred)
     return ret
 end
 
+--[[
+Exchange keys and values:
+Return a table whose keys are the values from the original table, 
+and values are corresponding keys.
+--]]
 helms.util.transposeTable = function(set)
     local ret = {}
     for k, v in pairs(set) do
@@ -115,6 +136,10 @@ helms.util.transposeTable = function(set)
     return ret
 end
 
+--[[
+Return table `set` without any key-value pairs where the value
+is also present in table `exc`
+--]]
 helms.util.excludeValues = function(set, exc)
     local ret = {}
     local excT = helms.util.transposeTable(exc)
@@ -126,6 +151,10 @@ helms.util.excludeValues = function(set, exc)
     return ret
 end
 
+--[[
+Return a table containing the same values as `obj`
+and with the same metatable.
+--]]
 helms.util.shallow_copy = function(obj)
     local ret = obj
     if type(obj) == 'table' then
@@ -138,7 +167,12 @@ helms.util.shallow_copy = function(obj)
     return ret
 end
 
---See http://lua-users.org/wiki/CopyTable
+--[[
+Return a copy of `obj`, creating copied of nested tables (appearing as keys or values),
+rather than just using references.
+
+See http://lua-users.org/wiki/CopyTable
+--]]
 helms.util.deep_copy = function(obj)
     local copies = {}
     local function _copy(obj)
