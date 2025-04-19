@@ -251,7 +251,7 @@ helms.util.uuid = function()
         math.random(0, N16))
 end
 
-helms.util.striJoin = function(delim, tbl)
+helms.util.strJoin = function(delim, tbl)
     local ret = ""
 
     if not tbl or not tbl[1] then return ret end
@@ -265,6 +265,18 @@ helms.util.striJoin = function(delim, tbl)
     return ret
 end
 
+helms.util.fmap = function(tbl, f)
+
+    if tbl == nil then return nil end
+    
+    local result = {}
+
+    for k,v in pairs(tbl) do
+        result[k] = f(v)
+    end
+
+    return result
+end
 ----------------------------------------------------------------------------------------------------------
 --LOGGING-------------------------------------------------------------------------------------------------
 helms.logger = {
@@ -925,10 +937,11 @@ helms.mission._buildDrawingList = function()
                     drawing.fillColour = helms.util.hexToRgba(obj.fillColorString)
                     drawing.coalition = side
 
-                    drawing.lineType = 1 -- Line types don't match between ME and scripting
+                    drawing.lineType = helms.ui.drawingLineType.solid
+                    -- Line types don't match between ME and scripting
                     -- for now, make this binary simplification
                     if obj.thickness == 0 then
-                        drawing.lineType = 0
+                        drawing.lineType = helms.ui.drawingLineType.none
                     end
 
                     drawings[obj.name] = drawing
@@ -973,7 +986,7 @@ end
 helms.mission._convertMeDrawingLine = function(meDrawing)
     local basePoint = helms.maths.as3D({ x = meDrawing.mapX, y = meDrawing.mapY })
     local points = {}
-    local ret = { shapeId = 1, points = points }
+    local ret = { shapeId = helms.ui.drawingShapeType.line, points = points }
 
     if meDrawing.points == nil or #meDrawing.points < 1 then
         return ret
@@ -994,7 +1007,7 @@ end
 helms.mission._convertMeDrawingPoly = function(meDrawing)
     local basePoint = helms.maths.as3D({ x = meDrawing.mapX, y = meDrawing.mapY })
     local points = {}
-    local ret = { shapeId = 7, points = points }
+    local ret = { shapeId = helms.ui.drawingShapeType.polygon, points = points }
 
     -- Rect
     if meDrawing.polygonMode == 'rect' then
@@ -1030,9 +1043,8 @@ end
 helms.mission._convertMeDrawingCircle = function(meDrawing)
     local basePoint = helms.maths.as3D({ x = meDrawing.mapX, y = meDrawing.mapY })
     local points = { basePoint }
-    local ret = { shapeId = 2, points = points }
+    local ret = { shapeId = helms.ui.drawingShapeType.circle, points = points }
 
-    ret.shapeId = 2
     ret.radius = meDrawing.radius
     return ret
 end
@@ -1040,9 +1052,8 @@ end
 helms.mission._convertMeDrawingOval = function(meDrawing)
     local basePoint = helms.maths.as3D({ x = meDrawing.mapX, y = meDrawing.mapY })
     local points = { basePoint }
-    local ret = { shapeId = 2, startPos = basePoint, points = points }
+    local ret = { shapeId = helms.ui.drawingShapeType.circle, startPos = basePoint, points = points }
 
-    ret.shapeId = 2
     ret.radius = (meDrawing.r1 + meDrawing.r1) / 2
 
     return ret
@@ -1050,7 +1061,9 @@ end
 
 helms.mission._convertMeDrawingText = function(meDrawing)
     local basePoint = helms.maths.as3D({ x = meDrawing.mapX, y = meDrawing.mapY })
-    local ret = { shapeId = 5, points = { basePoint }, text = meDrawing.text, fontSize = meDrawing.fontSize }
+    local ret = { shapeId = helms.ui.drawingShapeType.text,
+        points = { basePoint }, text = meDrawing.text, fontSize = meDrawing.fontSize }
+
     return ret
 end
 
@@ -2402,6 +2415,25 @@ helms.ui._renderedZoneDrawingIds = {} -- key = zoneName, value = {id = ,active =
 
 helms.ui._nextRenderedDrawingId = nil
 
+helms.ui.drawingShapeType = 
+{
+    line = 1,
+    circle = 2,
+    text = 5,
+    polygon = 7
+}
+
+helms.ui.drawingLineType = 
+{
+    none = 0,
+    solid = 1,
+    dashed = 2,
+    dotted = 3,
+    dotdash = 4,
+    longdash = 5,
+    twodash = 6
+}
+
 --[[
 Show named ME drawing for coalition
 --]]
@@ -2417,15 +2449,56 @@ end
 
 --[[
 Show named zone as drawing for coalition.
-`opts` = {colour = ..., fillColour = ..., lineType = ...} or nil
+`opts` = {lineHexRgba = ..., fillHexRgba = ..., lineType = ...} or nil
 --]]
 helms.ui.showZoneAsDrawing = function(zoneName, coalition, opts)
     local current = helms.ui._renderedZoneDrawingIds[zoneName]
     if current ~= nil and current.active == true then return end
 
-    local meDrawing = {colour = 'white'} --TODO
+    local meZoneData = helms.mission.getMeZoneData(zoneName)
+    if not meZoneData then
+        helms.log_i.log({"No mission data for zone",zoneName, meZoneData})
+        return
+    end
 
-    helms.ui._renderedZoneDrawingIds[zoneName] = helms.ui._doShowDrawing(meDrawing,coalition)
+    -- default opts
+    if not opts then
+        opts = {}
+    end
+
+    if not opts.lineHexRgba then 
+        opts.lineType = helms.ui.drawingLineType.none 
+    elseif not opts.lineType then
+        opts.lineType = helms.ui.drawingLineType.solid 
+    end
+
+    local drawData = {
+        colour = helms.util.hexToRgba(opts.lineHexRgba), 
+        lineType = opts.lineType
+    }
+
+    -- Use ME zone colour, if not overridden in opts
+    if (opts.fillHexRgba == nil) and (meZoneData.color) then
+        drawData.fillColour = meZoneData.color
+    else
+        drawData.fillColour = helms.util.hexToRgba(opts.fillHexRgba)
+    end
+
+    if meZoneData.type == helms.mission.zoneTypes['Quad'] and meZoneData.verticies then
+        drawData.shapeId = helms.ui.drawingShapeType.polygon
+        drawData.points = helms.util.fmap(meZoneData.verticies, helms.maths.as3D) -- Zone centre is 2d format, drawings use x-z
+    elseif meZoneData.x and meZoneData.y and meZoneData.radius then
+        drawData.shapeId = helms.ui.drawingShapeType.circle
+        drawData.points = {helms.maths.as3D(meZoneData)}
+        drawData.radius = meZoneData.radius
+    else
+        helms.log_i.log({"Mission data invalid for zone",zoneName, meZoneData})
+        return
+    end
+
+    -- Moving zones not yet supported - initial position always used
+    -- helms.log_i.log({"Showing Zone",zoneName,coalition, drawData, meZoneData})
+    helms.ui._renderedZoneDrawingIds[zoneName] = helms.ui._doShowDrawing(drawData,coalition)
 end
 
 helms.ui._doShowDrawing = function(drawingData, coalition)
@@ -2442,23 +2515,24 @@ helms.ui._doShowDrawing = function(drawingData, coalition)
     if drawingData == nil then return end
 
     if coalition == nil then coalition = drawingData.coalition end
+    if coalition == nil then coalition = -1 end --final fallback - all
 
-    if drawingData.shapeId == 1 then --Line
+    if drawingData.shapeId == helms.ui.drawingShapeType.line then --Line
         trigger.action.markupToAll(
             helms.util.multiunpack(
                 { drawingData.shapeId, coalition, id }, drawingData.points,
                 { drawingData.colour, drawingData.fillColour, drawingData.lineType }))
-    elseif drawingData.shapeId == 2 then -- Circle
+    elseif drawingData.shapeId == helms.ui.drawingShapeType.circle then -- Circle
         trigger.action.circleToAll(
             helms.util.multiunpack(
                 { coalition, id }, drawingData.points,
                 { drawingData.radius, drawingData.colour, drawingData.fillColour, drawingData.lineType }))
-    elseif drawingData.shapeId == 5 then -- Text
+    elseif drawingData.shapeId == helms.ui.drawingShapeType.text then -- Text
         trigger.action.markupToAll(
             helms.util.multiunpack(
                 { drawingData.shapeId, coalition, id }, drawingData.points,
                 { drawingData.colour, drawingData.fillColour, drawingData.fontSize, true, drawingData.text }))
-    elseif drawingData.shapeId == 7 then -- Polygon
+    elseif drawingData.shapeId == helms.ui.drawingShapeType.polygon then -- Polygon
         -- Draw forward and reverse vertex order, reducing artefacts caused by backface culling
         trigger.action.markupToAll(
             helms.util.multiunpack(
@@ -2628,7 +2702,7 @@ helms.ui.scoreboard.printLoop = function()
             end
         end
 
-        game.msgLines[#game.msgLines + 1] = helms.util.striJoin(" | ", segs)
+        game.msgLines[#game.msgLines + 1] = helms.util.strJoin(" | ", segs)
     end
 
     local printHintLine = function(game)
@@ -2654,7 +2728,7 @@ helms.ui.scoreboard.printLoop = function()
         helms.util.safeCall(printHintLine, { game }, helms.catchError)
 
         if game.msgLines then
-            helms.ui.messageForCoalitionOrAll(nil, helms.util.striJoin("\n", game.msgLines),
+            helms.ui.messageForCoalitionOrAll(nil, helms.util.strJoin("\n", game.msgLines),
                 helms.ui.scoreboard.messageDisplaySeconds, clearScreen)
             clearScreen = false
         end
