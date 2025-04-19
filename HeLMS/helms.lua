@@ -2556,7 +2556,7 @@ helms.ui.removeDrawing = function(drawingName)
     helms.ui._removeDrawingObj(current)
 end
 
-helms.ui.removeDrawingZone = function(zoneName)
+helms.ui.removeZoneDrawing = function(zoneName)
     local current = helms.ui._renderedZoneDrawingIds[zoneName]
 
     helms.ui._removeDrawingObj(current)

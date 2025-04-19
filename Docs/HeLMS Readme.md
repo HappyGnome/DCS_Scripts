@@ -146,6 +146,7 @@ NOTE: This feature has some known limitations, due to limitations of the DCS scr
 * line thickness doesn't work,
 * some flickering of fill colours may be seen, and
 * ovals are rendered as circles
+* `Icon` drawing type is not supported
 
 Usage: `helms.ui.showDrawing(<drawingName>,<coalition>)`
 
@@ -164,6 +165,44 @@ Where
 * `<drawingName>` drawing name from mission editor to hide (must have been added with `helms.ui.showDrawing`)
 
 **Example:**  `helms.ui.removeDrawing('Polygon-37')` hides drawing called "Polygon-37" previously shown by a call to `helms.ui.showDrawing`
+
+### Create drawing from trigger zone
+`helms.ui.showZoneAsDrawing` convert a named fixed trigger zone from the mission file to a drawing.
+
+Usage: `helms.ui.showZoneAsDrawing(<zoneName>,<coalition>, <opts>)`
+
+Where:
+* `<zoneName>` Name of the zone in the mission editor
+* `<coalition>` The side for which the zone is visible. Value from the `coalition.side` enum, or nil to display for all.
+* `<opts>` Table containing options. Optional. Keys:
+    * `<lineHexRgba>` RGBA colour of the drawing outline as a 32 bit integer in a hex string. E.g. "0xff0000aa" for translucent red. 
+    * `<fillHexRgba>` RGBA colour of the drawing fill as a 32 bit integer in a hex string. Defaults to the zone colour in mission editor.
+    * `<lineType>` 0-6 integer. Ignored unless `lineHexRgba` specified.
+        * 0 - no line
+        * 1 - solid line
+        * 2 - dashed line
+        * 3 - dots
+        * 4 - dot dash #1
+        * 5 - long dashes
+        * 6 - dot dash #2
+
+Known limitations:
+* Zones with a linked unit do not move, and appear in the wrong place.
+
+**Examples:**
+* `helms.ui.showZoneAsDrawing("zone-1",coalition.side.BLUE)`
+* `helms.ui.showZoneAsDrawing("zone-2",nil,{lineHexRgba="0xff0000aa"})`
+* `helms.ui.showZoneAsDrawing("zone-3",nil,{fillHexRgba = "0x00ff00aa",lineHexRgba="0x00aaffee", lineType = 2})`
+
+### Remove drawing of trigger zone
+`helms.ui.removeZoneDrawing` hides a drawing added with `helms.ui.showZoneAsDrawing`.
+
+Usage: `helms.ui.removeZoneDrawing(<zoneName>)`
+
+Where
+* `<zoneName>` name of the zone drawn previously using `helms.ui.showZoneAsDrawing`
+
+**Example:**  `helms.ui.removeZoneDrawing("zone-1")`
 
 ## Selected Utilities - helms.effect
 ### Start smoke effect
