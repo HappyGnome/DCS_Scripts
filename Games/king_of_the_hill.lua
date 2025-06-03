@@ -17,7 +17,7 @@ end
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
-king_of_the_hill.version = 1.4
+king_of_the_hill.version = 1.41
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
@@ -103,7 +103,13 @@ king_of_the_hill.deadHandler = function(initiator, time)
 
         if v.rules.kingSince and v.rules.kingSince < lastHitEvent.time then
             if v.rules.kingUnitName == lastHitEvent.initiatorName then
-                king_of_the_hill.kingGetKill_ (v, initiator)
+
+                -- previous king cannot be "re-killed" by another hit after losing the crown
+                if not (v.rules.prevKingsKilledAt[initName] 
+                        and v.rules.prevKingsKilledAt[initName] > helms.events.getLastSpawn(initName)) then
+                    king_of_the_hill.kingGetKill_ (v, initiator)
+                end
+
             --[[elseif v.rules.kingUnitName == initName then
                 king_of_the_hill.kingKilled_(v,lastHitEvent.initiatorName)]]
             end
@@ -386,6 +392,7 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
         end
 
         game.rules.prevKingUnitName = game.rules.kingUnitName
+        game.rules.prevKingsKilledAt[game.rules.kingUnitName] = now
     end
 
     king_of_the_hill.setNewKing_ (game, now, killedByUnitName, killedByUnitFriendlyName, newKingTeam)
@@ -462,7 +469,8 @@ king_of_the_hill.startGame_ = function(gameName, rulesetInd)
         firstToScore = game.ruleOptions[rulesetInd].firstToScore,
         --kingLostAt = nil,
         kingMultiplier = 1,
-        kingMultiplierUntil = nil
+        kingMultiplierUntil = nil,
+        prevKingsKilledAt = {}
     }
     game.lastScoreReminder = now
 
