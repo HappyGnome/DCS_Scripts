@@ -105,10 +105,7 @@ king_of_the_hill.deadHandler = function(initiator, time)
             if v.rules.kingUnitName == lastHitEvent.initiatorName then
 
                 -- previous king cannot be "re-killed" by another hit after losing the crown
-                if not (v.rules.prevKingsKilledAt[initName] 
-                        and v.rules.prevKingsKilledAt[initName] > helms.events.getLastSpawn(initName)) then
-                    king_of_the_hill.kingGetKill_ (v, initiator)
-                end
+                king_of_the_hill.kingGetKill_ (v, initiator)
 
             --[[elseif v.rules.kingUnitName == initName then
                 king_of_the_hill.kingKilled_(v,lastHitEvent.initiatorName)]]
@@ -403,6 +400,13 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
     if not killedUnit or not game.running then return end
     local killedUnitName = killedUnit:getName()
 
+    -- Ignore a second "kill" on the previous king
+    local prevKingKilledAt = game.rules.prevKingsKilledAt[killedUnitName]
+    local killedUnitLastSpawn = helms.events.getLastSpawn(killedUnitName)
+    if ( prevKingKilledAt 
+        and killedUnitLastSpawn
+        and prevKingKilledAt > killedUnitLastSpawn.time) then return end 
+
     local killedGroup = killedUnit:getGroup()
     local groupCategory = killedGroup:getCategory()
 
@@ -413,7 +417,7 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
     if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
 
     local now = timer.getTime()
-
+    
     king_of_the_hill.nextScoreSegment(game, now, false) --no multiplier reset
 
     game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
@@ -818,10 +822,28 @@ king_of_the_hill.Test_KingGetKill = function(gameName, unitKilledName)
     end
 end
 
+-- king_of_the_hill.Test_KillPrevKing = function(gameName)
+--     local unit
+-- 
+--     local game = king_of_the_hill.games[gameName]
+--     if (not game) or (not game.rules.prevKingUnitName) then return end
+-- 
+--     unit = Unit.getByName(game.rules.prevKingUnitName)
+--     
+--     if game and unit then
+--         helms.log_i.log("Test_KillPrevKing " .. gameName .." " .. unitKilledName)
+--         king_of_the_hill.deadHandler(timer.getTime(), unit)
+--     end
+-- end
+
 king_of_the_hill.Test_KingKilled = function(gameName, unitKilledName)
 
-    if king_of_the_hill.games[gameName] and unitName then
-        king_of_the_hill.kingKilled_(king_of_the_hill.games[gameName], unitName)
+    if king_of_the_hill.games[gameName] and unitKilledName then
+        helms.log_i.log("Test_KingKilled " .. gameName .." " .. unitKilledName)
+        if king_of_the_hill.kingKilled_(king_of_the_hill.games[gameName], unitKilledName) then
+
+            helms.log_i.log("Test_KingKilled - Success" .. gameName .." " .. unitKilledName)
+        end
     end
 end
 
