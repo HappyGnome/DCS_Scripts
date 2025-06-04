@@ -1,6 +1,7 @@
 # Changelog
 
 ## Latest
+* Fixed KoTH double kill bug
 * Added static detection to HeLMS predicates
 * Added Training Aids module
 ## 1.11a
