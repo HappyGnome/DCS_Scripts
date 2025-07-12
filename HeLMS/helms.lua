@@ -371,6 +371,24 @@ helms.maths.as3DHeight = function(u, h)
     return { x = u.x, y = uy, z = uz }
 end
 
+-- Estimate slant range to ground from point p in direction x
+helms.maths.quickSlantRange = function(p,x)
+
+    if (x.y == 0) then return nil end -- Ray parallel to ground
+
+   local h1 = land.getHeight(helms.maths.as2D(p))
+   if (h1 < 0) then h1 = 0 end -- DCS terrain cannot currently go below sea level
+
+   local dh1 = p.y - h1
+
+   if (dh1 * x.y > 0) then return nil end -- ray must go towards from ground
+
+   local slantX = (dh1/x.y)
+   
+   return math.sqrt(slantX * slantX + dh1*dh1)
+
+end
+
 helms.maths.get2DDist = function(pointA, pointB)
     local p = helms.maths.as2D(pointA)
     local q = helms.maths.as2D(pointB)

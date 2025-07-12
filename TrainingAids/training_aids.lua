@@ -281,6 +281,11 @@ training_aids.features["missileDefeatHints"] = (function()
                 msg = msg .. " (DEFEATED)"
             end
 
+            local slant = helms.maths.quickSlantRange(wpnPos.p, wpnPos.x)
+            if slant and slant * helms.maths.m2nm <= training_aids.missile_pitbull_range_nm then
+                msg = msg .. "\nLOOKDOWN"
+            end
+
             if builder.currentState == builder.OUT then
                 if shooter and shooter:isExist() then
                     trigger.action.outTextForUnit(shooter:getID(), msg, 5, clearScreen)
