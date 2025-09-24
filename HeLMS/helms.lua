@@ -1777,7 +1777,7 @@ helms.dynamic.landTypeUnderUnit = function(unit)
     return land.getSurfaceType(helms.maths.as2D(unit:getPoint()))
 end
 
-helms.dynamic._scheduleFunctionWrapper = function(pack, t)
+helms.dynamic._scheduleFunctionWrapper = function(pack,t)
     if pack and pack.f and type(pack.f) == 'function'
         and pack.args and type(pack.args) == 'table' then
         local ret
@@ -2043,6 +2043,90 @@ helms.effect._stringToSmokeColour = function(str)
     }
 
     return lookup[string.lower(str)]
+end
+
+helms.effect._IrStrobes = {} -- key = object name,val = {displace, onTimeS,offTimeS, strobeObj, startTime} 
+
+helms.effect._startIrStrobeOnObject = function(obj, displace, onTimeS, offTimeS)
+    if obj == nil then
+        return
+    end
+
+    if displace == nil then
+
+    end
+
+    local name = Object.getName(obj)
+    local now = timer.getTime()
+
+    if helms.effect._IrStrobes[name] ~= nil then
+        helms.effect._stopIrStrobeOnObject(name)
+    end
+
+    if onTimeS == nil or onTimeS <= 0 then
+        return
+    end
+
+    helms.effect._IrStrobes[name] = {displace = displace, onTimeS = onTimeS, offTimeS = offTimeS, onNow = false, startTime = now}
+
+    if offTimeS == nil or offTimeS < 0 then
+        offTimeS = 0
+    end
+
+    helms.dynamic.scheduleFunction(helms.effect._pollIrStrobe, {name, now}, offTimeS, false)
+
+end
+
+helms.effect._stopIrStrobeOnObject = function(name)
+
+    local irs = helms.effect._IrStrobes[name] 
+    if irs ~= nil and irs.strobeObj then
+        Object.destroy(irs.strobeObj)
+    end
+
+    helms.effect._IrStrobes[name] = nil
+end
+
+helms.effect._pollIrStrobe= function(name, startTime)
+    if name == nil then 
+        return nil
+    end
+
+    local irs = helms.effect._IrStrobes[name] 
+
+    if irs == nil or irs.startTime ~= startTime then
+        return nil
+    end
+
+    local obj = Object.getByName(name)
+    if obj == nil then
+        return nil
+    end
+
+    local objPt = obj:getPoint()
+    local objBox = object.box.params
+
+
+    local spotPoint = helms.maths.lin3D(objBox.min,0.5,objBox.max,0.5)
+    spotPoint.y = objBox.max.y
+
+    if (irs.displace ~= nil) then
+        spotPoint = helms.maths.lin3D(spotPoint,1,irs.displace,1)
+    end
+
+    if (irs.strobeObj ~= nil) then
+        Object.destroy(irs.strobeObj)
+        irs.strobeObj = nil
+        return irs.offTimeS
+    else
+        irs.strobeObj = Spot.createInfraRed(obj,helms.maths.lin3D(objPt,-1,spotPoint,1), spotPoint)
+        return irs.onTimeS
+    end
+    
+end
+
+helms.effect.startIrStrobeOnStatic = function(coa, staticName, displace, onTimeS, offTimeS)
+
 end
 
 ----------------------------------------------------------------------------------------------------------
