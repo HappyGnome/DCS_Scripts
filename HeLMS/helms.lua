@@ -425,6 +425,22 @@ helms.maths.applyMat2D = function(u, M)
     return v
 end
 
+helms.maths.positionToMat3D = function(pos)
+    return {
+        [1] = {x = pos.x.x, y = pos.y.x, z = pos.z.x},
+        [2] = {x = pos.x.y, y = pos.y.y, z = pos.z.y},
+        [3] = {x = pos.x.z, y = pos.y.z, z = pos.z.z}
+    }
+end
+
+helms.maths.applyMat3D = function(u, M)
+    local v = {}
+    v.x = helms.maths.dot3D(u, M[1])
+    v.y = helms.maths.dot3D(u, M[2])
+    v.z = helms.maths.dot3D(u, M[3])
+    return v
+end
+
 helms.maths.makeRotMat2D = function(theta)
     local M = { {}, {} }
     M[1] = { x = math.cos(theta), y = -math.sin(theta) }
@@ -1913,6 +1929,7 @@ helms.effect._smokes = {} -- keys: integer for non-zone linked effects, string (
 helms.effect._smokeRefreshSeconds = 300
 helms.effect._minimumBorderSmokes = 4
 helms.effect._defaultBorderSmokes = 8
+helms.effect._minStrobeTime = 0.2
 
 --[[
 Create smoke with auto-refresh at a given point and colour ("red","green","blue","white", or "orange")
@@ -2044,91 +2061,172 @@ helms.effect._stringToSmokeColour = function(str)
 
     return lookup[string.lower(str)]
 end
-
+------------------------
+-- IR strobes
 helms.effect._IrStrobes = {} -- key = object name,val = {displace, onTimeS,offTimeS, strobeObj, startTime} 
+helms.effect._IrStrobeNextID = 0
 
+-- Start IR strobe on an object
 helms.effect._startIrStrobeOnObject = function(obj, displace, onTimeS, offTimeS)
     if obj == nil then
         return
     end
 
-    if displace == nil then
-
-    end
-
     local name = Object.getName(obj)
     local now = timer.getTime()
+    local newID = helms.effect._IrStrobeNextID
 
     if helms.effect._IrStrobes[name] ~= nil then
         helms.effect._stopIrStrobeOnObject(name)
     end
 
-    if onTimeS == nil or onTimeS <= 0 then
-        return
+    if displace == nil then
+         displace = {x = 0, y = 0, z = 0}
+    else
+        displace = helms.maths.as3D(displace) -- fail at this point if format invalid
     end
+    displace.y = displace.y + obj:getDesc().box.max.y
 
-    helms.effect._IrStrobes[name] = {displace = displace, onTimeS = onTimeS, offTimeS = offTimeS, onNow = false, startTime = now}
+    if onTimeS == nil or onTimeS < helms.effect._minStrobeTime then
+        onTimeS = helms.effect._minStrobeTime
+    end
 
     if offTimeS == nil or offTimeS < 0 then
         offTimeS = 0
+    elseif offTimeS < helms.effect._minStrobeTime then
+        offTimeS = helms.effect._minStrobeTime
     end
 
-    helms.dynamic.scheduleFunction(helms.effect._pollIrStrobe, {name, now}, offTimeS, false)
+    helms.effect._IrStrobes[name] = {displace = displace, onTimeS = onTimeS, offTimeS = offTimeS, irStrobeID = newID, objHost = obj}
+    helms.effect._IrStrobeNextID = newID + 1
+
+    helms.dynamic.scheduleFunction(helms.effect._pollIrStrobe, {name, newID}, now + 1, false)
 
 end
 
+-- Stop IR strobe on a named object
 helms.effect._stopIrStrobeOnObject = function(name)
 
     local irs = helms.effect._IrStrobes[name] 
-    if irs ~= nil and irs.strobeObj then
-        Object.destroy(irs.strobeObj)
+    if irs ~= nil and irs.strobeObj ~= nil then
+        irs.strobeObj:destroy()
     end
 
     helms.effect._IrStrobes[name] = nil
 end
 
-helms.effect._pollIrStrobe= function(name, startTime)
-    if name == nil then 
+-- Poll IR strobe (either enabling the strobe, or called repeatedly to flash it)
+helms.effect._pollIrStrobe= function(name, strobeId)
+    helms.log_i.log({name,strobeId})
+    if name == nil then
         return nil
     end
 
     local irs = helms.effect._IrStrobes[name] 
 
-    if irs == nil or irs.startTime ~= startTime then
+    if irs == nil or irs.irStrobeID ~= strobeId then
         return nil
     end
 
-    local obj = Object.getByName(name)
-    if obj == nil then
-        return nil
-    end
-
-    local objPt = obj:getPoint()
-    local objBox = object.box.params
-
-
-    local spotPoint = helms.maths.lin3D(objBox.min,0.5,objBox.max,0.5)
-    spotPoint.y = objBox.max.y
-
-    if (irs.displace ~= nil) then
-        spotPoint = helms.maths.lin3D(spotPoint,1,irs.displace,1)
-    end
+    local nextPollInS  = nil
 
     if (irs.strobeObj ~= nil) then
-        Object.destroy(irs.strobeObj)
+
+        irs.strobeObj:destroy()
         irs.strobeObj = nil
-        return irs.offTimeS
+        nextPollInS = irs.offTimeS
     else
-        irs.strobeObj = Spot.createInfraRed(obj,helms.maths.lin3D(objPt,-1,spotPoint,1), spotPoint)
-        return irs.onTimeS
+
+        local obj = irs.objHost
+
+        local objPos = obj:getPosition()
+
+        local spotPoint = helms.maths.lin3D(objPos.p, 1, helms.maths.applyMat3D(irs.displace,helms.maths.positionToMat3D(objPos)), 1) 
+
+        irs.strobeObj = Spot.createInfraRed(obj, irs.displace, spotPoint)--helms.maths.lin3D(objPos.p,-1,spotPoint,1), spotPoint)
+        nextPollInS = irs.onTimeS
     end
-    
+
+    if irs.offTimeS > 0 and nextPollInS > 0 then
+        return timer.getTime() + nextPollInS
+    else
+        return nil
+    end
 end
 
-helms.effect.startIrStrobeOnStatic = function(coa, staticName, displace, onTimeS, offTimeS)
+--[[
+-- Start IR strobe effect on a static object
+-- @staticName = name of the static unit (not group name)
+-- @displace = Vec3 - displacement of the strobe from the top-centre of the object's collision box (optional)
+-- onTimeS  = time of the "on" duty cycle of the flashing strobe (optional - strobe fixed on if omitted)
+-- offTimeS = tiem of "off" duty cycle (optional - strobe fixed on if omitted)
+--]]
+helms.effect.startIrStrobeOnStatic = function(staticName, displace, onTimeS, offTimeS)
+
+    local obj = StaticObject.getByName(staticName)
+    if obj == nil then 
+        helms.log_i.log("Static " .. staticName .." not found for placing IR strobe")
+        return
+    end
+
+    helms.effect._startIrStrobeOnObject(obj, displace, onTimeS, offTimeS)
 
 end
 
+--[[
+-- Stop existing IR strobe effect on named static unit
+-- @staticName = object/unit name
+--]]
+helms.effect.stopIrStrobeOnStatic = function(staticName)
+
+    local obj = StaticObject.getByName(staticName)
+    if obj == nil then 
+        helms.log_i.log("Static " .. staticName .." not found for stopping IR strobe")
+        return
+    end
+
+    local name = Object.getName(obj)
+
+    helms.effect._stopIrStrobeOnObject(name)
+
+end
+
+--[[
+-- Start IR strobe effect on a unit
+-- @unitName = name of the unit (not group name)
+-- @displace = Vec3 - displacement of the strobe from the top-centre of the object's collision box (optional)
+-- onTimeS  = time of the "on" duty cycle of the flashing strobe (optional - strobe fixed on if omitted)
+-- offTimeS = tiem of "off" duty cycle (optional - strobe fixed on if omitted)
+--]]
+helms.effect.startIrStrobeOnUnit = function(unitName, displace, onTimeS, offTimeS)
+
+    local obj = Unit.getByName(unitName)
+    if obj == nil then 
+        helms.log_i.log("Unit " .. unitName .." not found for placing IR strobe")
+        return
+    end
+
+    helms.effect._startIrStrobeOnObject(obj, displace, onTimeS, offTimeS)
+
+end
+
+--[[
+-- Stop existing IR strobe effect on named unit
+-- @unitName = object/unit name
+--]]
+helms.effect.stopIrStrobeOnUnit = function(unitName)
+
+    local obj = Unit.getByName(unitName)
+    if obj == nil then 
+        helms.log_i.log("Unit " .. unitName .." not found for stopping IR strobe")
+        return
+    end
+
+    local name = Object.getName(obj)
+
+    helms.effect._stopIrStrobeOnObject(name)
+
+end
 ----------------------------------------------------------------------------------------------------------
 --UI------------------------------------------------------------------------------------------------------
 -- E.g. messages to users, comms management, string conversions etc.
