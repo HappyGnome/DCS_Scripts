@@ -425,19 +425,19 @@ helms.maths.applyMat2D = function(u, M)
     return v
 end
 
-helms.maths.positionToMat3D = function(pos)
-    return {
-        [1] = {x = pos.x.x, y = pos.y.x, z = pos.z.x},
-        [2] = {x = pos.x.y, y = pos.y.y, z = pos.z.y},
-        [3] = {x = pos.x.z, y = pos.y.z, z = pos.z.z}
-    }
-end
+--helms.maths.positionToMat3D = function(pos)
+--    return {
+--        [1] = {x = pos.x.x, y = pos.y.x, z = pos.z.x},
+--        [2] = {x = pos.x.y, y = pos.y.y, z = pos.z.y},
+--        [3] = {x = pos.x.z, y = pos.y.z, z = pos.z.z}
+--    }
+--end
 
-helms.maths.applyMat3D = function(u, M)
+helms.maths.objLocalToGlobal = function(u, M)
     local v = {}
-    v.x = helms.maths.dot3D(u, M[1])
-    v.y = helms.maths.dot3D(u, M[2])
-    v.z = helms.maths.dot3D(u, M[3])
+    v.x = u.x * M.x.x + u.y * M.y.x + u.z * M.z.x + M.p.x
+    v.y = u.x * M.x.y + u.y * M.y.y + u.z * M.z.y + M.p.y
+    v.z = u.x * M.x.z + u.y * M.y.z + u.z * M.z.z + M.p.z
     return v
 end
 
@@ -2065,9 +2065,11 @@ end
 -- IR strobes
 helms.effect._IrStrobes = {} -- key = object name,val = {displace, onTimeS,offTimeS, strobeObj, startTime} 
 helms.effect._IrStrobeNextID = 0
+helms.effect._StrobePosUpdateTimeMinS = 0.15
+helms.effect._StrobePosUpdateDistM = 20
 
 -- Start IR strobe on an object
-helms.effect._startIrStrobeOnObject = function(obj, displace, onTimeS, offTimeS)
+helms.effect._startIrStrobeOnObject = function(obj, displace, onTimeS, offTimeS, spotUpdateTimeS)
     if obj == nil then
         return
     end
@@ -2101,6 +2103,17 @@ helms.effect._startIrStrobeOnObject = function(obj, displace, onTimeS, offTimeS)
     helms.effect._IrStrobeNextID = newID + 1
 
     helms.dynamic.scheduleFunction(helms.effect._pollIrStrobe, {name, newID}, now + 1, false)
+    if type(spotUpdateTimeS) == 'number'  then
+
+        if (spotUpdateTimeS < helms.effect._StrobePosUpdateTimeMinS) then 
+            spotUpdateTimeS = helms.effect._StrobePosUpdateTimeMinS 
+        end
+        
+        helms.effect._IrStrobes[name].spotUpdateTimeS = spotUpdateTimeS
+
+        helms.dynamic.scheduleFunction(
+            helms.effect._pollIrStrobeUpdateUnitPos, {name, newID}, now + spotUpdateTimeS , false)
+    end
 
 end
 
@@ -2117,7 +2130,6 @@ end
 
 -- Poll IR strobe (either enabling the strobe, or called repeatedly to flash it)
 helms.effect._pollIrStrobe= function(name, strobeId)
-    helms.log_i.log({name,strobeId})
     if name == nil then
         return nil
     end
@@ -2141,7 +2153,7 @@ helms.effect._pollIrStrobe= function(name, strobeId)
 
         local objPos = obj:getPosition()
 
-        local spotPoint = helms.maths.lin3D(objPos.p, 1, helms.maths.applyMat3D(irs.displace,helms.maths.positionToMat3D(objPos)), 1) 
+        local spotPoint = helms.maths.objLocalToGlobal(irs.displace,objPos)
 
         irs.strobeObj = Spot.createInfraRed(obj, irs.displace, spotPoint)--helms.maths.lin3D(objPos.p,-1,spotPoint,1), spotPoint)
         nextPollInS = irs.onTimeS
@@ -2152,6 +2164,32 @@ helms.effect._pollIrStrobe= function(name, strobeId)
     else
         return nil
     end
+end
+
+-- Poll IR strobe (either enabling the strobe, or called repeatedly to flash it)
+helms.effect._pollIrStrobeUpdateUnitPos= function(name, strobeId)
+    if name == nil then
+        return nil
+    end
+
+    local irs = helms.effect._IrStrobes[name] 
+
+    if irs == nil or irs.irStrobeID ~= strobeId then
+        return nil
+    end
+
+    if irs.strobeObj ~= nil then
+
+        local obj = irs.objHost
+
+        local objPos = obj:getPosition()
+
+        local spotPoint = helms.maths.objLocalToGlobal(irs.displace,objPos)
+
+        irs.strobeObj:setPoint(spotPoint)
+    end
+
+    return timer.getTime() + irs.spotUpdateTimeS
 end
 
 --[[
@@ -2198,7 +2236,7 @@ end
 -- onTimeS  = time of the "on" duty cycle of the flashing strobe (optional - strobe fixed on if omitted)
 -- offTimeS = tiem of "off" duty cycle (optional - strobe fixed on if omitted)
 --]]
-helms.effect.startIrStrobeOnUnit = function(unitName, displace, onTimeS, offTimeS)
+helms.effect.startIrStrobeOnUnit = function(unitName, displace, onTimeS, offTimeS, movingUnit)
 
     local obj = Unit.getByName(unitName)
     if obj == nil then 
@@ -2206,7 +2244,17 @@ helms.effect.startIrStrobeOnUnit = function(unitName, displace, onTimeS, offTime
         return
     end
 
-    helms.effect._startIrStrobeOnObject(obj, displace, onTimeS, offTimeS)
+    local posTime =  nil
+
+    if movingUnit then
+        posTime = helms.mission.getUnitSpeed(obj,100)
+    end
+
+    if posTime ~= nil then
+        posTime = helms.effect._StrobePosUpdateDistM / posTime
+    end
+
+    helms.effect._startIrStrobeOnObject(obj, displace, onTimeS, offTimeS, posTime)
 
 end
 

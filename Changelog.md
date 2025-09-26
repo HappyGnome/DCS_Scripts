@@ -1,6 +1,7 @@
 # Changelog
 
 ## Latest
+* Added IrStrobe effects for units and statics
 * Fixed KoTH double kill bug
 * Added static detection to HeLMS predicates
 * Added Training Aids module

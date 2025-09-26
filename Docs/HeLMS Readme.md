@@ -231,6 +231,44 @@ Returns: None
 **Example:**  `helms.effect.stopSmokeOnZone("Zone-1")`
 
 
+### Start IR Strobe on unit or static
+`helms.effect.startIrStrobeOnStatic` and `helms.effect.startIrStrobeOnUnit` starts a strobe effect attached to a unit or static. Note that the effect is based on DCS laser effects, so for moving targets the spot may appear to be a beam!
+
+Usage: 
+* `helms.effect.startIrStrobeOnStatic(<staticName>,<displace>,<onTimeS>, <offTImeS>)` 
+* `helms.effect.startIrStrobeOnUnit(<unitName>,<displace>,<onTimeS>, <offTImeS>, <updatePos>)` 
+
+Where
+* `<staticName>` / `<unitName>` Is the name of the static object or unit - Note: Use "unit name" as displayed in ME (even for statics). Not "group name"
+* `<displace>` Is a displacemnent of the strobe from the top centre of the unit/static (optional).
+* `<onTimeS>` Time (seconds) of "on" duty cycle of the strobe, if flashing (`onTimeS` and `offTimeS` must both be specified). Optional. Shorter on/off times increase net traffic.
+* `<offTimeS>` Time (seconds) of "off" duty cycle of the strobe, if flashing (`onTimeS` and `offTimeS` must both be specified). Optional. Shorter on/off times increase net traffic.
+* `<updatePos>` Boolean. If true: the strobe spot location is updated more frequently to reduce beam appearance for moving units (increases net traffic). Optional.
+
+Returns: None
+
+**Example 1:**  `helms.effect.startIrStrobeOnStatic ('static-4-1', {x=0,y=3,z=0}, 0.5, 0.6)` Start flashing strobe 3m above "static-4-1". Pulse length 0.5s 0.6s between pulses.
+
+**Example 2:**  `helms.effect.startIrStrobeOnStatic ('static-4-1')` Start steady strobe on top of "static-4-1".
+
+**Example 3:**  `helms.effect.startIrStrobeOnUnit ('flasher-4-1', {x=-3,y=0,z=0}, 5, 1,true)` Start flashing strobe on top of unit "flasher-4-1", 3m behind centre. Pulse length 5s 1s between pulses.
+
+### Stop IR Strobe on unit or static
+`helms.effect.stopIrStrobeOnStatic` and `helms.effect.stopIrStrobeOnUnit` stops a strobe effect attached to a unit or static previously started with `helms.effect.startIrStrobeOnStatic` or `helms.effect.startIrStrobeOnUnit` 
+
+Usage: 
+* `helms.effect.stopIrStrobeOnStatic(<staticName>)`
+* `helms.effect.stopIrStrobeOnUnit(<unitName>)`
+
+Where
+* `<staticName>` / `<unitName>` Is the name of the static object or unit - Note: Use "unit name" as displayed in ME (even for statics). Not "group name"
+
+Returns: None
+
+**Example 1:**  `helms.effect.stopIrStrobeOnStatic("static-5")`
+
+**Example 2:**  `helms.effect.stopIrStrobeOnUnit("flasher-2")` 
+
 ## Predicate helpers - helms.predicate
 ### Basic predicates - unitExists
 `helms.predicate.unitExists` is the basis of the unit predicates in HeLMS. This method allows an optional zone, coalition (`coalition.side`) and category (`Group.Category`) to be specified. More complex predicates are built by passing in other functions to check. N.B.: in the current vesions, only circular zones are supported.
