@@ -16,13 +16,14 @@ minitrons = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 minitrons.poll_interval = 59.5 --seconds, time between updates of jamming effects
+minitrons.rep_rcs = 10 -- m^2 representa
 ----------------------------------------------------------------------------------------------------------
 
 --[[
     Key = Jammer name
     Value = Jammer config options
 --]]
-minitrons.jammerType = { Type1 = {noseGimbal = 60, tailGimbal = 60}}
+minitrons.jammerType = { Type1 = {nose = {gimbal = 60, effPwr = 10}, tail = { gimbal = 60, effPwr = 10} }}
 
 --[[
     Key = SAM Unit Name
@@ -34,14 +35,35 @@ minitrons.samConfig =
     { 
             config = 
             {
-                --degradeMinCoef = 0.1, -- Minimum scale factor for performance (max engagement range) that can be applied due to jamming
-                recoverySeconds = 30, -- seconds  
-                -- recoveryScale -- Scale factor per tick (calculated from recoverySeconds)
-                -- recoveryAdd -- Additive recovery per tick (calculated from recoverySeconds)
-
+                recoveryPerSecond = 10, -- pct per second  
+                effPwr = 10000    -- effective power:  Watts, power x antenna gain
             }
-            , byType = {Type1 = {} }}
+            , typeFilterCoeff =
+            {
+                Type1 =  1 -- x => every watt of jamming masks x watts of reflected signal.
+            }
+            --, finalTypeCoeff = {Type1 = ...}
+    }
 }
+
+
+--------------------------------------------------------------------------------------------------------
+-- Precompute config
+
+minitrons.preComputeCoeffs = function()
+
+    local minFilterCoeff = 1e-12
+    local rcsCoeff = (minitrons.rep_rcs / (4 * math.pi))
+
+    -- detection range ^ 2 = jammer range * sqrt( rcsCoeff * effPwrTx / (effPwrJm * filterCoeff))
+    -- Coeff should also convert this into a proportion of the SAM max range
+    -- Get max jamming effect per tick on each transmitter
+    -- Linearly reduce jamming effect per tick, take max of reducced effect and new effect this tick
+    
+end
+
+--------------------------------------------------------------------------------------------------------
+
 
 --[[
     Key = Unit name
