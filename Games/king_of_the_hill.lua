@@ -36,6 +36,8 @@ king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets.
 king_of_the_hill.zone_border_smokes = 24
 king_of_the_hill.zone_border_smoke_colour = "RED"
 
+king_of_the_hill.death_poll_interval = 1.11 -- seconds
+
 -- Suggested feature: - King can be insta-killed
 ----------------------------------------------------------------------------------------------------------
 
@@ -58,23 +60,24 @@ end
 -- Event handlers
 helms.events.enableHitLogging()
 helms.events.enableSpawnLogging()
+helms.events.enableDeathPolling(king_of_the_hill.death_poll_interval, king_of_the_hill.deadHandler)
 
-king_of_the_hill.eventHandler = { 
-	onEvent = function(self,event)
-		--[[if (event.id == world.event.S_EVENT_HIT) then
-			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
-		elseif (event.id == world.event.S_EVENT_KILL) then
-			helms.util.safeCall(king_of_the_hill.killHandler,{event.target,event.initiator},king_of_the_hill.catchError)
-        elseif (event.id == world.event.S_EVENT_DEAD) then
-           helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
-        --elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
-            --helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
-        --else]]if (event.id == world.event.S_EVENT_UNIT_LOST) then
-            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
-		end
-	end
-}
-world.addEventHandler(king_of_the_hill.eventHandler)
+-- king_of_the_hill.eventHandler = { 
+-- 	onEvent = function(self,event)
+-- 		--[[if (event.id == world.event.S_EVENT_HIT) then
+-- 			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
+-- 		elseif (event.id == world.event.S_EVENT_KILL) then
+-- 			helms.util.safeCall(king_of_the_hill.killHandler,{event.target,event.initiator},king_of_the_hill.catchError)
+--         elseif (event.id == world.event.S_EVENT_DEAD) then
+--            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
+--         --elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
+--             --helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
+--         --else]]if (event.id == world.event.S_EVENT_UNIT_LOST) then
+--             helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
+-- 		end
+-- 	end
+-- }
+-- world.addEventHandler(king_of_the_hill.eventHandler)
 
 --[[king_of_the_hill.hitHandler = function(target, initiator)
 
@@ -112,6 +115,8 @@ king_of_the_hill.deadHandler = function(initiator, time)
             end
         end
     end
+
+    return true -- continue polling 
 end
 
 --[[king_of_the_hill.killHandler = function(target, initiator)

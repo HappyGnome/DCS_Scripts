@@ -2995,7 +2995,10 @@ end
 helms.events = {
     hitLoggingEnabled_ = false,
     lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
-    lastSpawn_ = {}
+    lastSpawn_ = {},
+    livingUnitsLastTick_ = {}, -- key == unit ID
+    unitDeathCallbacks_ = {},
+    unitDeathTickS = nil
 }
 
 helms.events.getLastHitBy = function(unitHitName)
@@ -3021,6 +3024,8 @@ helms.events.spawnHandler_ = function(initiator, time)
     if not initiator.Category == Object.Category.UNIT then return end
 
     local initName = initiator:getName()
+
+    helms.events.livingUnitsLastTick_[initiator:getObjectID()] = {spawnTime = time}
 
     helms.events.lastSpawn_[initName] = { time = time }
 end
@@ -3054,6 +3059,55 @@ helms.events.enableSpawnLogging = function()
     world.addEventHandler(eventHandler)
 
     helms.events.spawnLoggingEnabled_ = true
+end
+
+--[[
+    deathPollInterval - seconds, 
+    deadHandler = function(unit, deathTime) - return false to remove the callback
+--]]
+helms.events.enableDeathPolling = function(deathPollInterval, deadHandler)
+
+    if type(deadHandler) ~= 'function' then return end
+
+    local firstCall = helms.events.unitDeathTickS == nil 
+
+    if firstCall or helms.events.unitDeathTickS < deathPollInterval then
+        helms.events.unitDeathTickS = deathPollInterval
+    end
+
+    helms.events.unitDeathCallbacks_[#helms.events.unitDeathCallbacks_+1] = deadHandler
+    
+    if firstCall then
+        local callback = function()
+
+            local now = timer.getTime()
+
+            local newLivingUnits = {}
+
+            for _,side in pairs(coalition.side) do
+                for _,gp in pairs(coalition.getGroups(side)) do
+                    if gp ~= nil then
+
+                        for _, unit in pairs(gp:getUnits()) do
+                            if unit ~= nil then
+                                newLivingUnits[unit:getObjectID()] = 1 -- TODO
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- TODO detect diff old vs new and respawns
+
+            helms.event.livingUnitsLastTick_ = newLivingUnits
+
+            return now + helms.events.unitDeathTickS
+        end
+
+        helms.events.enableSpawnLogging()
+
+        helms.dynamic.scheduleFunctionSafe(callback,nil,timer.getTime() + helms.events.unitDeathTickS,nil, helms.catchError)
+    end
 end
 ---------------------------------------------------------------------------------------------------
 helms.mission._buildMEGroupLookup()
