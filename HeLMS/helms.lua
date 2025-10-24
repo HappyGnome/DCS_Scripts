@@ -2998,7 +2998,8 @@ helms.events = {
     lastSpawn_ = {},
     livingUnitsLastTick_ = {}, -- key == unit ID
     unitDeathCallbacks_ = {},
-    unitDeathTickS = nil
+    unitDeathTickS = nil,
+    unitDeathTickNo = 1
 }
 
 helms.events.getLastHitBy = function(unitHitName)
@@ -3025,7 +3026,12 @@ helms.events.spawnHandler_ = function(initiator, time)
 
     local initName = initiator:getName()
 
-    helms.events.livingUnitsLastTick_[initiator:getObjectID()] = {spawnTime = time}
+--    -- Track respawns of living units for death detection
+--    local objID = initiator:getObjectID()
+--
+--    if helms.events.livingUnitsLastTick_[objID] ~= nil then
+--        helms.events.livingUnitsLastTick_[objID] = 0
+--    end
 
     helms.events.lastSpawn_[initName] = { time = time }
 end
@@ -3062,6 +3068,17 @@ helms.events.enableSpawnLogging = function()
 end
 
 --[[
+-- Callback when unit death/disappearance detected during death polling
+--]]
+helms.events.unitDied_=function(unit,name,time)
+    for k,v in pairs(helms.events.unitDeathCallbacks_) do
+        if v(unit,name,time) == false then
+            helms.events.unitDeathCallbacks_[k] = nil
+        end
+    end
+end
+
+--[[
     deathPollInterval - seconds, 
     deadHandler = function(unit, deathTime) - return false to remove the callback
 --]]
@@ -3075,32 +3092,37 @@ helms.events.enableDeathPolling = function(deathPollInterval, deadHandler)
         helms.events.unitDeathTickS = deathPollInterval
     end
 
-    helms.events.unitDeathCallbacks_[#helms.events.unitDeathCallbacks_+1] = deadHandler
+    helms.events.unitDeathCallbacks_[#helms.events.unitDeathCallbacks_+1] = helms.util.safeCallWrap(deadHandler, helms.catchError)
     
     if firstCall then
         local callback = function()
 
             local now = timer.getTime()
 
-            local newLivingUnits = {}
-
+            helms.events.unitDeathTickNo = 3 - helms.events.unitDeathTickNo -- 1 or 2
+             
             for _,side in pairs(coalition.side) do
                 for _,gp in pairs(coalition.getGroups(side)) do
-                    if gp ~= nil then
+                    for _, unit in pairs(gp:getUnits()) do
+                        local objID = unit:getObjectID()
+                        local name = unit:getName()
 
-                        for _, unit in pairs(gp:getUnits()) do
-                            if unit ~= nil then
-                                newLivingUnits[unit:getObjectID()] = 1 -- TODO
-                            end
-                        end
+                        if Unit.getByName(name)  then -- TODO: correct condition TBD
+                            helms.events.livingUnitsLastTick_[objID] = {helms.events.unitDeathTickNo,unit,name}
+                        end 
                     end
                 end
             end
 
-            -- TODO detect diff old vs new and respawns
+            for k,v in pairs(helms.events.livingUnitsLastTick_) do
 
-            helms.event.livingUnitsLastTick_ = newLivingUnits
+                if v[1] ~= helms.events.unitDeathTickNo then
+                    helms.events.livingUnitsLastTick_[k] = nil
+                    helms.events.unitDied_(v[2],v[3],now)
+                end
 
+            end
+            
             return now + helms.events.unitDeathTickS
         end
 
