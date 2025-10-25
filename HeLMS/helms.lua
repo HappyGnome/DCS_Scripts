@@ -7,7 +7,7 @@
 --#######################################################################################################
 
 --NAMESPACES----------------------------------------------------------------------------------------------
-helms = { version = 1.15 }
+helms = { version = 1.16 }
 
 ----------------------------------------------------------------------------------------------------------
 --helms.util - LUA EXTENSIONS-----------------------------------------------------------------------------
@@ -2996,7 +2996,7 @@ helms.events = {
     hitLoggingEnabled_ = false,
     lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
     lastSpawn_ = {},
-    unitDeathTracked_ = {}, -- key == unit Name, value = last known object ID
+    unitDeathTracked_ = {}, -- key == unit Name, value = {last known object ID,unit}
     unitDeathNotified_ = {}, -- key == unit Name, value = last known object ID
     unitDeathCallbacks_ = {},
     unitDeathTickS = nil,
@@ -3027,7 +3027,7 @@ helms.events.hitHandler_ = function(target, initiator, time)
     }
 
     if helms.events.unitDeathTrackHitUnits then
-        helms.events.unitDeathTracked_[tgtName] = target:getObjectID()
+        helms.events.unitDeathTracked_[tgtName] = {target:getObjectID(),target}
     end
 end
 
@@ -3081,7 +3081,7 @@ end
 --[[
 -- Callback when unit death/disappearance detected during death polling
 --]]
-helms.events.unitDied_=function(name,objID,time)
+helms.events.unitDied_=function(name,objID, unit,time)
 
     if helms.events.unitDeathNotified_[name] == objID then 
         helms.log_i.log("Duplicate death event blocked")
@@ -3090,7 +3090,7 @@ helms.events.unitDied_=function(name,objID,time)
     helms.events.unitDeathNotified_[name] = objID
 
     for k,v in pairs(helms.events.unitDeathCallbacks_) do
-        if v(name,objID,time) == false then
+        if v(name,unit,time) == false then
             helms.events.unitDeathCallbacks_[k] = nil
         end
     end
@@ -3103,7 +3103,7 @@ helms.events.registerUnitForDeathPoll = function(unitName)
     local unit = Unit.getByName(unitName)
     if unit ~= nil then
         if helms.events.unitDeathTrackHitUnits then
-            helms.events.unitDeathTracked_[unitName] = unit:getObjectID()
+            helms.events.unitDeathTracked_[unitName] = {unit:getObjectID(),unit}
         end
     else
         helms.log_i.log("Warning: unit " .. unitName .. " does not exist and will not generate death event.")
@@ -3116,7 +3116,9 @@ end
 --]]
 helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, trackAllUnitsHit)
 
+    helms.log_i.log("enabledeathPolling called") --TODO
     if type(deadHandler) ~= 'function' then return end
+    helms.log_i.log("enabledeathPolling continue") --TODO
     if trackAllUnitsHit==true then 
         helms.events.enableHitLogging()
         helms.events.unitDeathTrackHitUnits = true
@@ -3136,11 +3138,11 @@ helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, track
 
             local now = timer.getTime()
              
-            for name,objID in pairs(helms.events.unitDeathTracked_) do
+            for name,v in pairs(helms.events.unitDeathTracked_) do
                 local unit = Unit.getByName(name)
-                if unit == nil or unit:getObjectID() ~= objID then 
+                if unit == nil or unit:getObjectID() ~= v[1] then 
                     helms.events.unitDeathTracked_[name] = nil
-                    helms.events.unitDied_(name,objID,now)
+                    helms.events.unitDied_(name,objID, unit,now)
                 end
             end
 
