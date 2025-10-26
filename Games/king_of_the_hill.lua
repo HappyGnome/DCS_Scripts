@@ -59,20 +59,19 @@ end
 -----------------------------------------------------------------------------------------------------------
 -- Event handlers
 
-king_of_the_hill.deadHandler = function(initName, initUnit, time)
-    king_of_the_hill.log_i.log({initName, initUnit})--TODO
-    if (initName==nil) or (initUnit==nil) then return end
+king_of_the_hill.deadHandler = function(initName, time)
+    if (initName==nil) then return end
 
     local lastHitEvent = helms.events.getLastHitBy(initName) 
     if not lastHitEvent then return end
-    king_of_the_hill.log_i.log({initName, initUnit,lastHitEvent})--TODO
+
     for k,v in pairs(king_of_the_hill.games) do
 
         if v.rules.kingSince and v.rules.kingSince < lastHitEvent.time then
             if v.rules.kingUnitName == lastHitEvent.initiatorName then
 
                 -- previous king cannot be "re-killed" by another hit after losing the crown
-                king_of_the_hill.kingGetKill_ (v, initName, initUnit)
+                king_of_the_hill.kingGetKill_ (v, initName, time)
 
             --[[elseif v.rules.kingUnitName == initName then
                 king_of_the_hill.kingKilled_(v,lastHitEvent.initiatorName)]]
@@ -186,7 +185,9 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
     if not game.rules.kingUnitName then return end
     local unit = Unit.getByName(game.rules.kingUnitName)
 
-    if unit == nil then
+    local kingSpawn = helms.events.getLastSpawn(game.rules.kingUnitName)
+
+    if unit == nil or (kingSpawn and game.rules.kingSince and kingSpawn.time > game.rules.kingSince) then
         king_of_the_hill.loseCrown_(game, now)
         --game.rules.kingLostAt = now
         return 
@@ -404,8 +405,8 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     return true -- handled
 end
 
-king_of_the_hill.kingGetKill_ = function(game, killedUnitName, killedUnit)
-    if (not killedUnit) or (not killedUnitName) or (not game.running) then return end
+king_of_the_hill.kingGetKill_ = function(game, killedUnitName, now)
+    if (not killedUnitName) or (not game.running) then return end
 
     -- Ignore a second "kill" on the previous king
     local prevKingKilledAt = game.rules.prevKingsKilledAt[killedUnitName]
@@ -420,11 +421,13 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnitName, killedUnit)
     --king_of_the_hill.log_i.log({"gpcat",groupCategory})
     --if groupCategory ~= Group.Category.AIRPLANE and groupCategory ~= Group.Category.HELICOPTER then return end
 
-    local killedUnitFriendlyName = Unit.getPlayerName(killedUnit)
-    if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
+    local killedUnitFriendlyName = "Unknown"
+    if killedUnitLastSpawn and killedUnitLastSpawn.playerName then 
+        killedUnitFriendlyName = killedUnitLastSpawn.playerName
+    else
+        killedUnitFriendlyName = killedUnitName 
+    end
 
-    local now = timer.getTime()
-    
     king_of_the_hill.nextScoreSegment(game, now, false) --no multiplier reset
 
     game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
@@ -825,7 +828,7 @@ king_of_the_hill.Test_KingGetKill = function(gameName, unitKilledName)
     end
     if king_of_the_hill.games[gameName] and unit then
         helms.log_i.log("Test_KingGetKill " .. gameName .." " .. unitKilledName)
-        king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unitKilledName,unit)
+        king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unitKilledName, timer.getTime())
     end
 end
 

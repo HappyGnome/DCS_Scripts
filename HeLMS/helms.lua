@@ -2995,12 +2995,11 @@ end
 helms.events = {
     hitLoggingEnabled_ = false,
     lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
-    lastSpawn_ = {},
-    unitDeathTracked_ = {}, -- key == unit Name, value = {last known object ID,unit}
-    unitDeathNotified_ = {}, -- key == unit Name, value = last known object ID
+    lastSpawn_ = {}, -- key = unit name, value = {time = .., playerName = ...}
+    unitDeathTracked_ = {}, -- key == unit Name, value = bool (death notified)
     unitDeathCallbacks_ = {},
     unitDeathTickS = nil,
-    unitDeathTrackHitUnits = false
+    unitDeathTrackHitUnits = false,
 }
 
 helms.events.getLastHitBy = function(unitHitName)
@@ -3021,13 +3020,11 @@ helms.events.hitHandler_ = function(target, initiator, time)
     helms.events.lastHitBy_[tgtName] = 
     {
         time = time, 
-        initiatorName = initName,
-        initiatorID = initiator:getObjectID(),
-        tgtID = target:getObjectID()
+        initiatorName = initName
     }
 
     if helms.events.unitDeathTrackHitUnits then
-        helms.events.unitDeathTracked_[tgtName] = {target:getObjectID(),target}
+        helms.events.unitDeathTracked_[tgtName] = false
     end
 end
 
@@ -3037,14 +3034,13 @@ helms.events.spawnHandler_ = function(initiator, time)
 
     local initName = initiator:getName()
 
---    -- Track respawns of living units for death detection
---    local objID = initiator:getObjectID()
---
---    if helms.events.livingUnitsLastTick_[objID] ~= nil then
---        helms.events.livingUnitsLastTick_[objID] = 0
---    end
+    if helms.events.unitDeathTracked_[initName] == false then
+        helms.events.unitDied_(initName,time)
+    end
+    helms.events.unitDeathTracked_[initName] = nil
 
-    helms.events.lastSpawn_[initName] = { time = time }
+    helms.events.lastSpawn_[initName] = { time = time, playerName = initiator:getPlayerName() }
+    helms.events.lastHitBy_[initName] = nil -- Clear hit events each life
 end
 
 helms.events.enableHitLogging = function()
@@ -3081,19 +3077,14 @@ end
 --[[
 -- Callback when unit death/disappearance detected during death polling
 --]]
-helms.events.unitDied_=function(name,objID, unit,time)
-
-    if helms.events.unitDeathNotified_[name] == objID then 
-        helms.log_i.log("Duplicate death event blocked")
-        return 
-    end
-    helms.events.unitDeathNotified_[name] = objID
+helms.events.unitDied_=function(name,time)
 
     for k,v in pairs(helms.events.unitDeathCallbacks_) do
-        if v(name,unit,time) == false then
+        if v(name,time) == false then
             helms.events.unitDeathCallbacks_[k] = nil
         end
     end
+    helms.events.unitDeathTracked_[name] =true
 end
 
 --[[
@@ -3103,7 +3094,7 @@ helms.events.registerUnitForDeathPoll = function(unitName)
     local unit = Unit.getByName(unitName)
     if unit ~= nil then
         if helms.events.unitDeathTrackHitUnits then
-            helms.events.unitDeathTracked_[unitName] = {unit:getObjectID(),unit}
+            helms.events.unitDeathTracked_[unitName] = false
         end
     else
         helms.log_i.log("Warning: unit " .. unitName .. " does not exist and will not generate death event.")
@@ -3113,16 +3104,19 @@ end
 --[[
     deathPollInterval - seconds, 
     deadHandler = function(name,objectID, deathTime) - return false to remove the callback
+
+    enables hit logging and spawn logging
 --]]
 helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, trackAllUnitsHit)
 
-    helms.log_i.log("enabledeathPolling called") --TODO
     if type(deadHandler) ~= 'function' then return end
-    helms.log_i.log("enabledeathPolling continue") --TODO
+
     if trackAllUnitsHit==true then 
         helms.events.enableHitLogging()
         helms.events.unitDeathTrackHitUnits = true
     end
+
+    helms.events.enableSpawnLogging()
 
     local firstCall = helms.events.unitDeathTickS == nil 
 
@@ -3140,9 +3134,8 @@ helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, track
              
             for name,v in pairs(helms.events.unitDeathTracked_) do
                 local unit = Unit.getByName(name)
-                if unit == nil or unit:getObjectID() ~= v[1] then 
-                    helms.events.unitDeathTracked_[name] = nil
-                    helms.events.unitDied_(name,objID, unit,now)
+                if unit == nil and v == false then 
+                    helms.events.unitDied_(name,now)
                 end
             end
 
