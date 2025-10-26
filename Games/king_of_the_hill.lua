@@ -17,7 +17,7 @@ end
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
-king_of_the_hill.version = 1.41
+king_of_the_hill.version = 1.5
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
@@ -59,11 +59,11 @@ end
 -----------------------------------------------------------------------------------------------------------
 -- Event handlers
 
-king_of_the_hill.deadHandler = function(initName, time)
+king_of_the_hill.deadHandler = function(initName, time, spawnCount)
     if (initName==nil) then return end
 
     local lastHitEvent = helms.events.getLastHitBy(initName) 
-    if not lastHitEvent then return end
+    if (not lastHitEvent) or (lastHitEvent.spawnCount ~= spawnCount) then return end
 
     for k,v in pairs(king_of_the_hill.games) do
 

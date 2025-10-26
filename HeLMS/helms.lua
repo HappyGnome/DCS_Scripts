@@ -2994,8 +2994,9 @@ end
 
 helms.events = {
     hitLoggingEnabled_ = false,
-    lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
-    lastSpawn_ = {}, -- key = unit name, value = {time = .., playerName = ...}
+    lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit, spawnCount = ...}
+                                --, friendly fire not counted
+    lastSpawn_ = {}, -- key = unit name, value = {time = .., playerName = ..., spawnCount = ...}
     unitDeathTracked_ = {}, -- key == unit Name, value = bool (death notified)
     unitDeathCallbacks_ = {},
     unitDeathTickS = nil,
@@ -3017,10 +3018,16 @@ helms.events.hitHandler_ = function(target, initiator, time)
 
     if target:getCoalition() == initiator:getCoalition() then return end
 
+    local tgtSpawnCount = 0
+    if helms.events.lastSpawn_[tgtName] then
+        tgtSpawnCount = helms.events.lastSpawn_[tgtName].spawnCount
+    end
+
     helms.events.lastHitBy_[tgtName] = 
     {
         time = time, 
-        initiatorName = initName
+        initiatorName = initName,
+        spawnCount = tgtSpawnCount
     }
 
     if helms.events.unitDeathTrackHitUnits then
@@ -3034,15 +3041,24 @@ helms.events.spawnHandler_ = function(initiator, time)
 
     local initName = initiator:getName()
 
+    local newStats = { time = time, playerName = initiator:getPlayerName(), spawnCount = 1}
+
+    if helms.events.lastSpawn_[initName] then
+        newStats.spawnCount = helms.events.lastSpawn_[initName].spawnCount + 1
+    end
+
+    helms.events.lastSpawn_[initName] = newStats
+
     if helms.events.unitDeathTracked_[initName] == false then
-        helms.events.unitDied_(initName,time)
+        helms.events.unitDied_(initName,time,newStats.spawnCount - 1 )
     end
     helms.events.unitDeathTracked_[initName] = nil
 
-    helms.events.lastSpawn_[initName] = { time = time, playerName = initiator:getPlayerName() }
-    helms.events.lastHitBy_[initName] = nil -- Clear hit events each life
 end
 
+--[[
+--  Hit logs contain spawn counts only if spawn logging is enabled
+--]]
 helms.events.enableHitLogging = function()
     if helms.events.hitLoggingEnabled_ then return end
 
@@ -3076,11 +3092,12 @@ end
 
 --[[
 -- Callback when unit death/disappearance detected during death polling
+-- spawnCount is the number of spawns then unit had (if tracked) at time of death. Not including the respawn in progeress, if death detected on respawn
 --]]
-helms.events.unitDied_=function(name,time)
+helms.events.unitDied_=function(name,time, spawnCount)
 
     for k,v in pairs(helms.events.unitDeathCallbacks_) do
-        if v(name,time) == false then
+        if v(name,time,spawnCount) == false then
             helms.events.unitDeathCallbacks_[k] = nil
         end
     end
@@ -3135,7 +3152,12 @@ helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, track
             for name,v in pairs(helms.events.unitDeathTracked_) do
                 local unit = Unit.getByName(name)
                 if unit == nil and v == false then 
-                    helms.events.unitDied_(name,now)
+                    local lastSpawn = helms.events.lastSpawn_[name]
+                    local spawnCount = 0
+                    if lastSpawn then
+                        spawnCount = lastSpawn.spawnCount
+                    end
+                    helms.events.unitDied_(name,now, spawnCount)
                 end
             end
 
