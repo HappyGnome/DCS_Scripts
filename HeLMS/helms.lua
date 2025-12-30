@@ -311,6 +311,12 @@ helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
+helms.maths.pascal2hectopascal = 0.01
+helms.maths.kelvin2celcius = -273.15
+
+
+helms.maths.zero2 = {x = 0, y = 0}
+helms.maths.zero3 = {x = 0, y = 0, z = 0}
 
 --[[
 True heading point A to point B, in degrees
@@ -556,6 +562,16 @@ helms.maths.isPointInPoly = function(point, verts)
     end
 
     return winding ~= 0
+end
+
+helms.maths.round = function(x)
+    local floor = math.floor(x)
+
+    if x - floor >= 0.5 then 
+        return floor + 1
+    else
+        return floor
+    end
 end
 
 ----------------------------------------------------------------------------------------------------------
@@ -2333,8 +2349,8 @@ helms.ui.convert.getDHMS = function(seconds)
     if seconds then
         return {
             d = math.floor(seconds / 86400),
-            h = math.floor(seconds / 3600),
-            m = math.floor(seconds / 60),
+            h = math.floor((seconds % 86400) / 3600),
+            m = math.floor((seconds % 3600) / 60),
             s =
                 seconds % 60
         }
