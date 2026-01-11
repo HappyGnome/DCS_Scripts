@@ -623,6 +623,122 @@ helms.physics.TasKts = function(obj)
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
 end
 
+-- [[
+-- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
+-- See https://en.wikipedia.org/wiki/Julian_day
+-- ]]
+helms.physics.YMD2MJD2000 = function(year,month,day)
+    local janFebFac = math.modf((month - 14) / 12)
+    local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
+    local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
+    local monthYearCorr0 = math.modf((year + 4900 + janFebFac) / 100)
+    local monthYearCorr1 = math.modf(3 * monthYearCorr0 / 4)
+    local epochTerm = 32075 + 2451545 -- Julian days elapsed relative to Midnight Jan 1st 2000
+
+    return yearTerm + monthTerm - monthYearCorr1 + day - epochTerm
+end
+
+--[[
+-- Get days elapsed from the winter solstice (Northern Hemisphere) 1999 to 00:00Z on the given Gregorian date
+--]]
+helms.physics.YMD2JDWinter99 = function(year,month,day)
+    return helms.physics.YMD2MJD2000(year,month,day) + 9.67791
+end
+
+--[[
+-- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
+-- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
+--]]
+helms.physics.EstimateDaylightTiltFactors = function(year,month,day)
+    local daysSolsticeDatum = helms.physics.YMD2JDWinter99(year,month,day)
+    local _,tropicalYearPart = math.modf(daysSolsticeDatum / 365.24219) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year)
+    local orbitRads = 2 * math.pi * tropicalYearPart -- estimate radians through earth's orbit since winter solstice
+
+    local maxTiltRads = 23.44 * helms.maths.deg2rad
+    local sinTilt = math.sin(maxTiltRads)
+    local cosTilt = math.cos(maxTiltRads)
+
+    local tiltResult = math.asin(sinTilt * math.cos(orbitRads))
+
+    local noonAberRads = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt) - orbitRads
+
+    return tiltResult,noonAberRads
+end
+
+--[[
+-- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
+-- Return zulu times in fractional hours, values greater than 24 or less than 0 indicate next day or previous day (w.r.t. UTC)
+--]]
+helms.physics.EstimateSunriseSunsetZ = function(year,month,day, lat,lon)
+    local tiltRads, noonAber = helms.physics.EstimateDaylightTiltFactors (year,month,day)
+
+    local numerator = math.sin(tiltRads)
+
+    if lat < 0 then 
+        numerator = -1 * numerator
+    elseif lat == 0 then
+        numerator = 0
+    end
+
+    local denom = math.cos(lat * helms.math.deg2rad)
+
+    if math.abs(numerator) > denom then
+        if numerator > 0 then
+            return 12, 12 -- no daylight
+        else
+            return 0, 24 -- full daylight
+        end
+    elseif denom <= 0 then -- implies numerator == 0
+        return 6, 18
+    end
+
+    local sunlightHalfRads = math.acos(numerator/denom)
+
+    local lonRads = helms.maths.deg2rad * lon
+
+    local dawnRads = math.pi - sunlightHalfRads + noonAber - lonRads
+    local duskRads = math.pi + sunlightHalfRads + noonAber - lonRads
+
+    return 12 * dawnRads / math.pi , 12 * duskRads / math.pi
+
+end
+
+--[[
+--
+local YMD2MJD2000 = function(year,month,day)
+    local janFebFac = math.modf((month - 14) / 12)
+    local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
+    local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
+    local monthYearCorr0 = math.modf((year + 4900 + janFebFac) / 100)
+    local monthYearCorr1 = math.modf(3 * monthYearCorr0 / 4)
+    local epochTerm = 32075 + 2451545 -- Julian days elapsed relative to Midnight Jan 1st 2000
+
+    return yearTerm + monthTerm - monthYearCorr1 + day - epochTerm
+end
+
+local sincews = YMD2MJD2000(2026,12,22)+ 9.67791
+
+local yearsFrac = sincews / 365.2564 
+
+local years = math.floor(yearsFrac)
+
+local daysFrac = (yearsFrac - years) * 365.2564 
+
+local days = math.floor(daysFrac)
+
+local hrsFrac = (daysFrac - days) * 24
+
+local hrs = math.floor(hrsFrac)
+
+local minFrac = (hrsFrac - hrs) * 60
+
+local mins = math.floor(minFrac)
+
+
+print("Years:" .. years .. ", Days: " .. days .. ", hrs: " .. hrs .. ", Mins: " .. mins)
+--]]
+
+
 ----------------------------------------------------------------------------------------------------------
 --CONST------------------------------------------------------------------------------------------------
 helms.const = {}
