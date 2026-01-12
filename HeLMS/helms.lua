@@ -622,7 +622,8 @@ helms.physics.TasKts = function(obj)
 
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
 end
-
+-- local helms = {physics = {}, maths = {deg2rad = 0.01745329}}
+-- print (helms.physics.EstimateSunriseSunsetZ(2026,1,12, 50.733,-3.4))
 -- [[
 -- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
 -- See https://en.wikipedia.org/wiki/Julian_day
@@ -660,7 +661,10 @@ helms.physics.EstimateDaylightTiltFactors = function(year,month,day)
 
     local tiltResult = math.asin(sinTilt * math.cos(orbitRads))
 
-    local noonAberRads = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt) - orbitRads
+    local atanres = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt)
+    if (atanres < 0) then atanres = atanres + 2 * math.pi end
+
+    local noonAberRads = atanres - orbitRads
 
     return tiltResult,noonAberRads
 end
@@ -671,16 +675,15 @@ end
 --]]
 helms.physics.EstimateSunriseSunsetZ = function(year,month,day, lat,lon)
     local tiltRads, noonAber = helms.physics.EstimateDaylightTiltFactors (year,month,day)
+    
+    local lonRads = helms.maths.deg2rad * lon
+    local latRads = helms.maths.deg2rad * lat
 
-    local numerator = math.sin(tiltRads)
+    local refracCorr = 0.833 * helms.maths.deg2rad -- approximate correction for refraction and the sun's angular radius
 
-    if lat < 0 then 
-        numerator = -1 * numerator
-    elseif lat == 0 then
-        numerator = 0
-    end
+    local numerator = math.sin(tiltRads) * math.sin(latRads) - math.sin(refracCorr)
 
-    local denom = math.cos(lat * helms.math.deg2rad)
+    local denom = math.cos(latRads) * math.cos(tiltRads)
 
     if math.abs(numerator) > denom then
         if numerator > 0 then
@@ -694,13 +697,25 @@ helms.physics.EstimateSunriseSunsetZ = function(year,month,day, lat,lon)
 
     local sunlightHalfRads = math.acos(numerator/denom)
 
-    local lonRads = helms.maths.deg2rad * lon
 
-    local dawnRads = math.pi - sunlightHalfRads + noonAber - lonRads
-    local duskRads = math.pi + sunlightHalfRads + noonAber - lonRads
+    local dawnRads = math.pi - sunlightHalfRads + noonAber - lonRads 
+    local duskRads = math.pi + sunlightHalfRads + noonAber - lonRads --TODO: account for sun's shadow rotation during the day (these calcs give ~4 mins too little daylight)
 
-    return 12 * dawnRads / math.pi , 12 * duskRads / math.pi
+    return 12 * dawnRads / math.pi , 12 * duskRads / math.pi 
 
+    -- Similar (but almost certainly better implementation described here: https://en.wikipedia.org/wiki/Sunrise_equation)
+
+end
+
+--TODO temp
+local hoursToTime = function(hrs)
+    local hrs1 = math.floor(hrs)
+    local mins = 60 * (hrs - hrs1)
+    local mins1 = math.floor(mins) 
+    local sec = 60 * (mins - mins1)
+    local sec1 = math.floor(sec) 
+
+    return hrs1 .. ":" .. mins1 .. ":" .. sec1 -- TODO: fix handling negative times
 end
 
 --[[
