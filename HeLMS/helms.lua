@@ -587,6 +587,8 @@ helms.physics = {}
 
 helms.physics.specGrav = 9.81
 helms.physics.mach2Coeff = 401.88 -- Estimate of coefficient T/c^2
+helms.physics.earthAxTilt = 23.44 * helms.maths.deg2rad
+
 
 -- Get specific energy (relative to the surface of the map, in wind's frame of reference)
 helms.physics.getSpecificEnergyWindRel = function(obj)
@@ -703,34 +705,86 @@ helms.physics.estimateTrueAnomaly = function (M,e)
 end
 
 --[[
+-- estimate true anomaly at a given MJD 2k
+--]]
+helms.physics.estimateTrueAnomalyAt = function(mjd2k)
+    local meanAnom = helms.maths.tau * math.fmod((mjd2k - 3.2208)/365.256363,1) -- perihelion 0518Z Jan 3rd 2000
+    return helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
+end
+
+----[[
+---- Estimate the angle between the perihelion vector and the projection of the tilt axis onto the ecliptic
+----]]
+--helms.physics.estimateTrueAnomalyOfSolstice = function (mjd2k)
+--    local mjdsol = mjd2k + 9.67791
+--    --local tropicAnom = helms.maths.tau * math.fmod(mjdsol/365.24219,1) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year). Winter solstice 1999 was 9.67791 days before epoch
+--
+--    return 6.0537925927656 - (mjdsol * 6.6747e-7) 
+--
+--    -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+--end
+--
+--[[
+-- Estimate the angle between the vernal equinox and the perihelion vector
+--]]
+helms.physics.estimateTrueAnomalyOfVE = function (mjd2k)
+    local mjdve = mjd2k - 79.315972
+
+    return math.fmod(1.3414517171284 - (mjdve * 6.6747e-7),helms.maths.tau)
+
+    -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+end
+--[[
 -- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
 -- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
+-- Optionally, a pre-computed true anomaly can be provided
 --]]
-helms.physics.estimateSunDeclination = function(mjd2k)
+helms.physics.estimateSunDeclination = function(mjd2k, trueAnom)
 
-    local meanAnom = helms.maths.tau * math.fmod((mjd2k - 3.2208)/365.256363,1) -- perihelion 0518Z Jan 3rd 2000
-    local trueAnom = helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
+    if trueAnom == nil then  trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k) end
 
-    local mjdsol = mjd2k + 9.67791
-    --local tropicAnom = helms.maths.tau * math.fmod(mjdsol/365.24219,1) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year). Winter solstice 1999 was 9.67791 days before epoch
-
-    local trueAnomAtSol = 6.0537925927656 - (mjdsol * 6.6747e-7) -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+    local trueAnomAtVE = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
 
     --local orbitRads = helms.maths.tau * tropicalYearPart -- estimate radians through earth's orbit since winter solstice
 
-    local maxTiltRads = 23.44 * helms.maths.deg2rad
-    local sinTilt = math.sin(maxTiltRads)
+    local sinTilt = math.sin(helms.physics.earthAxTilt)
     --local cosTilt = math.cos(maxTiltRads)
 
-    local tiltResult = math.asin(sinTilt * math.cos(trueAnom - trueAnomAtSol))
+    local tiltResult = math.asin(sinTilt * math.sin(trueAnom - trueAnomAtVE))
 
     --local atanres = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt)
     --if (atanres < 0) then atanres = atanres + helms.maths.tau end
 
    -- local noonAberRads = atanres - orbitRads
 
-    return tiltResult
+    return tiltResult, trueAnom
 end
+
+--[[
+Estimate the longitude where it's noon at a given mjd
+--]]
+helms.physics.estimateNoonAtLon = function(mjd2k)
+    local trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k)
+
+    local veAnom = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
+
+    local noonFromVeNoon = trueAnom - veAnom -- Angle from vernal equinox direction to solar midnight in radians
+
+    if math.abs(math.abs(noonFromVeNoon) - math.pi/2) > 0.001 and math.abs(math.abs(noonFromVeNoon) - 3 * math.pi/2) > 0.001 then 
+        noonFromVeNoon =  math.atan(math.cos(helms.physics.earthAxTilt) * math.tan (noonFromVeNoon))
+    end
+
+    local meanRotDay = 6.3003874313413 -- helms.maths.tau * 366.256363 / 365.256363
+    local meanRotWholeDay = meanRotDay - helms.maths.tau -- track whole days separate from part days to reduce rounding errors slightly
+    local wholeDay, partDay = math.modf (mjd2k - 79.315972)
+    
+    -- Greenwich hour angle at VE = 291° 53' 34" ~= 5.094490035 rads
+    local lonAtVeNoon = 5.094490035 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
+
+    return math.fmod(lonAtVeNoon + noonFromVeNoon ,helms.maths.tau)
+end
+
+
 
 --[[
 -- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
