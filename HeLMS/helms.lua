@@ -311,6 +311,7 @@ helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
+helms.maths.tau = 2 * math.pi
 
 --[[
 True heading point A to point B, in degrees
@@ -558,6 +559,26 @@ helms.maths.isPointInPoly = function(point, verts)
     return winding ~= 0
 end
 
+helms.maths.newtonRaphson = function(f,df,x0, a,b,n,tol)
+    if n == nil then n = 100 end
+    if tol == nil then tol = 0.001 end
+
+    local x = x0
+    for i = 1,n do
+        if a ~= nil and x < a then x = a end
+        if b ~= nil and x > b then x = b end
+
+        local err = f(x)
+        if math.abs(err) < tol then return x end
+
+        local dfdx = df(x)
+
+        if dfdx == 0 then return nil end
+
+        x = x - err / dfdx
+    end
+end
+
 ----------------------------------------------------------------------------------------------------------
 --PHYSICS---------------------------------------------------------------------------------------------------
 -- Physics-based calculation tools and conversions
@@ -628,7 +649,7 @@ end
 -- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
 -- See https://en.wikipedia.org/wiki/Julian_day
 -- ]]
-helms.physics.YMD2MJD2000 = function(year,month,day)
+helms.physics.yMD2MJD2000 = function(year,month,day)
     local janFebFac = math.modf((month - 14) / 12)
     local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
     local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
@@ -640,41 +661,83 @@ helms.physics.YMD2MJD2000 = function(year,month,day)
 end
 
 --[[
--- Get days elapsed from the winter solstice (Northern Hemisphere) 1999 to 00:00Z on the given Gregorian date
+Numerically solve Kepler's equation 
 --]]
-helms.physics.YMD2JDWinter99 = function(year,month,day)
-    return helms.physics.YMD2MJD2000(year,month,day) + 9.67791
+helms.physics.solveKepler = function (M,e)
+    local f = function(x)
+       return x - e*math.sin(x) - M
+    end
+
+    local df = function(x)
+       return 1 - e*math.cos(x)
+    end
+
+    return helms.maths.newtonRaphson(f,df,M, nil,nil,10,0.0001)
+end
+
+--[[
+Estimate true anomaly from the mean anomaly for an elliptic orbit, given the mean anomaly (radians) and the eccentricity
+--]]
+helms.physics.estimateTrueAnomaly = function (M,e)
+
+    if e >= 1 or e < 0 then return nil end
+
+    local ea = helms.physics.solveKepler(M,e)
+
+    if ea == nil then return nil end
+    ea = math.fmod(ea,  helms.maths.tau)
+
+    if math.abs(math.abs(ea) - math.pi) < 0.001 then
+        return ea
+    end
+
+    local t = math.tan(ea / 2)
+
+    local theta = 2 * math.atan( math.sqrt( (1+e) * t * t / (1-e) ) )
+
+    if t < 0 then
+        return helms.maths.tau - theta
+    else
+        return theta
+    end
 end
 
 --[[
 -- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
 -- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
 --]]
-helms.physics.EstimateDaylightTiltFactors = function(year,month,day)
-    local daysSolsticeDatum = helms.physics.YMD2JDWinter99(year,month,day)
-    local _,tropicalYearPart = math.modf(daysSolsticeDatum / 365.24219) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year)
-    local orbitRads = 2 * math.pi * tropicalYearPart -- estimate radians through earth's orbit since winter solstice
+helms.physics.estimateSunDeclination = function(mjd2k)
+
+    local meanAnom = helms.maths.tau * math.fmod((mjd2k - 3.2208)/365.256363,1) -- perihelion 0518Z Jan 3rd 2000
+    local trueAnom = helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
+
+    local mjdsol = mjd2k + 9.67791
+    --local tropicAnom = helms.maths.tau * math.fmod(mjdsol/365.24219,1) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year). Winter solstice 1999 was 9.67791 days before epoch
+
+    local trueAnomAtSol = 6.0537925927656 - (mjdsol * 6.6747e-7) -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+
+    --local orbitRads = helms.maths.tau * tropicalYearPart -- estimate radians through earth's orbit since winter solstice
 
     local maxTiltRads = 23.44 * helms.maths.deg2rad
     local sinTilt = math.sin(maxTiltRads)
-    local cosTilt = math.cos(maxTiltRads)
+    --local cosTilt = math.cos(maxTiltRads)
 
-    local tiltResult = math.asin(sinTilt * math.cos(orbitRads))
+    local tiltResult = math.asin(sinTilt * math.cos(trueAnom - trueAnomAtSol))
 
-    local atanres = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt)
-    if (atanres < 0) then atanres = atanres + 2 * math.pi end
+    --local atanres = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt)
+    --if (atanres < 0) then atanres = atanres + helms.maths.tau end
 
-    local noonAberRads = atanres - orbitRads
+   -- local noonAberRads = atanres - orbitRads
 
-    return tiltResult,noonAberRads
+    return tiltResult
 end
 
 --[[
 -- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
 -- Return zulu times in fractional hours, values greater than 24 or less than 0 indicate next day or previous day (w.r.t. UTC)
 --]]
-helms.physics.EstimateSunriseSunsetZ = function(year,month,day, lat,lon)
-    local tiltRads, noonAber = helms.physics.EstimateDaylightTiltFactors (year,month,day)
+helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
+    local tiltRads, noonAber = helms.physics.EstimateDaylightTiltFactors (helms.physics.YMD2JDWinter99(year,month,day))
     
     local lonRads = helms.maths.deg2rad * lon
     local latRads = helms.maths.deg2rad * lat
