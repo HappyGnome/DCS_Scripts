@@ -763,7 +763,7 @@ end
 --[[
 Estimate the longitude where it's noon at a given mjd
 --]]
-helms.physics.estimateNoonAtLon = function(mjd2k)
+helms.physics.estimateLonOfNoon = function(mjd2k)
     local trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k)
 
     local veAnom = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
@@ -778,10 +778,18 @@ helms.physics.estimateNoonAtLon = function(mjd2k)
     local meanRotWholeDay = meanRotDay - helms.maths.tau -- track whole days separate from part days to reduce rounding errors slightly
     local wholeDay, partDay = math.modf (mjd2k - 79.315972)
     
-    -- Greenwich hour angle at VE = 291° 53' 34" ~= 5.094490035 rads
-    local lonAtVeNoon = 5.094490035 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
+    -- Greenwich hour angle at reference VE = 291° 53' 34" ~= 1.1886952721795 rads eastward
+    local lonAtVeNoon = 1.1886952721795 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
 
-    return math.fmod(lonAtVeNoon + noonFromVeNoon ,helms.maths.tau)
+    local preresult = math.fmod(lonAtVeNoon + noonFromVeNoon ,helms.maths.tau)
+
+    if (preresult < -math.pi) then
+        return preresult + helms.maths.tau
+    elseif preresult > math.pi then
+        return preresult - helms.maths.tau
+    else
+      return preresult
+    end
 end
 
 
@@ -791,16 +799,32 @@ end
 -- Return zulu times in fractional hours, values greater than 24 or less than 0 indicate next day or previous day (w.r.t. UTC)
 --]]
 helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
-    local tiltRads, noonAber = helms.physics.EstimateDaylightTiltFactors (helms.physics.YMD2JDWinter99(year,month,day))
+    local mjdGwchMdnt = helms.physics.yMD2MJD2000(year,month,day)
     
     local lonRads = helms.maths.deg2rad * lon
     local latRads = helms.maths.deg2rad * lat
 
+    local mjdNoonAtLon = mjdGwchMdnt + 0.5 - lonRads / helms.maths.tau -- First approximation
+    local lonErr = 0
+
+    for i = 1,100 do
+        _,lonErr = math.modf((lonRads - helms.physics.estimateLonOfNoon(mjdNoonAtLon))/ helms.maths.tau)
+        if math.abs(lonErr) < 0.0001 then break end 
+
+        mjdNoonAtLon = mjdNoonAtLon - lonErr / helms.maths.tau
+    end
+
+    if math.abs(lonErr) > 0.001 then 
+        helms.log_e.log({"Noon time estimate did not converge",year,month,day,lon,lonErr})
+    end
+
+    local declination = helms.physics.estimateSunDeclination(mjdNoonAtLon)
+
     local refracCorr = 0.833 * helms.maths.deg2rad -- approximate correction for refraction and the sun's angular radius
 
-    local numerator = math.sin(tiltRads) * math.sin(latRads) - math.sin(refracCorr)
+    local numerator = -math.sin(declination) * math.sin(latRads) - math.sin(refracCorr)
 
-    local denom = math.cos(latRads) * math.cos(tiltRads)
+    local denom = math.cos(latRads) * math.cos(declination)
 
     if math.abs(numerator) > denom then
         if numerator > 0 then
@@ -813,26 +837,30 @@ helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
     end
 
     local sunlightHalfRads = math.acos(numerator/denom)
+    local halfDayMjdDelta = sunlightHalfRads/helms.maths.tau  
 
+    local dayfracNoon = mjdNoonAtLon - mjdGwchMdnt
+    local dayfracSunrise = dayfracNoon  - halfDayMjdDelta
+    local dayfracSunset = dayfracNoon  + halfDayMjdDelta
 
-    local dawnRads = math.pi - sunlightHalfRads + noonAber - lonRads 
-    local duskRads = math.pi + sunlightHalfRads + noonAber - lonRads --TODO: account for sun's shadow rotation during the day (these calcs give ~4 mins too little daylight)
-
-    return 12 * dawnRads / math.pi , 12 * duskRads / math.pi 
-
-    -- Similar (but almost certainly better implementation described here: https://en.wikipedia.org/wiki/Sunrise_equation)
+    return dayfracSunrise * 24 , dayfracSunset * 24
 
 end
 
---TODO temp
 local hoursToTime = function(hrs)
+    local sign = ""
+    if hrs < 0 then
+        sign = "-"
+        hrs = - hrs
+    end
+
     local hrs1 = math.floor(hrs)
     local mins = 60 * (hrs - hrs1)
     local mins1 = math.floor(mins) 
     local sec = 60 * (mins - mins1)
     local sec1 = math.floor(sec) 
 
-    return hrs1 .. ":" .. mins1 .. ":" .. sec1 -- TODO: fix handling negative times
+    return sign .. hrs1 .. ":" .. mins1 .. ":" .. sec1
 end
 
 --[[
