@@ -853,6 +853,17 @@ helms.mission.getMEGroupDataByName = function(name)
     return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
 end
 
+--[[
+-- Get start point of a named groupn in the mission file
+--]]
+helms.mission.getMEGroupStartByName = function(name)
+    local gp = helms.mission._GroupLookup[name]
+
+    if gp == nil then return nil end
+
+    return gp.startPoint
+end
+
 helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
     local ret = {}
 
