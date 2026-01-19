@@ -645,8 +645,7 @@ helms.physics.TasKts = function(obj)
 
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
 end
--- local helms = {physics = {}, maths = {deg2rad = 0.01745329}}
--- print (helms.physics.EstimateSunriseSunsetZ(2026,1,12, 50.733,-3.4))
+
 -- [[
 -- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
 -- See https://en.wikipedia.org/wiki/Julian_day
@@ -712,18 +711,6 @@ helms.physics.estimateTrueAnomalyAt = function(mjd2k)
     return helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
 end
 
-----[[
----- Estimate the angle between the perihelion vector and the projection of the tilt axis onto the ecliptic
-----]]
---helms.physics.estimateTrueAnomalyOfSolstice = function (mjd2k)
---    local mjdsol = mjd2k + 9.67791
---    --local tropicAnom = helms.maths.tau * math.fmod(mjdsol/365.24219,1) -- tropical year is ~20 mins shorter than a siderial day! (~1/26000 of a year). Winter solstice 1999 was 9.67791 days before epoch
---
---    return 6.0537925927656 - (mjdsol * 6.6747e-7) 
---
---    -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
---end
---
 --[[
 -- Estimate the angle between the vernal equinox and the perihelion vector
 --]]
@@ -734,6 +721,7 @@ helms.physics.estimateTrueAnomalyOfVE = function (mjd2k)
 
     -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
 end
+
 --[[
 -- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
 -- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
@@ -745,17 +733,10 @@ helms.physics.estimateSunDeclination = function(mjd2k, trueAnom)
 
     local trueAnomAtVE = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
 
-    --local orbitRads = helms.maths.tau * tropicalYearPart -- estimate radians through earth's orbit since winter solstice
 
     local sinTilt = math.sin(helms.physics.earthAxTilt)
-    --local cosTilt = math.cos(maxTiltRads)
 
     local tiltResult = math.asin(sinTilt * math.sin(trueAnom - trueAnomAtVE))
-
-    --local atanres = math.atan2(math.sin(orbitRads),math.cos(orbitRads)*cosTilt)
-    --if (atanres < 0) then atanres = atanres + helms.maths.tau end
-
-   -- local noonAberRads = atanres - orbitRads
 
     return tiltResult, trueAnom
 end
@@ -791,8 +772,6 @@ helms.physics.estimateLonOfNoon = function(mjd2k)
       return preresult
     end
 end
-
-
 
 --[[
 -- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
@@ -847,57 +826,25 @@ helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
 
 end
 
-local hoursToTime = function(hrs)
-    local sign = ""
-    if hrs < 0 then
-        sign = "-"
-        hrs = - hrs
+helms.physics.hoursToTime = function(hrsZ)
+    local daysFrac = hrsZ /24
+    local days = math.floor(daysFrac)
+
+    hrsZ = 24 * (daysFrac - days)
+
+    local hrs1 = math.floor(hrsZ)
+    local mins = 60 * (hrsZ - hrs1)
+    local mins1 = math.floor(mins) 
+    -- local sec = 60 * (mins - mins1)
+    -- local sec1 = math.floor(sec)
+    --
+    local daysSuffix = ""
+    if days ~= 0 then
+        daysSuffix = " (" .. days .. "days)"
     end
 
-    local hrs1 = math.floor(hrs)
-    local mins = 60 * (hrs - hrs1)
-    local mins1 = math.floor(mins) 
-    local sec = 60 * (mins - mins1)
-    local sec1 = math.floor(sec) 
-
-    return sign .. hrs1 .. ":" .. mins1 .. ":" .. sec1
+    return string.format("%02d%02dZ%s",hrs1, mins1,daysSuffix) 
 end
-
---[[
---
-local YMD2MJD2000 = function(year,month,day)
-    local janFebFac = math.modf((month - 14) / 12)
-    local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
-    local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
-    local monthYearCorr0 = math.modf((year + 4900 + janFebFac) / 100)
-    local monthYearCorr1 = math.modf(3 * monthYearCorr0 / 4)
-    local epochTerm = 32075 + 2451545 -- Julian days elapsed relative to Midnight Jan 1st 2000
-
-    return yearTerm + monthTerm - monthYearCorr1 + day - epochTerm
-end
-
-local sincews = YMD2MJD2000(2026,12,22)+ 9.67791
-
-local yearsFrac = sincews / 365.2564 
-
-local years = math.floor(yearsFrac)
-
-local daysFrac = (yearsFrac - years) * 365.2564 
-
-local days = math.floor(daysFrac)
-
-local hrsFrac = (daysFrac - days) * 24
-
-local hrs = math.floor(hrsFrac)
-
-local minFrac = (hrsFrac - hrs) * 60
-
-local mins = math.floor(minFrac)
-
-
-print("Years:" .. years .. ", Days: " .. days .. ", hrs: " .. hrs .. ", Mins: " .. mins)
---]]
-
 
 ----------------------------------------------------------------------------------------------------------
 --CONST------------------------------------------------------------------------------------------------
