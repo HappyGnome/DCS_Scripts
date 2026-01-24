@@ -731,6 +731,9 @@ helms.physics.TasKts = function(obj)
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
 end
 
+-- 
+-- Below are some experimental hels.physics methods to help estimate sunrise/sunset
+
 -- [[
 -- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
 -- See https://en.wikipedia.org/wiki/Julian_day
@@ -835,9 +838,11 @@ helms.physics.estimateLonOfNoon = function(mjd2k)
     local veAnom = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
 
     local noonFromVeNoon = trueAnom - veAnom -- Angle from vernal equinox direction to solar midnight in radians
+    local noonFromVeNoonPart = math.fmod(noonFromVeNoon,math.pi/2) 
+    local noonFromVeNoonWhole = noonFromVeNoon - noonFromVeNoonPart
 
-    if math.abs(math.abs(noonFromVeNoon) - math.pi/2) > 0.001 and math.abs(math.abs(noonFromVeNoon) - 3 * math.pi/2) > 0.001 then 
-        noonFromVeNoon =  math.atan(math.cos(helms.physics.earthAxTilt) * math.tan (noonFromVeNoon))
+    if math.abs(math.abs(noonFromVeNoonPart) - math.pi/2) > 0.001 then 
+        noonFromVeNoonPart =  math.atan(math.cos(helms.physics.earthAxTilt) * math.tan (noonFromVeNoonPart))
     end
 
     local meanRotDay = 6.3003874313413 -- helms.maths.tau * 366.256363 / 365.256363
@@ -847,7 +852,7 @@ helms.physics.estimateLonOfNoon = function(mjd2k)
     -- Greenwich hour angle at reference VE = 291° 53' 34" ~= 1.1886952721795 rads eastward
     local lonAtVeNoon = 1.1886952721795 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
 
-    local preresult = math.fmod(lonAtVeNoon + noonFromVeNoon ,helms.maths.tau)
+    local preresult = math.fmod(lonAtVeNoon + noonFromVeNoonWhole + noonFromVeNoonPart ,helms.maths.tau)
 
     if (preresult < -math.pi) then
         return preresult + helms.maths.tau
@@ -875,7 +880,7 @@ helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
         _,lonErr = math.modf((lonRads - helms.physics.estimateLonOfNoon(mjdNoonAtLon))/ helms.maths.tau)
         if math.abs(lonErr) < 0.0001 then break end 
 
-        mjdNoonAtLon = mjdNoonAtLon - lonErr / helms.maths.tau
+        mjdNoonAtLon = mjdNoonAtLon - lonErr
     end
 
     if math.abs(lonErr) > 0.001 then 
@@ -935,7 +940,8 @@ helms.physics.hoursToTime = function(hrsZ)
 
     return string.format("%02d%02dZ%s",hrs1, mins1,daysSuffix) 
 end
-
+-- End experimental sunrise/sunset calcs
+--
 ----------------------------------------------------------------------------------------------------------
 --CONST------------------------------------------------------------------------------------------------
 helms.const = {}
