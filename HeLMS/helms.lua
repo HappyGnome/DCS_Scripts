@@ -396,6 +396,7 @@ helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
+helms.maths.tau = 2 * math.pi
 
 --[[
 True heading point A to point B, in degrees
@@ -643,6 +644,26 @@ helms.maths.isPointInPoly = function(point, verts)
     return winding ~= 0
 end
 
+helms.maths.newtonRaphson = function(f,df,x0, a,b,n,tol)
+    if n == nil then n = 100 end
+    if tol == nil then tol = 0.001 end
+
+    local x = x0
+    for i = 1,n do
+        if a ~= nil and x < a then x = a end
+        if b ~= nil and x > b then x = b end
+
+        local err = f(x)
+        if math.abs(err) < tol then return x end
+
+        local dfdx = df(x)
+
+        if dfdx == 0 then return nil end
+
+        x = x - err / dfdx
+    end
+end
+
 ----------------------------------------------------------------------------------------------------------
 --PHYSICS---------------------------------------------------------------------------------------------------
 -- Physics-based calculation tools and conversions
@@ -651,6 +672,8 @@ helms.physics = {}
 
 helms.physics.specGrav = 9.81
 helms.physics.mach2Coeff = 401.88 -- Estimate of coefficient T/c^2
+helms.physics.earthAxTilt = 23.44 * helms.maths.deg2rad
+
 
 -- Get specific energy (relative to the surface of the map, in wind's frame of reference)
 helms.physics.getSpecificEnergyWindRel = function(obj)
@@ -706,6 +729,206 @@ helms.physics.TasKts = function(obj)
     local vrel = helms.physics.getWindRelativeVel(v, p)
 
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
+end
+
+-- [[
+-- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
+-- See https://en.wikipedia.org/wiki/Julian_day
+-- ]]
+helms.physics.yMD2MJD2000 = function(year,month,day)
+    local janFebFac = math.modf((month - 14) / 12)
+    local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
+    local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
+    local monthYearCorr0 = math.modf((year + 4900 + janFebFac) / 100)
+    local monthYearCorr1 = math.modf(3 * monthYearCorr0 / 4)
+    local epochTerm = 32075 + 2451545 -- Julian days elapsed relative to Midnight Jan 1st 2000
+
+    return yearTerm + monthTerm - monthYearCorr1 + day - epochTerm
+end
+
+--[[
+Numerically solve Kepler's equation 
+--]]
+helms.physics.solveKepler = function (M,e)
+    local f = function(x)
+       return x - e*math.sin(x) - M
+    end
+
+    local df = function(x)
+       return 1 - e*math.cos(x)
+    end
+
+    return helms.maths.newtonRaphson(f,df,M, nil,nil,10,0.0001)
+end
+
+--[[
+Estimate true anomaly from the mean anomaly for an elliptic orbit, given the mean anomaly (radians) and the eccentricity
+--]]
+helms.physics.estimateTrueAnomaly = function (M,e)
+
+    if e >= 1 or e < 0 then return nil end
+
+    local ea = helms.physics.solveKepler(M,e)
+
+    if ea == nil then return nil end
+    ea = math.fmod(ea,  helms.maths.tau)
+
+    if math.abs(math.abs(ea) - math.pi) < 0.001 then
+        return ea
+    end
+
+    local t = math.tan(ea / 2)
+
+    local theta = 2 * math.atan( math.sqrt( (1+e) * t * t / (1-e) ) )
+
+    if t < 0 then
+        return helms.maths.tau - theta
+    else
+        return theta
+    end
+end
+
+--[[
+-- estimate true anomaly at a given MJD 2k
+--]]
+helms.physics.estimateTrueAnomalyAt = function(mjd2k)
+    local meanAnom = helms.maths.tau * math.fmod((mjd2k - 3.2208)/365.256363,1) -- perihelion 0518Z Jan 3rd 2000
+    return helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
+end
+
+--[[
+-- Estimate the angle between the vernal equinox and the perihelion vector
+--]]
+helms.physics.estimateTrueAnomalyOfVE = function (mjd2k)
+    local mjdve = mjd2k - 79.315972
+
+    return math.fmod(1.3414517171284 - (mjdve * 6.6747e-7),helms.maths.tau)
+
+    -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+end
+
+--[[
+-- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
+-- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
+-- Optionally, a pre-computed true anomaly can be provided
+--]]
+helms.physics.estimateSunDeclination = function(mjd2k, trueAnom)
+
+    if trueAnom == nil then  trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k) end
+
+    local trueAnomAtVE = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
+
+
+    local sinTilt = math.sin(helms.physics.earthAxTilt)
+
+    local tiltResult = math.asin(sinTilt * math.sin(trueAnom - trueAnomAtVE))
+
+    return tiltResult, trueAnom
+end
+
+--[[
+Estimate the longitude where it's noon at a given mjd
+--]]
+helms.physics.estimateLonOfNoon = function(mjd2k)
+    local trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k)
+
+    local veAnom = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
+
+    local noonFromVeNoon = trueAnom - veAnom -- Angle from vernal equinox direction to solar midnight in radians
+
+    if math.abs(math.abs(noonFromVeNoon) - math.pi/2) > 0.001 and math.abs(math.abs(noonFromVeNoon) - 3 * math.pi/2) > 0.001 then 
+        noonFromVeNoon =  math.atan(math.cos(helms.physics.earthAxTilt) * math.tan (noonFromVeNoon))
+    end
+
+    local meanRotDay = 6.3003874313413 -- helms.maths.tau * 366.256363 / 365.256363
+    local meanRotWholeDay = meanRotDay - helms.maths.tau -- track whole days separate from part days to reduce rounding errors slightly
+    local wholeDay, partDay = math.modf (mjd2k - 79.315972)
+    
+    -- Greenwich hour angle at reference VE = 291° 53' 34" ~= 1.1886952721795 rads eastward
+    local lonAtVeNoon = 1.1886952721795 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
+
+    local preresult = math.fmod(lonAtVeNoon + noonFromVeNoon ,helms.maths.tau)
+
+    if (preresult < -math.pi) then
+        return preresult + helms.maths.tau
+    elseif preresult > math.pi then
+        return preresult - helms.maths.tau
+    else
+      return preresult
+    end
+end
+
+--[[
+-- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
+-- Return zulu times in fractional hours, values greater than 24 or less than 0 indicate next day or previous day (w.r.t. UTC)
+--]]
+helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
+    local mjdGwchMdnt = helms.physics.yMD2MJD2000(year,month,day)
+    
+    local lonRads = helms.maths.deg2rad * lon
+    local latRads = helms.maths.deg2rad * lat
+
+    local mjdNoonAtLon = mjdGwchMdnt + 0.5 - lonRads / helms.maths.tau -- First approximation
+    local lonErr = 0
+
+    for i = 1,100 do
+        _,lonErr = math.modf((lonRads - helms.physics.estimateLonOfNoon(mjdNoonAtLon))/ helms.maths.tau)
+        if math.abs(lonErr) < 0.0001 then break end 
+
+        mjdNoonAtLon = mjdNoonAtLon - lonErr / helms.maths.tau
+    end
+
+    if math.abs(lonErr) > 0.001 then 
+        helms.log_e.log({"Noon time estimate did not converge",year,month,day,lon,lonErr})
+    end
+
+    local declination = helms.physics.estimateSunDeclination(mjdNoonAtLon)
+
+    local refracCorr = 0.833 * helms.maths.deg2rad -- approximate correction for refraction and the sun's angular radius
+
+    local numerator = -math.sin(declination) * math.sin(latRads) - math.sin(refracCorr)
+
+    local denom = math.cos(latRads) * math.cos(declination)
+
+    if math.abs(numerator) > denom then
+        if numerator > 0 then
+            return 12, 12 -- no daylight
+        else
+            return 0, 24 -- full daylight
+        end
+    elseif denom <= 0 then -- implies numerator == 0
+        return 6, 18
+    end
+
+    local sunlightHalfRads = math.acos(numerator/denom)
+    local halfDayMjdDelta = sunlightHalfRads/helms.maths.tau  
+
+    local dayfracNoon = mjdNoonAtLon - mjdGwchMdnt
+    local dayfracSunrise = dayfracNoon  - halfDayMjdDelta
+    local dayfracSunset = dayfracNoon  + halfDayMjdDelta
+
+    return dayfracSunrise * 24 , dayfracSunset * 24
+
+end
+
+helms.physics.hoursToTime = function(hrsZ)
+    local daysFrac = hrsZ /24
+    local days = math.floor(daysFrac)
+
+    hrsZ = 24 * (daysFrac - days)
+
+    local hrs1 = math.floor(hrsZ)
+    local mins = 60 * (hrsZ - hrs1)
+    local mins1 = math.floor(mins) 
+    -- local sec = 60 * (mins - mins1)
+    -- local sec1 = math.floor(sec)
+    --
+    local daysSuffix = ""
+    if days ~= 0 then
+        daysSuffix = " (" .. days .. "days)"
+    end
+
+    return string.format("%02d%02dZ%s",hrs1, mins1,daysSuffix) 
 end
 
 ----------------------------------------------------------------------------------------------------------
