@@ -925,7 +925,12 @@ helms.physics.hoursToTime = function(hrsZ)
     --
     local daysSuffix = ""
     if days ~= 0 then
-        daysSuffix = " (" .. days .. "days)"
+        daysSuffix = " (" 
+        if days > 0 then
+            daysSuffix = daysSuffix .. "+"  
+        end
+
+        daysSuffix = daysSuffix .. days .. " days)"
     end
 
     return string.format("%02d%02dZ%s",hrs1, mins1,daysSuffix) 
