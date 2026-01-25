@@ -666,6 +666,15 @@ helms.maths.newtonRaphson = function(f,df,x0, a,b,n,tol)
     end
 end
 
+helms.maths.round = function(x)
+    local floor = math.floor(x)
+
+    if x - floor >= 0.5 then 
+        return floor + 1
+    else
+        return floor
+    end
+end
 ----------------------------------------------------------------------------------------------------------
 --PHYSICS---------------------------------------------------------------------------------------------------
 -- Physics-based calculation tools and conversions
