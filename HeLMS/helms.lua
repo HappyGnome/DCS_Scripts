@@ -397,6 +397,12 @@ helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
 helms.maths.tau = 2 * math.pi
+helms.maths.pascal2hectopascal = 0.01
+helms.maths.kelvin2celcius = -273.15
+
+
+helms.maths.zero2 = {x = 0, y = 0}
+helms.maths.zero3 = {x = 0, y = 0, z = 0}
 
 --[[
 Get Angle between in-game coords North and true North
