@@ -399,12 +399,14 @@ helms.maths.m2nm = 0.000539957
 helms.maths.tau = 2 * math.pi
 
 --[[
-True heading point A to point B, in degrees
+Get Angle between in-game coords North and true North
 --]]
 helms.maths.getTrueNorthTheta = function(pointA)
-    local lat, lon = coord.LOtoLL(pointA)
-    local north = coord.LLtoLO(lat + 1, lon)
-    return math.atan2(north.z - pointA.z, north.x - pointA.x)
+    return 0
+    -- True North incorrectly coincides with in-game coords in DCS
+--    local lat, lon = coord.LOtoLL(pointA)
+--    local north = coord.LLtoLO(lat + 1, lon)
+--    return math.atan2(north.z - pointA.z, north.x - pointA.x)
 end
 
 --[[
@@ -948,6 +950,7 @@ helms.const = {}
 
 helms.const.GroupCatRev = helms.util.kvflip(Group.Category)
 helms.const.CoalitionSideRev = helms.util.kvflip(coalition.side)
+helms.const.MapProperties = {["Falklands"] = {timezone = -3}}
 
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
