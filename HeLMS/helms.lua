@@ -139,6 +139,7 @@ helms.util.obj2json = function(obj, antiCirc,maxdepth)
 			msg = msg..'}'
 		end
 
+		antiCirc[obj] = false -- only check for parent referenced in child. Multiple refs to the same table are fine otherwise
 	elseif t == 'string' then
 		msg = msg.."\"".. helms.util.escapeLuaString(obj) .."\""
 	elseif t == 'number' then
@@ -1252,12 +1253,24 @@ helms.mission.groupContainsClient_ = function(gpData)
     if not gpData or not gpData.units then return false end
 
     for k, v in pairs(gpData.units) do
-        if v.skill == "Client" then
+        if v.skill == "Client" or v.skill == "Player" then
             return true
         end
     end
 
     return false
+end
+
+helms.mission.getClientGroups = function()
+    local result = {}
+
+    for k,_ in pairs(helms.mission._GroupLookup) do
+        if helms.mission.groupContainsClient_(helms.mission.getMEGroupDataByName(k)) then
+            result[#result+1] = k
+        end
+    end
+
+    return result
 end
 
 
