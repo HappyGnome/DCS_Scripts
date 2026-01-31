@@ -934,7 +934,8 @@ helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
 
 end
 
-helms.physics.hoursToTime = function(hrsZ)
+helms.physics.hoursToTime = function(hrsZ, showTimezone)
+
     local daysFrac = hrsZ /24
     local days = math.floor(daysFrac)
 
@@ -956,7 +957,10 @@ helms.physics.hoursToTime = function(hrsZ)
         daysSuffix = daysSuffix .. days .. " days)"
     end
 
-    return string.format("%02d%02dZ%s",hrs1, mins1,daysSuffix) 
+    local timezone = "Z"
+    if showTimezone == false then timezone = "" end
+
+    return string.format("%02d%02d%s%s",hrs1, mins1,timezone,daysSuffix) 
 end
 -- End experimental sunrise/sunset calcs
 --
@@ -966,8 +970,16 @@ helms.const = {}
 
 helms.const.GroupCatRev = helms.util.kvflip(Group.Category)
 helms.const.CoalitionSideRev = helms.util.kvflip(coalition.side)
-helms.const.MapProperties = {["Falklands"] = {timezone = -3}}
-
+helms.const.MapProperties = 
+{
+    ["Falklands"] = {timezone = -3}, 
+    ["Caucasus"] = {timezone = 4},
+    ["PersianGulf"] = {timezone = 4},
+    ["SinaiMap"] = {timezone = 2},
+    ["Nevada"] = {timezone = -8},
+    ["Syria"] = {timezone = 3},
+    ["MarianaIslands"] = {timezone = -14},
+}
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
 -- Convert/manage data from mission file
