@@ -7,7 +7,15 @@
 --#######################################################################################################
 
 --NAMESPACES----------------------------------------------------------------------------------------------
-helms = { version = 1.17 }
+
+local helmsVersion = 1.17
+
+if helms and helms.version > helmsVersion then 
+    helms.log_i.log("A later version (>" .. helmsVersion .. ") of HeLMS is already included in this mission")
+    return 
+end
+
+helms = { version = helmsVersion }
 
 ----------------------------------------------------------------------------------------------------------
 --helms.util - LUA EXTENSIONS-----------------------------------------------------------------------------
