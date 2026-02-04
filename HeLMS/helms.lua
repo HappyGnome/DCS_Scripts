@@ -7,7 +7,15 @@
 --#######################################################################################################
 
 --NAMESPACES----------------------------------------------------------------------------------------------
-helms = { version = 1.15 }
+
+local helmsVersion = 1.17
+
+if helms and helms.version > helmsVersion then 
+    helms.log_i.log("A later version (>" .. helmsVersion .. ") of HeLMS is already included in this mission")
+    return 
+end
+
+helms = { version = helmsVersion }
 
 ----------------------------------------------------------------------------------------------------------
 --helms.util - LUA EXTENSIONS-----------------------------------------------------------------------------
@@ -66,6 +74,92 @@ helms.util.obj2str = function(obj)
         msg = msg .. t
     end
     return msg
+end
+--[[------------------------------------------
+		Escape reserved characters within 
+        a lua string
+--]]------------------------------------------
+helms.util.escapeLuaString = function (str) 
+	return 
+	string.gsub(string.gsub(string.gsub(string.gsub(str,"\\","\\\\")
+														,"\"","\\\"")
+														,"\n","\\n")
+														, "\r","\\r")
+end
+
+--[[------------------------------------------
+		Convert lua object to valid json
+--]]------------------------------------------
+helms.util.obj2json = function(obj, antiCirc,maxdepth)
+
+	if maxdepth == nil then 
+		maxdepth = 4 
+	end
+
+	if antiCirc == nil then 
+		antiCirc = {}
+	end
+
+	if maxdepth<=0 then
+		return ''
+	end
+
+	if obj == nil then 
+		return ''
+	end
+
+	local msg = ''
+	local t = type(obj)
+
+	if t == 'table' then
+		antiCirc[obj] = true
+		local first = true
+
+		if #obj > 0 then -- Array or object
+			msg = msg..'['
+			for k,v in ipairs(obj) do
+				local t = type(v)
+				if not antiCirc[v] then
+					if not first then 
+						msg = msg .. ","
+					end
+					msg = msg .. helms.util.obj2json(v,antiCirc,maxdepth-1)
+					first = false
+				end
+			end					
+			msg = msg..']'
+		else
+			msg = msg..'{'
+			for k,v in pairs(obj) do
+				local t = type(v)
+
+				local keyType = type(k)
+				if keyType == 'string'  then
+					if not antiCirc[v] then
+						if not first then 
+							msg = msg .. ","
+						end
+						msg = msg .. "\"".. helms.util.escapeLuaString(k) .."\":" .. helms.util.obj2json(v,antiCirc,maxdepth-1)
+						first = false						
+					end
+				end
+			end					
+			msg = msg..'}'
+		end
+
+		antiCirc[obj] = false -- only check for parent referenced in child. Multiple refs to the same table are fine otherwise
+	elseif t == 'string' then
+		msg = msg.."\"".. helms.util.escapeLuaString(obj) .."\""
+	elseif t == 'number' then
+		msg = msg..obj
+	elseif t == 'boolean' then
+		if t then
+			msg = msg..'true'
+		else
+			msg = msg..'false'
+		end
+	end
+	return msg
 end
 
 --[[
@@ -311,14 +405,23 @@ helms.maths.deg2rad = 0.01745329
 helms.maths.kts2mps = 0.514444
 helms.maths.m2ft = 3.281
 helms.maths.m2nm = 0.000539957
+helms.maths.tau = 2 * math.pi
+helms.maths.pascal2hectopascal = 0.01
+helms.maths.kelvin2celcius = -273.15
+
+
+helms.maths.zero2 = {x = 0, y = 0}
+helms.maths.zero3 = {x = 0, y = 0, z = 0}
 
 --[[
-True heading point A to point B, in degrees
+Get Angle between in-game coords North and true North
 --]]
 helms.maths.getTrueNorthTheta = function(pointA)
-    local lat, lon = coord.LOtoLL(pointA)
-    local north = coord.LLtoLO(lat + 1, lon)
-    return math.atan2(north.z - pointA.z, north.x - pointA.x)
+    return 0
+    -- True North incorrectly coincides with in-game coords in DCS
+--    local lat, lon = coord.LOtoLL(pointA)
+--    local north = coord.LLtoLO(lat + 1, lon)
+--    return math.atan2(north.z - pointA.z, north.x - pointA.x)
 end
 
 --[[
@@ -558,6 +661,35 @@ helms.maths.isPointInPoly = function(point, verts)
     return winding ~= 0
 end
 
+helms.maths.newtonRaphson = function(f,df,x0, a,b,n,tol)
+    if n == nil then n = 100 end
+    if tol == nil then tol = 0.001 end
+
+    local x = x0
+    for i = 1,n do
+        if a ~= nil and x < a then x = a end
+        if b ~= nil and x > b then x = b end
+
+        local err = f(x)
+        if math.abs(err) < tol then return x end
+
+        local dfdx = df(x)
+
+        if dfdx == 0 then return nil end
+
+        x = x - err / dfdx
+    end
+end
+
+helms.maths.round = function(x)
+    local floor = math.floor(x)
+
+    if x - floor >= 0.5 then 
+        return floor + 1
+    else
+        return floor
+    end
+end
 ----------------------------------------------------------------------------------------------------------
 --PHYSICS---------------------------------------------------------------------------------------------------
 -- Physics-based calculation tools and conversions
@@ -566,6 +698,8 @@ helms.physics = {}
 
 helms.physics.specGrav = 9.81
 helms.physics.mach2Coeff = 401.88 -- Estimate of coefficient T/c^2
+helms.physics.earthAxTilt = 23.44 * helms.maths.deg2rad
+
 
 -- Get specific energy (relative to the surface of the map, in wind's frame of reference)
 helms.physics.getSpecificEnergyWindRel = function(obj)
@@ -623,13 +757,237 @@ helms.physics.TasKts = function(obj)
     return math.sqrt(helms.maths.dot3D(vrel, vrel)) / helms.maths.kts2mps
 end
 
+-- 
+-- Below are some experimental hels.physics methods to help estimate sunrise/sunset
+
+-- [[
+-- Calculate Modified Julian (MJD2000) date of 00:00 on a given day in Gregorian calendar
+-- See https://en.wikipedia.org/wiki/Julian_day
+-- ]]
+helms.physics.yMD2MJD2000 = function(year,month,day)
+    local janFebFac = math.modf((month - 14) / 12)
+    local yearTerm = math.modf(1461 * (year + 4800 + janFebFac) / 4)
+    local monthTerm = math.modf(367 * (month - 2 - (12 * janFebFac)) / 12)
+    local monthYearCorr0 = math.modf((year + 4900 + janFebFac) / 100)
+    local monthYearCorr1 = math.modf(3 * monthYearCorr0 / 4)
+    local epochTerm = 32075 + 2451545 -- Julian days elapsed relative to Midnight Jan 1st 2000
+
+    return yearTerm + monthTerm - monthYearCorr1 + day - epochTerm
+end
+
+--[[
+Numerically solve Kepler's equation 
+--]]
+helms.physics.solveKepler = function (M,e)
+    local f = function(x)
+       return x - e*math.sin(x) - M
+    end
+
+    local df = function(x)
+       return 1 - e*math.cos(x)
+    end
+
+    return helms.maths.newtonRaphson(f,df,M, nil,nil,10,0.0001)
+end
+
+--[[
+Estimate true anomaly from the mean anomaly for an elliptic orbit, given the mean anomaly (radians) and the eccentricity
+--]]
+helms.physics.estimateTrueAnomaly = function (M,e)
+
+    if e >= 1 or e < 0 then return nil end
+
+    local ea = helms.physics.solveKepler(M,e)
+
+    if ea == nil then return nil end
+    ea = math.fmod(ea,  helms.maths.tau)
+
+    if math.abs(math.abs(ea) - math.pi) < 0.001 then
+        return ea
+    end
+
+    local t = math.tan(ea / 2)
+
+    local theta = 2 * math.atan( math.sqrt( (1+e) * t * t / (1-e) ) )
+
+    if t < 0 then
+        return helms.maths.tau - theta
+    else
+        return theta
+    end
+end
+
+--[[
+-- estimate true anomaly at a given MJD 2k
+--]]
+helms.physics.estimateTrueAnomalyAt = function(mjd2k)
+    local meanAnom = helms.maths.tau * math.fmod((mjd2k - 3.2208)/365.256363,1) -- perihelion 0518Z Jan 3rd 2000
+    return helms.physics.estimateTrueAnomaly(meanAnom, 0.01671)
+end
+
+--[[
+-- Estimate the angle between the vernal equinox and the perihelion vector
+--]]
+helms.physics.estimateTrueAnomalyOfVE = function (mjd2k)
+    local mjdve = mjd2k - 79.315972
+
+    return math.fmod(1.3414517171284 - (mjdve * 6.6747e-7),helms.maths.tau)
+
+    -- True anomally at 1999 December solstice - annual drift (approx 2 pi radians in 25772 years)
+end
+
+--[[
+-- estimate winterward tilt in northern hemisphere on 00:00Z on the given Gregorian date (in radians)
+-- Second return value is the angle (radians) from "mean noon" to "true noon" at 00:00Z 
+-- Optionally, a pre-computed true anomaly can be provided
+--]]
+helms.physics.estimateSunDeclination = function(mjd2k, trueAnom)
+
+    if trueAnom == nil then  trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k) end
+
+    local trueAnomAtVE = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
+
+
+    local sinTilt = math.sin(helms.physics.earthAxTilt)
+
+    local tiltResult = math.asin(sinTilt * math.sin(trueAnom - trueAnomAtVE))
+
+    return tiltResult, trueAnom
+end
+
+--[[
+Estimate the longitude where it's noon at a given mjd
+--]]
+helms.physics.estimateLonOfNoon = function(mjd2k)
+    local trueAnom = helms.physics.estimateTrueAnomalyAt(mjd2k)
+
+    local veAnom = helms.physics.estimateTrueAnomalyOfVE(mjd2k)
+
+    local noonFromVeNoon = trueAnom - veAnom -- Angle from vernal equinox direction to solar midnight in radians
+    local noonFromVeNoonPart = math.fmod(noonFromVeNoon,math.pi/2) 
+    local noonFromVeNoonWhole = noonFromVeNoon - noonFromVeNoonPart
+
+    if math.abs(math.abs(noonFromVeNoonPart) - math.pi/2) > 0.001 then 
+        noonFromVeNoonPart =  math.atan(math.cos(helms.physics.earthAxTilt) * math.tan (noonFromVeNoonPart))
+    end
+
+    local meanRotDay = 6.3003874313413 -- helms.maths.tau * 366.256363 / 365.256363
+    local meanRotWholeDay = meanRotDay - helms.maths.tau -- track whole days separate from part days to reduce rounding errors slightly
+    local wholeDay, partDay = math.modf (mjd2k - 79.315972)
+    
+    -- Greenwich hour angle at reference VE = 291° 53' 34" ~= 1.1886952721795 rads eastward
+    local lonAtVeNoon = 1.1886952721795 - math.fmod(wholeDay * (meanRotWholeDay + 6.6747e-7) + meanRotDay * partDay, helms.maths.tau)
+
+    local preresult = math.fmod(lonAtVeNoon + noonFromVeNoonWhole + noonFromVeNoonPart ,helms.maths.tau)
+
+    if (preresult < -math.pi) then
+        return preresult + helms.maths.tau
+    elseif preresult > math.pi then
+        return preresult - helms.maths.tau
+    else
+      return preresult
+    end
+end
+
+--[[
+-- Given lat lon in degrees (E & N positive) and a calendar date, estimate sunrise and set times (zulu) at the location
+-- Return zulu times in fractional hours, values greater than 24 or less than 0 indicate next day or previous day (w.r.t. UTC)
+--]]
+helms.physics.estimateSunriseSunsetZ = function(year,month,day, lat,lon)
+    local mjdGwchMdnt = helms.physics.yMD2MJD2000(year,month,day)
+    
+    local lonRads = helms.maths.deg2rad * lon
+    local latRads = helms.maths.deg2rad * lat
+
+    local mjdNoonAtLon = mjdGwchMdnt + 0.5 - lonRads / helms.maths.tau -- First approximation
+    local lonErr = 0
+
+    for i = 1,100 do
+        _,lonErr = math.modf((lonRads - helms.physics.estimateLonOfNoon(mjdNoonAtLon))/ helms.maths.tau)
+        if math.abs(lonErr) < 0.0001 then break end 
+
+        mjdNoonAtLon = mjdNoonAtLon - lonErr
+    end
+
+    if math.abs(lonErr) > 0.001 then 
+        helms.log_e.log({"Noon time estimate did not converge",year,month,day,lon,lonErr})
+    end
+
+    local declination = helms.physics.estimateSunDeclination(mjdNoonAtLon)
+
+    local refracCorr = 0.833 * helms.maths.deg2rad -- approximate correction for refraction and the sun's angular radius
+
+    local numerator = -math.sin(declination) * math.sin(latRads) - math.sin(refracCorr)
+
+    local denom = math.cos(latRads) * math.cos(declination)
+
+    if math.abs(numerator) > denom then
+        if numerator > 0 then
+            return 12, 12 -- no daylight
+        else
+            return 0, 24 -- full daylight
+        end
+    elseif denom <= 0 then -- implies numerator == 0
+        return 6, 18
+    end
+
+    local sunlightHalfRads = math.acos(numerator/denom)
+    local halfDayMjdDelta = sunlightHalfRads/helms.maths.tau  
+
+    local dayfracNoon = mjdNoonAtLon - mjdGwchMdnt
+    local dayfracSunrise = dayfracNoon  - halfDayMjdDelta
+    local dayfracSunset = dayfracNoon  + halfDayMjdDelta
+
+    return dayfracSunrise * 24 , dayfracSunset * 24
+
+end
+
+helms.physics.hoursToTime = function(hrsZ, showTimezone)
+
+    local daysFrac = hrsZ /24
+    local days = math.floor(daysFrac)
+
+    hrsZ = 24 * (daysFrac - days)
+
+    local hrs1 = math.floor(hrsZ)
+    local mins = 60 * (hrsZ - hrs1)
+    local mins1 = math.floor(mins) 
+    -- local sec = 60 * (mins - mins1)
+    -- local sec1 = math.floor(sec)
+    --
+    local daysSuffix = ""
+    if days ~= 0 then
+        daysSuffix = " (" 
+        if days > 0 then
+            daysSuffix = daysSuffix .. "+"  
+        end
+
+        daysSuffix = daysSuffix .. days .. " days)"
+    end
+
+    local timezone = "Z"
+    if showTimezone == false then timezone = "" end
+
+    return string.format("%02d%02d%s%s",hrs1, mins1,timezone,daysSuffix) 
+end
+-- End experimental sunrise/sunset calcs
+--
 ----------------------------------------------------------------------------------------------------------
 --CONST------------------------------------------------------------------------------------------------
 helms.const = {}
 
 helms.const.GroupCatRev = helms.util.kvflip(Group.Category)
 helms.const.CoalitionSideRev = helms.util.kvflip(coalition.side)
-
+helms.const.MapProperties = 
+{
+    ["Falklands"] = {timezone = -3}, 
+    ["Caucasus"] = {timezone = 4},
+    ["PersianGulf"] = {timezone = 4},
+    ["SinaiMap"] = {timezone = 2},
+    ["Nevada"] = {timezone = -8},
+    ["Syria"] = {timezone = 3},
+    ["MarianaIslands"] = {timezone = -14},
+}
 ----------------------------------------------------------------------------------------------------------
 --ME UTILS------------------------------------------------------------------------------------------------
 -- Convert/manage data from mission file
@@ -853,6 +1211,17 @@ helms.mission.getMEGroupDataByName = function(name)
     return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
 end
 
+--[[
+-- Get start point of a named groupn in the mission file
+--]]
+helms.mission.getMEGroupStartByName = function(name)
+    local gp = helms.mission._GroupLookup[name]
+
+    if gp == nil then return nil end
+
+    return gp.startPoint
+end
+
 helms.mission.getMEGroupNamesInZone = function(zoneName, side, includeStatic)
     local ret = {}
 
@@ -904,12 +1273,24 @@ helms.mission.groupContainsClient_ = function(gpData)
     if not gpData or not gpData.units then return false end
 
     for k, v in pairs(gpData.units) do
-        if v.skill == "Client" then
+        if v.skill == "Client" or v.skill == "Player" then
             return true
         end
     end
 
     return false
+end
+
+helms.mission.getClientGroups = function()
+    local result = {}
+
+    for k,_ in pairs(helms.mission._GroupLookup) do
+        if helms.mission.groupContainsClient_(helms.mission.getMEGroupDataByName(k)) then
+            result[#result+1] = k
+        end
+    end
+
+    return result
 end
 
 
@@ -2994,8 +3375,13 @@ end
 
 helms.events = {
     hitLoggingEnabled_ = false,
-    lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit}, friendly fire not counted
-    lastSpawn_ = {}
+    lastHitBy_ = {}, -- key = unit name, value = {time = time last hit, initiatorName = name of unit that initiated the hit, spawnCount = ...}
+                                --, friendly fire not counted
+    lastSpawn_ = {}, -- key = unit name, value = {time = .., playerName = ..., spawnCount = ...}
+    unitDeathTracked_ = {}, -- key == unit Name, value = bool (death notified)
+    unitDeathCallbacks_ = {},
+    unitDeathTickS = nil,
+    unitDeathTrackHitUnits = false,
 }
 
 helms.events.getLastHitBy = function(unitHitName)
@@ -3013,7 +3399,21 @@ helms.events.hitHandler_ = function(target, initiator, time)
 
     if target:getCoalition() == initiator:getCoalition() then return end
 
-    helms.events.lastHitBy_[tgtName] = { time = time, initiatorName = initName }
+    local tgtSpawnCount = 0
+    if helms.events.lastSpawn_[tgtName] then
+        tgtSpawnCount = helms.events.lastSpawn_[tgtName].spawnCount
+    end
+
+    helms.events.lastHitBy_[tgtName] = 
+    {
+        time = time, 
+        initiatorName = initName,
+        spawnCount = tgtSpawnCount
+    }
+
+    if helms.events.unitDeathTrackHitUnits then
+        helms.events.unitDeathTracked_[tgtName] = false
+    end
 end
 
 helms.events.spawnHandler_ = function(initiator, time)
@@ -3022,9 +3422,24 @@ helms.events.spawnHandler_ = function(initiator, time)
 
     local initName = initiator:getName()
 
-    helms.events.lastSpawn_[initName] = { time = time }
+    local newStats = { time = time, playerName = initiator:getPlayerName(), spawnCount = 1}
+
+    if helms.events.lastSpawn_[initName] then
+        newStats.spawnCount = helms.events.lastSpawn_[initName].spawnCount + 1
+    end
+
+    helms.events.lastSpawn_[initName] = newStats
+
+    if helms.events.unitDeathTracked_[initName] == false then
+        helms.events.unitDied_(initName,time,newStats.spawnCount - 1 )
+    end
+    helms.events.unitDeathTracked_[initName] = nil
+
 end
 
+--[[
+--  Hit logs contain spawn counts only if spawn logging is enabled
+--]]
 helms.events.enableHitLogging = function()
     if helms.events.hitLoggingEnabled_ then return end
 
@@ -3054,6 +3469,84 @@ helms.events.enableSpawnLogging = function()
     world.addEventHandler(eventHandler)
 
     helms.events.spawnLoggingEnabled_ = true
+end
+
+--[[
+-- Callback when unit death/disappearance detected during death polling
+-- spawnCount is the number of spawns then unit had (if tracked) at time of death. Not including the respawn in progeress, if death detected on respawn
+--]]
+helms.events.unitDied_=function(name,time, spawnCount)
+
+    for k,v in pairs(helms.events.unitDeathCallbacks_) do
+        if v(name,time,spawnCount) == false then
+            helms.events.unitDeathCallbacks_[k] = nil
+        end
+    end
+    helms.events.unitDeathTracked_[name] =true
+end
+
+--[[
+    Register a unit so that it will be monitored via the dead unit poll for its current life
+--]]
+helms.events.registerUnitForDeathPoll = function(unitName)
+    local unit = Unit.getByName(unitName)
+    if unit ~= nil then
+        if helms.events.unitDeathTrackHitUnits then
+            helms.events.unitDeathTracked_[unitName] = false
+        end
+    else
+        helms.log_i.log("Warning: unit " .. unitName .. " does not exist and will not generate death event.")
+    end
+end
+
+--[[
+    deathPollInterval - seconds, 
+    deadHandler = function(name,objectID, deathTime) - return false to remove the callback
+
+    enables hit logging and spawn logging
+--]]
+helms.events.enableDeathPolling = function(deathPollInterval, deadHandler, trackAllUnitsHit)
+
+    if type(deadHandler) ~= 'function' then return end
+
+    if trackAllUnitsHit==true then 
+        helms.events.enableHitLogging()
+        helms.events.unitDeathTrackHitUnits = true
+    end
+
+    helms.events.enableSpawnLogging()
+
+    local firstCall = helms.events.unitDeathTickS == nil 
+
+    if firstCall or helms.events.unitDeathTickS < deathPollInterval then
+        helms.events.unitDeathTickS = deathPollInterval
+    end
+
+    helms.events.unitDeathCallbacks_[#helms.events.unitDeathCallbacks_+1] =
+        helms.util.safeCallWrap(deadHandler, helms.catchError)
+    
+    if firstCall then
+        local callback = function()
+
+            local now = timer.getTime()
+             
+            for name,v in pairs(helms.events.unitDeathTracked_) do
+                local unit = Unit.getByName(name)
+                if unit == nil and v == false then 
+                    local lastSpawn = helms.events.lastSpawn_[name]
+                    local spawnCount = 0
+                    if lastSpawn then
+                        spawnCount = lastSpawn.spawnCount
+                    end
+                    helms.events.unitDied_(name,now, spawnCount)
+                end
+            end
+
+            return now + helms.events.unitDeathTickS
+        end
+
+        helms.dynamic.scheduleFunctionSafe(callback,nil,timer.getTime() + helms.events.unitDeathTickS,nil, helms.catchError)
+    end
 end
 ---------------------------------------------------------------------------------------------------
 helms.mission._buildMEGroupLookup()

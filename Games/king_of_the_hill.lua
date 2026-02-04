@@ -10,14 +10,14 @@ if king_of_the_hill then
 end
 
 if not helms then return end
-if helms.version < 1.14 then 
+if helms.version < 1.16 then 
 	helms.log_e.log("Invalid HeLMS version for king_of_the_hill")
 end
 
 --NAMESPACES----------------------------------------------------------------------------------------------
 king_of_the_hill={}
 
-king_of_the_hill.version = 1.41
+king_of_the_hill.version = 1.5
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 king_of_the_hill.poll_interval = 1 -- seconds
@@ -35,6 +35,8 @@ king_of_the_hill.multiplier_reset_time = 240 -- seconds until multiplier resets.
 
 king_of_the_hill.zone_border_smokes = 24
 king_of_the_hill.zone_border_smoke_colour = "RED"
+
+king_of_the_hill.death_poll_interval = 1.11 -- seconds
 
 -- Suggested feature: - King can be insta-killed
 ----------------------------------------------------------------------------------------------------------
@@ -56,25 +58,50 @@ king_of_the_hill.catchError=function(err)
 end 
 -----------------------------------------------------------------------------------------------------------
 -- Event handlers
+
+king_of_the_hill.deadHandler = function(initName, time, spawnCount)
+    if (initName==nil) then return end
+
+    local lastHitEvent = helms.events.getLastHitBy(initName) 
+    if (not lastHitEvent) or (lastHitEvent.spawnCount ~= spawnCount) then return end
+
+    for k,v in pairs(king_of_the_hill.games) do
+
+        if v.rules.kingSince and v.rules.kingSince < lastHitEvent.time then
+            if v.rules.kingUnitName == lastHitEvent.initiatorName then
+
+                -- previous king cannot be "re-killed" by another hit after losing the crown
+                king_of_the_hill.kingGetKill_ (v, initName, time)
+
+            --[[elseif v.rules.kingUnitName == initName then
+                king_of_the_hill.kingKilled_(v,lastHitEvent.initiatorName)]]
+            end
+        end
+    end
+
+    return true -- continue polling 
+end
+
 helms.events.enableHitLogging()
 helms.events.enableSpawnLogging()
+helms.events.enableDeathPolling(king_of_the_hill.death_poll_interval, king_of_the_hill.deadHandler, true)
 
-king_of_the_hill.eventHandler = { 
-	onEvent = function(self,event)
-		--[[if (event.id == world.event.S_EVENT_HIT) then
-			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
-		elseif (event.id == world.event.S_EVENT_KILL) then
-			helms.util.safeCall(king_of_the_hill.killHandler,{event.target,event.initiator},king_of_the_hill.catchError)
-        elseif (event.id == world.event.S_EVENT_DEAD) then
-           helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
-        --elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
-            --helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
-        --else]]if (event.id == world.event.S_EVENT_UNIT_LOST) then
-            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
-		end
-	end
-}
-world.addEventHandler(king_of_the_hill.eventHandler)
+-- king_of_the_hill.eventHandler = { 
+-- 	onEvent = function(self,event)
+-- 		--[[if (event.id == world.event.S_EVENT_HIT) then
+-- 			helms.util.safeCall(king_of_the_hill.hitHandler,{event.target,event.initiator},king_of_the_hill.catchError)
+-- 		elseif (event.id == world.event.S_EVENT_KILL) then
+-- 			helms.util.safeCall(king_of_the_hill.killHandler,{event.target,event.initiator},king_of_the_hill.catchError)
+--         elseif (event.id == world.event.S_EVENT_DEAD) then
+--            helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
+--         --elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
+--             --helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator},king_of_the_hill.catchError)
+--         --else]]if (event.id == world.event.S_EVENT_UNIT_LOST) then
+--             helms.util.safeCall(king_of_the_hill.deadHandler,{event.initiator, event.time},king_of_the_hill.catchError)
+-- 		end
+-- 	end
+-- }
+-- world.addEventHandler(king_of_the_hill.eventHandler)
 
 --[[king_of_the_hill.hitHandler = function(target, initiator)
 
@@ -92,27 +119,7 @@ world.addEventHandler(king_of_the_hill.eventHandler)
     end
 end--]]
 
-king_of_the_hill.deadHandler = function(initiator, time)
-    if not initiator then return end
-    local initName = initiator:getName()
 
-    local lastHitEvent = helms.events.getLastHitBy(initName) 
-    if not lastHitEvent then return end
-    --king_of_the_hill.log_i.log({initiator,lastHitEvent})
-    for k,v in pairs(king_of_the_hill.games) do
-
-        if v.rules.kingSince and v.rules.kingSince < lastHitEvent.time then
-            if v.rules.kingUnitName == lastHitEvent.initiatorName then
-
-                -- previous king cannot be "re-killed" by another hit after losing the crown
-                king_of_the_hill.kingGetKill_ (v, initiator)
-
-            --[[elseif v.rules.kingUnitName == initName then
-                king_of_the_hill.kingKilled_(v,lastHitEvent.initiatorName)]]
-            end
-        end
-    end
-end
 
 --[[king_of_the_hill.killHandler = function(target, initiator)
     --king_of_the_hill.log_i.log({target, initiator}) 
@@ -178,7 +185,9 @@ king_of_the_hill.pollGameWithKing_ = function(game, now)
     if not game.rules.kingUnitName then return end
     local unit = Unit.getByName(game.rules.kingUnitName)
 
-    if unit == nil then
+    local kingSpawn = helms.events.getLastSpawn(game.rules.kingUnitName)
+
+    if unit == nil or (kingSpawn and game.rules.kingSince and kingSpawn.time > game.rules.kingSince) then
         king_of_the_hill.loseCrown_(game, now)
         --game.rules.kingLostAt = now
         return 
@@ -396,9 +405,8 @@ king_of_the_hill.kingKilled_ = function(game, killedByUnitName)
     return true -- handled
 end
 
-king_of_the_hill.kingGetKill_ = function(game, killedUnit)
-    if not killedUnit or not game.running then return end
-    local killedUnitName = killedUnit:getName()
+king_of_the_hill.kingGetKill_ = function(game, killedUnitName, now)
+    if (not killedUnitName) or (not game.running) then return end
 
     -- Ignore a second "kill" on the previous king
     local prevKingKilledAt = game.rules.prevKingsKilledAt[killedUnitName]
@@ -407,17 +415,19 @@ king_of_the_hill.kingGetKill_ = function(game, killedUnit)
         and killedUnitLastSpawn
         and prevKingKilledAt > killedUnitLastSpawn.time) then return end 
 
-    local killedGroup = killedUnit:getGroup()
-    local groupCategory = killedGroup:getCategory()
+    -- local killedGroup = Unit.getGroup(killedUnit)
+    -- local groupCategory = killedGroup:getCategory()
 
     --king_of_the_hill.log_i.log({"gpcat",groupCategory})
     --if groupCategory ~= Group.Category.AIRPLANE and groupCategory ~= Group.Category.HELICOPTER then return end
 
-    local killedUnitFriendlyName = killedUnit:getPlayerName()
-    if not killedUnitFriendlyName then killedUnitFriendlyName = killedUnitName end
+    local killedUnitFriendlyName = "Unknown"
+    if killedUnitLastSpawn and killedUnitLastSpawn.playerName then 
+        killedUnitFriendlyName = killedUnitLastSpawn.playerName
+    else
+        killedUnitFriendlyName = killedUnitName 
+    end
 
-    local now = timer.getTime()
-    
     king_of_the_hill.nextScoreSegment(game, now, false) --no multiplier reset
 
     game.rules.kingMultiplier = game.rules.kingMultiplier + king_of_the_hill.score_bonus_per_kill
@@ -818,7 +828,7 @@ king_of_the_hill.Test_KingGetKill = function(gameName, unitKilledName)
     end
     if king_of_the_hill.games[gameName] and unit then
         helms.log_i.log("Test_KingGetKill " .. gameName .." " .. unitKilledName)
-        king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unit)
+        king_of_the_hill.kingGetKill_(king_of_the_hill.games[gameName], unitKilledName, timer.getTime())
     end
 end
 

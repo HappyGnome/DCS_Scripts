@@ -5,6 +5,7 @@
 * Fixed KoTH double kill bug
 * Added static detection to HeLMS predicates
 * Added Training Aids module
+* KoTH v1.5 (improved death detection)
 ## 1.11a
 * Quick suppression script: Randomized reset times
 * Added HeLMS effect category. Added perpetual smoke effects.
