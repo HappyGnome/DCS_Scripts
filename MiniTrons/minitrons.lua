@@ -1,4 +1,3 @@
-
 --#######################################################################################################
 -- MINITRONS 
 -- Run once at mission start after initializing HeLMS
@@ -8,74 +7,29 @@
 -- Script by HappyGnome
 
 if not helms then return end
-if helms.version < 1.15 then 
+if helms.version < 1.17 then 
 	helms.log_e.log("Invalid HeLMS version for MiniTrons")
 end
 
 minitrons = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-minitrons.poll_interval = 59.5 --seconds, time between updates of jamming effects
-minitrons.rep_rcs = 10 -- m^2 representa
-----------------------------------------------------------------------------------------------------------
+minitrons.poll_interval = 13.5 --seconds, time between updates of jamming effects
+--minitrons.rep_rcs = 10 -- m^2 representa
+minitrons.default_on_time = 30 -- seconds
+minitrons.default_range_nm = 20 
+minitrons.default_cooldown_time = 30 --seconds
 
---[[
-    Key = Jammer name
-    Value = Jammer config options
---]]
-minitrons.jammerType = { Type1 = {nose = {gimbal = 60, effPwr = 10}, tail = { gimbal = 60, effPwr = 10} }}
-
---[[
-    Key = SAM Unit Name
-    Value = Table: Key = jammer type, Value = Sam-jammer interaction parameters (defines suppression effects)
---]]
-minitrons.samConfig =
+minitrons.unit_type_switch
 {
-    ["SA-2"] = 
-    { 
-            config = 
-            {
-                recoveryPerSecond = 10, -- pct per second  
-                effPwr = 10000    -- effective power:  Watts, power x antenna gain
-            }
-            , typeFilterCoeff =
-            {
-                Type1 =  1 -- x => every watt of jamming masks x watts of reflected signal.
-            }
-            --, finalTypeCoeff = {Type1 = ...}
-    }
+    ["F/A-18C"] = 123
 }
 
-
---------------------------------------------------------------------------------------------------------
--- Precompute config
-
-minitrons.preComputeCoeffs = function()
-
-    local minFilterCoeff = 1e-12
-    local rcsCoeff = (minitrons.rep_rcs / (4 * math.pi))
-
-    -- detection range ^ 2 = jammer range * sqrt( rcsCoeff * effPwrTx / (effPwrJm * filterCoeff))
-    -- Coeff should also convert this into a proportion of the SAM max range
-    -- Get max jamming effect per tick on each transmitter
-    -- Linearly reduce jamming effect per tick, take max of reducced effect and new effect this tick
-    
-end
-
---------------------------------------------------------------------------------------------------------
-
-
---[[
-    Key = Unit name
-    Value = {active = ..., type = ...}
---]]
-minitrons.jammerUnits = {}
-
---[[
-    Key = unit name
-    Value = { }
---]]
-minitrons.jammedUnits = {}
+minitrons.polled_units = 
+{
+    -- ["UnitName"] = {jammedUnitTypes = {["typeName"] = {}}}, onTime = 0, offTIme = 0}
+}
+----------------------------------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------------------------------
 
@@ -91,5 +45,34 @@ minitrons.catchError=function(err)
 end 
 
 --POLL----------------------------------------------------------------------------------------------------
---
---
+--[[
+Private: do poll of groups and pools
+--]]
+minitrons.doPoll_ = function()
+
+	local now = timer.getTime()
+
+    xpcall(pollUnit,minitrons.catchError)
+
+	--schedule next poll----------------------------------
+	return now+minitrons.poll_interval
+end
+
+
+--API----------------------------------------------------------------------------------------------------
+minitrons.addJammerUnit = function(unitName,jammedUnitType)
+    if jammedUnitType == nil then
+        return
+    end
+
+    if unitName == nil then
+        return
+    end
+
+    if minitrons.polled_units[unitName] == nil then
+        minitrons.polled_units[unitName] = {jammedUnitTypes = {}, onTime = 0, offTIme = 0}
+    end
+
+    table.insert(minitrons.polled_units[unitName].jammedUnitTypes,{[jammedUnitType] = {}})
+
+end
