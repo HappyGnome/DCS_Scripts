@@ -1212,6 +1212,16 @@ helms.mission.getMEGroupDataByName = function(name)
 end
 
 --[[
+-- Get group Id of mission editor group
+--]]
+helms.mission.getMEGroupIdByName = function(name)
+    local keys = helms.mission._GroupLookup[name]
+    if not keys then return nil end
+
+    return env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp].groupId
+end
+
+--[[
 -- Get start point of a named groupn in the mission file
 --]]
 helms.mission.getMEGroupStartByName = function(name)
@@ -2895,14 +2905,26 @@ end
 
 --[[
 -- Get parent path for group specific Comms menus. Return value can be used with helms.ui.ensureSubMenu etc
+-- group can be a group object, groupId, or groupName (only supports groups in the mission editor)
 --]]
 helms.ui.ensureSubmenuForGroup = function(group, label)
-    if group == nil then 
-        helms.log_e.log("ensureSubmenuForGroup: No group specified")
-        return nil
+    local groupId
+
+    local gpType = type(group)
+
+    if gpType== "table" then
+        groupId = group:getID()
+    elseif gpType== "number" then
+        groupId = group
+    elseif gpType== "string" then
+        groupId = helms.mission.getMEGroupIdByName(group)
     end
 
-    local groupId = group:getID()
+    if groupId == nil then
+        helms.log_e.log("ensureSubmenuForGroup: No group found")
+        helms.log_e.log(group)
+        return nil
+    end
 
     local path = helms.ui.pathRootGroup(groupId)
 
