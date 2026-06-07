@@ -18,6 +18,7 @@ minitrons.poll_interval = 13.5 --seconds, time between updates of jamming effect
 --
 minitrons.heat_decay = 120 -- per second up to 3600
 minitrons.heat_growth = 120 -- per second up to 3600
+minitrons.heat_cutout = 3600
 
 minitrons.default_jam_range = 10000
 minitrons.default_audio_range = 20000
@@ -163,7 +164,6 @@ end
 --]]
 minitrons.handleJammerOffUnit = function(polledUnit, jammedUnitName)
     
-    -- If newly-jammed
     polledUnit.jammedUnits[jammedUnitName] = nil
     minitrons.unJamUnit(jammedUnitName)    
 end
@@ -178,6 +178,26 @@ minitrons.pollUnit = function(unitName,polledUnit, nonce)
 
     if (not unit) or (not unit:isExist()) then
         polledUnit.jammerActive = false
+    end
+
+    -- Handle cooldown and overheat
+    local oldHeat = polledUnit.heat
+
+    if oldHeat > minitrons.heat_cutout then
+        -- TODO minitrons.handleOverheat(polledUnit)    
+        --
+        polledUnit.heat = minitrons.heat_cutout
+        polledUnit.jammerActive = false
+    else
+        local newHeat = oldHeat - minitrons.heat_decay
+
+        if newHeat > 0 then
+            polledUnit.heat = newHeat
+        elseif newHeat == 0 then
+            -- TODO minitrons.handleCooldown(polledUnit)
+        else
+            polledUnit.heat = 0
+        end        
     end
 
     -- Clear jammer count for jammed units
@@ -236,7 +256,6 @@ minitrons.doPoll_ = function()
     for k, v in pairs(minitrons.polledUnits) do
         helms.util.safeCall(minitrons.pollUnit,{k,v, minitrons.pollNonce},minitrons.catchError)
     end    
-
 
     minitrons.pollNonce = minitrons.pollNonce + 1
 
