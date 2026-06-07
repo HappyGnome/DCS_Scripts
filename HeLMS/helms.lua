@@ -1178,8 +1178,7 @@ helms.mission._buildMEGroupLookup = function()
                                         coa = coaK,
                                         ctry = ctryK,
                                         ctryId = ctryV.id,
-                                        cat =
-                                            catK,
+                                        cat = catK,
                                         gp = gpK,
                                         catEnum = helms.mission._catNameToEnum(catK),
                                         startPoint = { x = gpV.x, y = gpV.y },
@@ -1219,6 +1218,36 @@ helms.mission.getMEGroupIdByName = function(name)
     if not keys then return nil end
 
     return env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp].groupId
+end
+
+--[[
+-- Get the group name in the mission containing the given unit name
+-- return a table {groupName = "", idxInGroup = n, unitCount = m}, or nil if the unit name was not found in the mission
+-- - idxInGroup is the index in the named group's `units` table in the mission
+-- - unitCount = number of units in the group
+--]]
+helms.mission.getMEGroupKeysForUnit = function(unitName)
+
+    -- Lazily build a lookup
+    if helms.mission._UnitLookup == nil then
+
+        local lookup = {}
+        for gpName, keys in pairs(helms.mission._GroupLookup) do
+            local group = env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp]
+            
+            if group.units then
+                local unitCount = #group.units
+
+                for k,v in pairs(group.units) do 
+                    helms.mission._UnitLookup[v.name] = {groupName = gpName, idxInGroup = k, unitCount = unitCount}
+                end 
+            end
+        end
+
+        helms.mission._UnitLookup = lookup
+    end
+
+    return helms.mission._UnitLookup[unitName]
 end
 
 --[[
@@ -1691,6 +1720,42 @@ helms.predicate.hasObjectMatch = function(objs, zoneDesc, ...)
     return false
 end
 
+--[[
+-- Return all objects passing the zone predicate and additional predicates
+--]]
+helms.predicate.filterObjects = function(objs, zoneDesc, ...)
+    if objs == nil then
+        return nil
+    end
+
+    local result = {}
+
+    for k, obj in pairs(objs) do
+        local fail = not helms.predicate.pointInZone_(obj:getPoint(), zoneDesc)
+
+        if (not fail) and arg then
+            for kp, pred in pairs(arg) do
+                if (not fail) then
+                    if type(pred) == 'function' and (not pred(obj)) then
+                        fail = true
+                    elseif type(pred) == 'table' and (not pred.eval(obj)) then
+                        fail = true
+                    end
+                end
+            end
+        end
+
+        if not fail then -- obj found
+            if type(pred) == 'table' then
+                pred.triggered(obj)
+            end
+            table.insert(result, obj)
+        end
+    end
+
+    return result
+end
+
 helms.predicate.limitUnitRecount = function(maxCount, resetOnSpawn)
     if maxCount == nil then maxCount = 1 end
     if resetOnSpawn == nil then resetOnSpawn = false end
@@ -1747,6 +1812,47 @@ helms.predicate.makeAltRange = function(minFt, maxFt)
 
         return alt >= minFt and alt <= maxFt
     end
+end
+
+--[[
+-- Create predicate that returns true if a unit's type name (case insensitive) matches a given type name or a list of type names
+--]]
+helms.predicate.unitType = function(typeNames)
+    if type(typeNames) == "table" then
+        local casedTable = {}
+
+        for k,v in pairs(typeNames) do
+            v = string.lower(v)
+            casedTable[v] = true
+        end
+
+        return function(unit)
+            local name = string.lower(unit:getTypeName())
+
+            return casedTable[name]
+        end
+    else
+        local casedName = string.lower(typeNames)
+
+        return function(unit)
+            local name = string.lower(unit:getTypeName())
+
+            return name == casedName
+        end
+    end
+end
+
+--[[
+-- Get the coalition.side that opposes a given coalition.side
+--]]
+helms.predicate.opposingCoa = function(coa)
+    if coa == coalition.side.RED then
+        return coalition.side.BLUE
+    elseif coa == coalition.side.BLUE then
+        return coalition.side.RED
+    end
+
+    return coa
 end
 
 helms.predicate.pnot = function(pred)
