@@ -2969,7 +2969,7 @@ keys: name
 values: {
     itemCount = # child items,
     dcsPath = path internal to DCS,
-    childItems = list of child items in recursive format,
+    childItems = list of child items in recursive format, or the Dcs path for leaves,
     coa = side or groupID
 }
 
@@ -3306,7 +3306,7 @@ helms.ui.removeItem = function(parentMenuPath, itemIndex)
     local path
     if itemIndex ~= nil then
         if parentCommsMenus.childItems[itemIndex] ~= nil then
-            path = parentCommsMenus.childItems[itemIndex]
+            path = parentCommsMenus.childItems[itemIndex] -- In case of items this is just the dcs path
 
             parentCommsMenus.childItems[itemIndex] = nil
             parentCommsMenus.itemCount = parentCommsMenus.itemCount - 1
@@ -3332,6 +3332,40 @@ helms.ui.removeItem = function(parentMenuPath, itemIndex)
             end
         end
     end
+end
+
+--[[
+-- Remove all child items
+--]]
+helms.ui.removeChildItems = function(parentMenuPath)
+    local parentCommsMenus, sideOrGroup, _, _, pathType = helms.ui.unpackCommsPath_(parentMenuPath)
+
+    if parentCommsMenus == nil then
+        return
+    end
+
+    for _, path in pairs(parentCommsMenus.childItems) do
+
+        if path.dcsPath then
+            path = path.dcsPath -- this item is a submenu, not a raw dcsPath
+        end
+
+        if pathType == helms.ui.PathType.all then
+            missionCommands.removeItem(path)
+        elseif sideOrGroup~=nil then
+            if pathType == helms.ui.PathType.coa then
+                missionCommands.removeItemForCoalition(sideOrGroup, path)
+            elseif pathType == helms.ui.PathType.group then
+
+                missionCommands.removeItemForGroup(sideOrGroup, path)
+            end
+        end
+
+    end
+
+    parentCommsMenus.childItems = {}
+    parentCommsMenus.itemCount = 0
+
 end
 
 helms.ui._renderedDrawingIds = {}     -- key = name, value = {id = ,active = }

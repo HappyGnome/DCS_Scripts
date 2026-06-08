@@ -14,14 +14,17 @@ end
 minitrons = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-minitrons.poll_interval = 13.5 --seconds, time between updates of jamming effects
+minitrons.poll_interval = 5.1 --seconds, time between updates of jamming effects
 --
 minitrons.heat_decay = 120 -- per second up to 3600
 minitrons.heat_growth = 120 -- per second up to 3600
+minitrons.heat_maxstart = 240 -- Max heat at which jamming can be enabled
 minitrons.heat_cutout = 3600
 
 minitrons.default_jam_range = 10000
 minitrons.default_audio_range = 20000
+
+minitrons.menu_jammer_label = "Minitrons Jammer"
 
 minitrons.jammerProfiles =
 {
@@ -33,7 +36,16 @@ minitrons.jammerProfiles =
 
 minitrons.polledUnits =
 {
-    -- ["UnitName"] = {heat = 0, jammerActive = false, jammerProfiles = {}, jammedUnits={}, activeProfile = ""}
+    -- ["UnitName"] = {
+    --          heat0 = 0, 
+    --          time0=0, 
+    --          jammerActive = false, 
+    --          jammerProfiles = { "Profile" = true}, 
+    --          jammedUnits={}, 
+    --          activeProfile = "", 
+    --          commsParent = nil, 
+    --          groupName = 0
+    -- }
 }
 
 minitrons.jammableUnits =
@@ -160,6 +172,68 @@ minitrons.handleJammerOnUnit = function(polledUnit, jammedUnitName, nonce)
 end
 
 --[[
+-- Comms option handler for switching off the jammer
+--]]
+minitrons.handleCommOff = function(polledUnit)
+
+    if not polledUnit.jammerActive then
+        minitrons.log_e.log("Cannot de-activate jammer. It's already off")
+    end
+
+    polledUnit.jammerActive = false
+
+    local now = timer.getTime()
+
+    polledUnit.heat0 = polledUnit.heat0 + (now - polledUnit.time0) * minitrons.heat_growth
+    polledUnit.time0 = now
+
+    minitrons.handleJammerOff(polledUnit)
+
+    -- Update comms menus after this handler completes
+    helms.dynamic.scheduleFunction(minitrons.resetCommsMenus,{polledUnit},now+1,true)
+end
+
+--[[
+-- Comms option handler for switching on the jammer
+--]]
+minitrons.handleCommOn = function(unitName, profile)
+
+    local polledUnit = minitrons.polledUnits[unitName]
+
+    if (not polledUnit) or polledUnit.jammerActive then
+        minitrons.log_e.log("Cannot de-activate jammer. It's already on")
+    end
+
+    local now = timer.getTime()
+
+    local unit = Unit.getByName()
+
+    local heat1 =  polledUnit.heat0 - (now - polledUnit.time0) * minitrons.heat_decay
+
+    if heat1 > minitrons.heat_maxstart then
+        if unit then
+            trigger.action.outTextForUnit(unit:getId()  ,"Jammer is cooling down",5,false)
+        end
+        return 
+    end
+
+    polledUnit.heat0 = heat1
+    polledUnit.time0 = now
+
+    polledUnit.activeProfile = profile
+    polledUnit.jammerActive = true
+
+    if unit then
+        trigger.action.outTextForUnit(unit:getId()  ,"Jammer on. Mode: " .. profile,5,false)
+    end
+
+
+    -- Update comms menus after this handler completes
+    helms.dynamic.scheduleFunction(minitrons.resetCommsMenus,{polledUnit},now+1,true)
+end
+
+
+--[[
 -- Remove Jammer effects for a single unit
 --]]
 minitrons.handleJammerOffUnit = function(polledUnit, jammedUnitName)
@@ -168,11 +242,38 @@ minitrons.handleJammerOffUnit = function(polledUnit, jammedUnitName)
     minitrons.unJamUnit(jammedUnitName)    
 end
 
+--[[
+-- Set comms menus for the current jammer state
+--]]
+minitrons.resetCommsMenus = function(polledUnit)
+    if polledUnit.commsParent then
+        helms.ui.removeChildItems(polledUnit.commsParent)
+    elseif polledUnit.groupName then
+        polledUnit.commsParent = helms.ui.ensureSubmenuForGroup(polledUnit.groupName, minitrons.menu_jammer_label)
+    end
+
+    if not polledUnit.commsParent then
+        minitrons.log_e.log("No comms parent for group")
+        return
+    end
+
+    if polledUnit.jammerActive then
+        helms.ui.addCommand(polledUnit.commsParent,"Off",minitrons.handleCommOff, polledUnit)
+    else
+
+        for k,_ in pairs(polledUnit.jammerProfiles) do
+    
+            helms.ui.addCommand(polledUnit.commsParent,"On: "..k,minitrons.handleCommOn, polledUnit, k)
+        end
+    end
+
+end
+
 
 --[[
 -- Check for jammable units near the given unit name and apply effects
 --]]
-minitrons.pollUnit = function(unitName,polledUnit, nonce)
+minitrons.pollUnit = function(unitName,polledUnit, nonce, now)
 
     local unit = Unit.getByName(unitName)
 
@@ -181,23 +282,36 @@ minitrons.pollUnit = function(unitName,polledUnit, nonce)
     end
 
     -- Handle cooldown and overheat
-    local oldHeat = polledUnit.heat
+    local heat1
 
-    if oldHeat > minitrons.heat_cutout then
-        -- TODO minitrons.handleOverheat(polledUnit)    
-        --
-        polledUnit.heat = minitrons.heat_cutout
-        polledUnit.jammerActive = false
+    if polledUnit.jammerActive then
+        heat1 = polledUnit.heat0 + minitrons.heat_growth * (now - polledUnit.time0)
     else
-        local newHeat = oldHeat - minitrons.heat_decay
+        heat1 = polledUnit.heat0 - minitrons.heat_decay * (now - polledUnit.time0)
+    end
 
-        if newHeat > 0 then
-            polledUnit.heat = newHeat
-        elseif newHeat == 0 then
-            -- TODO minitrons.handleCooldown(polledUnit)
-        else
-            polledUnit.heat = 0
-        end        
+    -- TODO this is for debugging
+    if unit and heat1 then
+        trigger.action.outTextForUnit(unit:getId()  ,heat1,5,true)
+    end
+
+
+    if heat1 > minitrons.heat_cutout then
+
+        if unit then
+            trigger.action.outTextForUnit(unit:getId()  ,"Jammer overheated" .. profile,5,false)
+        end
+
+        polledUnit.heat0 = minitrons.heat_cutout
+        polledUnit.time0 = now
+        polledUnit.jammerActive = false
+
+        minitrons.resetCommsMenus(polledUnit) --
+
+    elseif heat1 <= minitrons.heat_maxstart and polledUnit.heat0 > minitrons.heat_maxstart then -- Cooldown
+
+        polledUnit.heat0 = heat1
+        polledUnit.time0 = now
     end
 
     -- Clear jammer count for jammed units
@@ -254,7 +368,7 @@ minitrons.doPoll_ = function()
 	local now = timer.getTime()
 
     for k, v in pairs(minitrons.polledUnits) do
-        helms.util.safeCall(minitrons.pollUnit,{k,v, minitrons.pollNonce},minitrons.catchError)
+        helms.util.safeCall(minitrons.pollUnit,{k,v, minitrons.pollNonce, now},minitrons.catchError)
     end    
 
     minitrons.pollNonce = minitrons.pollNonce + 1
@@ -303,6 +417,7 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
     local unit = Unit.getByName(unitName)
     local groupName = ""
     local groupSize = 0
+    local groupId
 
     if unit then
         local group = unit:getGroup()
@@ -326,7 +441,13 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
     if minitrons.polledUnits[unitName] then
         minitrons.polledUnits[unitName].jammerProfiles = jammerProfiles
     else
-        minitrons.polledUnits[unitName] = {jammerProfiles = jammerProfiles, heat = 0, jammerActive = false, jammedUnits={}}
+        minitrons.polledUnits[unitName] = {
+            jammerProfiles = jammerProfiles, 
+            heat0 = 0, 
+            time0 = 0, 
+            jammerActive = false, 
+            jammedUnits={}, 
+            groupName = groupName}
     end
 
 
