@@ -28,7 +28,13 @@ minitrons.menu_jammer_label = "Minitrons Jammer"
 
 minitrons.jammerProfiles =
 {
-    ["SA-3"]={jammedUnitTypes = {--[[ TypeName = {} ]]}}
+    ["SA-3"]={jammedUnitTypes = {--[[ TypeName = {} ]]}},
+    ["Blue AAA"]={jammedUnitTypes = {
+            ["HEMTT_C-RAM_Phalanx"] ={}
+    }},
+    ["Blue EWR"]={jammedUnitTypes = {
+        ["FPS-117"] = {}
+    }}
 }
 
 
@@ -40,11 +46,12 @@ minitrons.polledUnits =
     --          heat0 = 0, 
     --          time0=0, 
     --          jammerActive = false, 
-    --          jammerProfiles = { "Profile" = true}, 
+    --          jammerProfiles = { [n] = "Profile" }, 
     --          jammedUnits={}, 
     --          activeProfile = "", 
     --          commsParent = nil, 
-    --          groupName = 0
+    --          groupName = ""
+    --          unitName = "UnitName"
     -- }
 }
 
@@ -78,6 +85,9 @@ end
 -- Unset Jamming effect on one jammed unit
 --]]
 minitrons.unJamUnit = function(jammedUnitName)
+
+    trigger.action.outText("unJamming unit: "..jammedUnitName,5,true) -- TODO
+
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
     if not jux then
@@ -115,6 +125,9 @@ end
 -- Set Jamming effect on one jammed unit
 --]]
 minitrons.jamUnit = function(jammedUnitName)
+
+    trigger.action.outText("Jamming unit: "..jammedUnitName,5,true) -- TODO
+
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
     if not jux then
@@ -144,7 +157,7 @@ minitrons.jamUnit = function(jammedUnitName)
 end
 
 --[[
--- Clear Jammer effects
+-- Clear Jammer effects from a jamming unit
 --]]
 minitrons.handleJammerOff = function(polledUnit)
     if #polledUnit.jammedUnits > 0 then
@@ -158,9 +171,11 @@ minitrons.handleJammerOff = function(polledUnit)
 end
 
 --[[
--- Apply Jammer effects. Requires a nonce for visibility of which units were jammed this round
+-- Apply Jammer effects of one jammer to one jammed unit, if not already jammed.
+-- Requires a nonce for visibility of which units were jammed this round
 --]]
 minitrons.handleJammerOnUnit = function(polledUnit, jammedUnitName, nonce)
+    
     
     -- If newly-jammed
     if not polledUnit.jammedUnits[jammedUnitName] then
@@ -176,7 +191,9 @@ end
 --]]
 minitrons.handleCommOff = function(polledUnit)
 
-    if not polledUnit.jammerActive then
+    if (not polledUnit) then
+        minitrons.log_e.log("handleCommOff: polledUnit was null.")
+    elseif not polledUnit.jammerActive then
         minitrons.log_e.log("Cannot de-activate jammer. It's already off")
     end
 
@@ -184,7 +201,7 @@ minitrons.handleCommOff = function(polledUnit)
 
     local now = timer.getTime()
 
-    polledUnit.heat0 = polledUnit.heat0 + (now - polledUnit.time0) * minitrons.heat_growth
+    polledUnit.heat0 = math.min(minitrons.heat_cutout, polledUnit.heat0 + (now - polledUnit.time0) * minitrons.heat_growth)
     polledUnit.time0 = now
 
     minitrons.handleJammerOff(polledUnit)
@@ -196,35 +213,37 @@ end
 --[[
 -- Comms option handler for switching on the jammer
 --]]
-minitrons.handleCommOn = function(unitName, profile)
+minitrons.handleCommOn = function(polledUnit, profile)
 
-    local polledUnit = minitrons.polledUnits[unitName]
+   -- local polledUnit = minitrons.polledUnits[unitName]
 
-    if (not polledUnit) or polledUnit.jammerActive then
-        minitrons.log_e.log("Cannot de-activate jammer. It's already on")
+    if (not polledUnit) then
+        minitrons.log_e.log("handleCommOn: polledUnit was null.")
+    elseif polledUnit.jammerActive then
+        minitrons.log_e.log("Cannot activate jammer. It's already on")
     end
 
     local now = timer.getTime()
 
-    local unit = Unit.getByName()
+    local unit = Unit.getByName(polledUnit.unitName)
 
     local heat1 =  polledUnit.heat0 - (now - polledUnit.time0) * minitrons.heat_decay
 
     if heat1 > minitrons.heat_maxstart then
         if unit then
-            trigger.action.outTextForUnit(unit:getId()  ,"Jammer is cooling down",5,false)
+            trigger.action.outTextForUnit(unit:getID()  ,"Jammer is cooling down",5,false)
         end
         return 
     end
 
-    polledUnit.heat0 = heat1
+    polledUnit.heat0 = math.max(0,heat1)
     polledUnit.time0 = now
 
     polledUnit.activeProfile = profile
     polledUnit.jammerActive = true
 
     if unit then
-        trigger.action.outTextForUnit(unit:getId()  ,"Jammer on. Mode: " .. profile,5,false)
+        trigger.action.outTextForUnit(unit:getID()  ,"Jammer on. Mode: " .. profile,5,false)
     end
 
 
@@ -261,9 +280,9 @@ minitrons.resetCommsMenus = function(polledUnit)
         helms.ui.addCommand(polledUnit.commsParent,"Off",minitrons.handleCommOff, polledUnit)
     else
 
-        for k,_ in pairs(polledUnit.jammerProfiles) do
+        for _,v in pairs(polledUnit.jammerProfiles) do
     
-            helms.ui.addCommand(polledUnit.commsParent,"On: "..k,minitrons.handleCommOn, polledUnit, k)
+            helms.ui.addCommand(polledUnit.commsParent,"On: "..v,minitrons.handleCommOn, polledUnit, v)
         end
     end
 
@@ -273,9 +292,9 @@ end
 --[[
 -- Check for jammable units near the given unit name and apply effects
 --]]
-minitrons.pollUnit = function(unitName,polledUnit, nonce, now)
+minitrons.pollUnit = function(polledUnit, nonce, now)
 
-    local unit = Unit.getByName(unitName)
+    local unit = Unit.getByName(polledUnit.unitName)
 
     if (not unit) or (not unit:isExist()) then
         polledUnit.jammerActive = false
@@ -292,14 +311,13 @@ minitrons.pollUnit = function(unitName,polledUnit, nonce, now)
 
     -- TODO this is for debugging
     if unit and heat1 then
-        trigger.action.outTextForUnit(unit:getId()  ,heat1,5,true)
+        trigger.action.outTextForUnit(unit:getID()  ,heat1,5,true)
     end
-
 
     if heat1 > minitrons.heat_cutout then
 
         if unit then
-            trigger.action.outTextForUnit(unit:getId()  ,"Jammer overheated" .. profile,5,false)
+            trigger.action.outTextForUnit(unit:getID()  ,"Jammer overheated",5,false)
         end
 
         polledUnit.heat0 = minitrons.heat_cutout
@@ -320,6 +338,8 @@ minitrons.pollUnit = function(unitName,polledUnit, nonce, now)
         return
     end
 
+    trigger.action.outText("Pt1",5,true) --TODO
+
     if (not unit) or (polledUnit.activeProfile == nil) then return end
     
     local profile = minitrons.jammerProfiles[polledUnit.activeProfile] 
@@ -331,16 +351,23 @@ minitrons.pollUnit = function(unitName,polledUnit, nonce, now)
 
     -- Check for jammed units
 
+    trigger.action.outText("Pt2",5,true) --TODO
     local zonePredJam = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_jam_range)
     --local zonePredAudio = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_audio_range)
 
     local pred = function(junit)
-        return jammedUnitTypes[profile.junit:getTypeName()] ~= nil
+        minitrons.log_i.log(junit:getTypeName())--TODO
+        minitrons.log_i.log(jammedUnitTypes)--TODO
+
+        return jammedUnitTypes[junit:getTypeName()] ~= nil
     end
     
+    minitrons.log_i.log(minitrons.jammableUnits)--TODO
     local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredJam,pred)
 
     if not matchUnits then return end
+
+    trigger.action.outText("Pt3",5,true) --TODO
 
     for _, junit in pairs(matchUnits) do
         local junitName = junit:getName()
@@ -367,8 +394,8 @@ minitrons.doPoll_ = function()
 
 	local now = timer.getTime()
 
-    for k, v in pairs(minitrons.polledUnits) do
-        helms.util.safeCall(minitrons.pollUnit,{k,v, minitrons.pollNonce, now},minitrons.catchError)
+    for _, v in pairs(minitrons.polledUnits) do
+        helms.util.safeCall(minitrons.pollUnit,{v, minitrons.pollNonce, now},minitrons.catchError)
     end    
 
     minitrons.pollNonce = minitrons.pollNonce + 1
@@ -392,6 +419,9 @@ minitrons.rebuildUnitTypeFilter = function()
             end
         end
     end
+
+    --minitrons.log_i.log(minitrons.jammerProfiles)
+    --minitrons.log_i.log(minitrons.unitTypeFilter)
 end
 
 --API----------------------------------------------------------------------------------------------------
@@ -402,9 +432,10 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
     end
 
     -- Replace profile options with valid options
-    for k,v in pairs(jammerProfiles) do
-        if minitrons.jammerProfiles[k] == nil then
-            jammerProfiles[k] = nil
+    for _,v in pairs(jammerProfiles) do
+        if minitrons.jammerProfiles[v] == nil then
+            jammerProfiles[v] = nil
+            minitrons.log_e.log("jammerProfile not found: "..v)
         end
     end
 
@@ -447,12 +478,12 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
             time0 = 0, 
             jammerActive = false, 
             jammedUnits={}, 
-            groupName = groupName}
+            groupName = groupName,
+            unitName = unitName
+        }
     end
 
-
-    -- TODO: add comms menu options for the unit (One On option per profile)
-    -- When clicked, add an off option. After a delay, re-add the modes?
+    minitrons.resetCommsMenus(minitrons.polledUnits[unitName])
 
 end
 
@@ -477,6 +508,8 @@ end
 minitrons.handleUnitSpawn = function(unit)
     if not unit then return end
 
+    minitrons.log_i.log("spawning " .. unit:getTypeName()) -- TODO
+
     if minitrons.unitTypeFilter[unit:getTypeName()] then
         table.insert(minitrons.jammableUnits, unit)
         minitrons.jammableUnitsEx[unit:getName()] = {jammerCount = 0}
@@ -495,3 +528,10 @@ minitrons.EventHandler = {
 minitrons.rebuildUnitTypeFilter()
 
 world.addEventHandler(minitrons.EventHandler)
+
+-- Simulate spawn event for all existing units
+-- TODO
+
+helms.dynamic.scheduleFunction(minitrons.doPoll_,nil,timer.getTime()+minitrons.poll_interval)
+
+minitrons.log_i.log("Minitrons initialised")

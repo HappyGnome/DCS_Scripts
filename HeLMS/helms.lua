@@ -1239,7 +1239,7 @@ helms.mission.getMEGroupKeysForUnit = function(unitName)
                 local unitCount = #group.units
 
                 for k,v in pairs(group.units) do 
-                    helms.mission._UnitLookup[v.name] = {groupName = gpName, idxInGroup = k, unitCount = unitCount}
+                    lookup[v.name] = {groupName = gpName, idxInGroup = k, unitCount = unitCount}
                 end 
             end
         end
@@ -1671,7 +1671,7 @@ helms.predicate.makeZoneDesc_ = function(zoneName)
         centre = { x = zone.point.x, y = zone.point.z }
         radius = zone.radius
 
-        result = helms.predicate.makeZoneDescPoint_ (centre,radius)
+        result = helms.predicate.makeCircZoneDescPoint_ (centre,radius)
     end
 
     return result
@@ -1686,7 +1686,7 @@ helms.predicate.makeCircZoneDescUnit = function(unit, radius)
 
     local centre = helms.maths.as2D(unit:getPoint())
 
-    return helms.predicate.makeZoneDescPoint_ (centre,radius)
+    return helms.predicate.makeCircZoneDescPoint_ (centre,radius)
 end
 
 helms.predicate.hasObjectMatch = function(objs, zoneDesc, ...)
