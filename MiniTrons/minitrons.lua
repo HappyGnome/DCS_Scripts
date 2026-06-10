@@ -14,7 +14,7 @@ end
 minitrons = {}
 
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
-minitrons.poll_interval = 5.1 --seconds, time between updates of jamming effects
+minitrons.poll_interval = 2.7 --seconds, time between updates of jamming effects
 --
 minitrons.heat_decay = 120 -- per second up to 3600
 minitrons.heat_growth = 120 -- per second up to 3600
@@ -86,7 +86,7 @@ end
 --]]
 minitrons.unJamUnit = function(jammedUnitName)
 
-    trigger.action.outText("unJamming unit: "..jammedUnitName,5,true) -- TODO
+    -- trigger.action.outText("unJamming unit: "..jammedUnitName,5,false) -- TODO
 
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
@@ -126,7 +126,7 @@ end
 --]]
 minitrons.jamUnit = function(jammedUnitName)
 
-    trigger.action.outText("Jamming unit: "..jammedUnitName,5,true) -- TODO
+    -- trigger.action.outText("Jamming unit: "..jammedUnitName,5,false) -- TODO
 
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
@@ -160,14 +160,12 @@ end
 -- Clear Jammer effects from a jamming unit
 --]]
 minitrons.handleJammerOff = function(polledUnit)
-    if #polledUnit.jammedUnits > 0 then
 
-        for juName,_ in pairs(polledUnit.jammedUnits) do
-            minitrons.unJamUnit(juName)
-        end
-
-        polledUnit.jammedUnits = {}
+    for juName,_ in pairs(polledUnit.jammedUnits) do
+        minitrons.unJamUnit(juName)
     end
+
+    polledUnit.jammedUnits = {}
 end
 
 --[[
@@ -310,9 +308,9 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
     end
 
     -- TODO this is for debugging
-    if unit and heat1 then
-        trigger.action.outTextForUnit(unit:getID()  ,heat1,5,true)
-    end
+ --   if unit and heat1 then
+ --       trigger.action.outTextForUnit(unit:getID()  ,heat1,5,false)
+ --   end
 
     if heat1 > minitrons.heat_cutout then
 
@@ -338,7 +336,7 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
         return
     end
 
-    trigger.action.outText("Pt1",5,true) --TODO
+    --trigger.action.outText("Pt1",5,true) --TODO
 
     if (not unit) or (polledUnit.activeProfile == nil) then return end
     
@@ -351,23 +349,23 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
 
     -- Check for jammed units
 
-    trigger.action.outText("Pt2",5,true) --TODO
+    --trigger.action.outText("Pt2",5,true) --TODO
     local zonePredJam = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_jam_range)
     --local zonePredAudio = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_audio_range)
 
     local pred = function(junit)
-        minitrons.log_i.log(junit:getTypeName())--TODO
-        minitrons.log_i.log(jammedUnitTypes)--TODO
+        --minitrons.log_i.log(junit:getTypeName())--TODO
+        --minitrons.log_i.log(jammedUnitTypes)--TODO
 
         return jammedUnitTypes[junit:getTypeName()] ~= nil
     end
     
-    minitrons.log_i.log(minitrons.jammableUnits)--TODO
+    --minitrons.log_i.log(minitrons.jammableUnits)--TODO
     local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredJam,pred)
 
     if not matchUnits then return end
 
-    trigger.action.outText("Pt3",5,true) --TODO
+    --trigger.action.outText("Pt3",5,true) --TODO
 
     for _, junit in pairs(matchUnits) do
         local junitName = junit:getName()
@@ -448,7 +446,6 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
     local unit = Unit.getByName(unitName)
     local groupName = ""
     local groupSize = 0
-    local groupId
 
     if unit then
         local group = unit:getGroup()
@@ -508,7 +505,7 @@ end
 minitrons.handleUnitSpawn = function(unit)
     if not unit then return end
 
-    minitrons.log_i.log("spawning " .. unit:getTypeName()) -- TODO
+    --minitrons.log_i.log("spawning " .. unit:getTypeName()) -- TODO
 
     if minitrons.unitTypeFilter[unit:getTypeName()] then
         table.insert(minitrons.jammableUnits, unit)
@@ -530,7 +527,13 @@ minitrons.rebuildUnitTypeFilter()
 world.addEventHandler(minitrons.EventHandler)
 
 -- Simulate spawn event for all existing units
--- TODO
+for _,coa in pairs(coalition.side) do
+    for _,gp in pairs(coalition.getGroups(coa)) do
+        for _, unit in pairs(gp:getUnits()) do
+            minitrons.handleUnitSpawn(unit)
+        end
+    end
+end
 
 helms.dynamic.scheduleFunction(minitrons.doPoll_,nil,timer.getTime()+minitrons.poll_interval)
 
