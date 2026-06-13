@@ -37,6 +37,10 @@ minitrons.jammerProfiles =
     }}
 }
 
+minitrons.unitTypeDisplayNameCache =
+{
+    -- ["TypeName"] = "DisplayName"
+}
 
 ----------------------------------------------------------------------------------------------------------
 
@@ -48,6 +52,7 @@ minitrons.polledUnits =
     --          jammerActive = false, 
     --          jammerProfiles = { [n] = "Profile" }, 
     --          jammedUnits={}, 
+    --          audibleTypes={}, 
     --          activeProfile = "", 
     --          commsParent = nil, 
     --          groupName = ""
@@ -85,8 +90,6 @@ end
 -- Unset Jamming effect on one jammed unit
 --]]
 minitrons.unJamUnit = function(jammedUnitName)
-
-    -- trigger.action.outText("unJamming unit: "..jammedUnitName,5,false) -- TODO
 
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
@@ -126,8 +129,6 @@ end
 --]]
 minitrons.jamUnit = function(jammedUnitName)
 
-    -- trigger.action.outText("Jamming unit: "..jammedUnitName,5,false) -- TODO
-
     local jux = minitrons.jammableUnitsEx[jammedUnitName]
 
     if not jux then
@@ -143,7 +144,7 @@ minitrons.jamUnit = function(jammedUnitName)
         local controller
 
         if unit then
-            group = unit:getGroup()
+            group = unit:getGroup() -- TODO: Can we just turn the radar off for this unit?
         end
 
         if group then
@@ -229,7 +230,10 @@ minitrons.handleCommOn = function(polledUnit, profile)
 
     if heat1 > minitrons.heat_maxstart then
         if unit then
-            trigger.action.outTextForUnit(unit:getID()  ,"Jammer is cooling down",5,false)
+
+            local availInMins = math.ceil ((heat1 - minitrons.heat_maxstart) / (60 * minitrons.heat_decay))
+
+            trigger.action.outTextForUnit(unit:getID()  ,"Jammer is cooling down\nWait " .. availInMins ..  " mins",5,false)
         end
         return 
     end
@@ -260,6 +264,31 @@ minitrons.handleJammerOffUnit = function(polledUnit, jammedUnitName)
 end
 
 --[[
+-- List currently audible radars
+--]]
+minitrons.repeatAudio = function(polledUnit)
+
+    local unit = Unit.getByName(polledUnit.unitName)
+    if (not unit) or (not polledUnit.audibleUnitTypes) then return end
+
+    local msg = "Signals detected:"
+    local found = false
+
+    for k, nce in pairs(polledUnit.audibleUnitTypes) do
+        if nce ~= minitrons.noNonce then
+            found = true
+            msg = msg .. "\n" .. minitrons.unitTypeDisplayNameCache[k]
+        end
+    end
+
+    if not found then
+        msg = "No signals detected"
+    end
+
+    trigger.action.outTextForUnit(unit:getID(),msg,10,false)
+end
+
+--[[
 -- Set comms menus for the current jammer state
 --]]
 minitrons.resetCommsMenus = function(polledUnit)
@@ -275,9 +304,11 @@ minitrons.resetCommsMenus = function(polledUnit)
     end
 
     if polledUnit.jammerActive then
+        helms.ui.addCommand(polledUnit.commsParent,"Audio",minitrons.repeatAudio, polledUnit)
         helms.ui.addCommand(polledUnit.commsParent,"Off",minitrons.handleCommOff, polledUnit)
     else
 
+        helms.ui.addCommand(polledUnit.commsParent,"Audio",minitrons.repeatAudio, polledUnit)
         for _,v in pairs(polledUnit.jammerProfiles) do
     
             helms.ui.addCommand(polledUnit.commsParent,"On: "..v,minitrons.handleCommOn, polledUnit, v)
@@ -286,6 +317,100 @@ minitrons.resetCommsMenus = function(polledUnit)
 
 end
 
+--[[
+-- Check for jammable units within range of a given unit (given its active mode). Apply effects to those units
+--]]
+minitrons.conditionalJammingForPoll = function(unit,polledUnit,nonce)
+
+    -- Clear jammer count for jammed units
+    if (not polledUnit.jammerActive) then
+        minitrons.handleJammerOff(polledUnit)
+        return
+    end
+
+    if (not unit) or (polledUnit.activeProfile == nil) then return end
+    
+    local profile = minitrons.jammerProfiles[polledUnit.activeProfile] 
+    local jammedUnitTypes = profile.jammedUnitTypes
+
+    if not jammedUnitTypes then return end
+
+    -- Jammer active --
+
+    -- Check for jammed units
+
+    local zonePredJam = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_jam_range)
+
+    local pred = function(junit)
+
+        return jammedUnitTypes[junit:getTypeName()] ~= nil
+    end
+    
+    local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredJam,pred)
+
+    if not matchUnits then matchUnits = {} end
+
+    for _, junit in pairs(matchUnits) do
+        local junitName = junit:getName()
+        minitrons.handleJammerOnUnit(polledUnit,junitName,nonce)
+    end
+
+    -- Check for jammed units no-longer in range
+    for ujuName, nce in pairs(polledUnit.jammedUnits) do
+        if nce ~= nonce then
+            minitrons.handleJammerOffUnit(polledUnit,ujuName)
+        end
+    end
+end
+
+--[[
+-- Check for audible units within range of a given unit. Show messages / play audio to the jamming player if applicable
+--]]
+minitrons.updateAudioForPoll = function(unit,polledUnit,nonce)
+
+    if (not unit) or (not polledUnit) or (not polledUnit.audibleUnitTypes) then return end
+
+    local audibleUnitTypes = polledUnit.audibleUnitTypes
+    local zonePredAudio = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_audio_range)
+
+    local pred = function(junit)
+        return audibleUnitTypes[junit:getTypeName()] ~= nil 
+    end
+    
+    local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredAudio,pred)
+
+    if not matchUnits then matchUnits = {} end
+
+    for _, junit in pairs(matchUnits) do
+
+        local typeName = junit:getTypeName()
+
+        if not minitrons.unitTypeDisplayNameCache[typeName] then
+            minitrons.unitTypeDisplayNameCache[typeName] = junit:getDesc().displayName
+        end
+
+        if polledUnit.audibleUnitTypes[typeName] == minitrons.noNonce then
+            local msg = "Signal detected: " .. minitrons.unitTypeDisplayNameCache[typeName]
+
+            trigger.action.outTextForUnit(unit:getID(),msg,10,false)
+        end
+
+        polledUnit.audibleUnitTypes[typeName] = nonce
+
+    end
+
+    for typeName,nce in pairs (polledUnit.audibleUnitTypes) do
+        if (nce ~= nonce) and (nce ~= minitrons.noNonce) then
+
+            local msg = "Lost signal: " .. minitrons.unitTypeDisplayNameCache[typeName]
+
+            trigger.action.outTextForUnit(unit:getID(),msg,10,false)
+
+            polledUnit.audibleUnitTypes[typeName] = minitrons.noNonce
+        end
+    end
+
+end
 
 --[[
 -- Check for jammable units near the given unit name and apply effects
@@ -307,11 +432,6 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
         heat1 = polledUnit.heat0 - minitrons.heat_decay * (now - polledUnit.time0)
     end
 
-    -- TODO this is for debugging
- --   if unit and heat1 then
- --       trigger.action.outTextForUnit(unit:getID()  ,heat1,5,false)
- --   end
-
     if heat1 > minitrons.heat_cutout then
 
         if unit then
@@ -330,60 +450,23 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
         polledUnit.time0 = now
     end
 
-    -- Clear jammer count for jammed units
-    if (not polledUnit.jammerActive) then
-        minitrons.handleJammerOff(polledUnit)
-        return
-    end
+    -- Check for audible units --
 
-    --trigger.action.outText("Pt1",5,true) --TODO
+    minitrons.updateAudioForPoll(unit,polledUnit,nonce)
 
-    if (not unit) or (polledUnit.activeProfile == nil) then return end
-    
-    local profile = minitrons.jammerProfiles[polledUnit.activeProfile] 
-    local jammedUnitTypes = profile.jammedUnitTypes
-
-    if not jammedUnitTypes then return end
-
-    -- Jammer active --
-
-    -- Check for jammed units
-
-    --trigger.action.outText("Pt2",5,true) --TODO
-    local zonePredJam = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_jam_range)
-    --local zonePredAudio = helms.predicate.makeCircZoneDescUnit(unit, minitrons.default_audio_range)
-
-    local pred = function(junit)
-        --minitrons.log_i.log(junit:getTypeName())--TODO
-        --minitrons.log_i.log(jammedUnitTypes)--TODO
-
-        return jammedUnitTypes[junit:getTypeName()] ~= nil
-    end
-    
-    --minitrons.log_i.log(minitrons.jammableUnits)--TODO
-    local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredJam,pred)
-
-    if not matchUnits then return end
-
-    --trigger.action.outText("Pt3",5,true) --TODO
-
-    for _, junit in pairs(matchUnits) do
-        local junitName = junit:getName()
-        minitrons.handleJammerOnUnit(polledUnit,junitName,nonce)
-    end
-
-    -- Check for jammed units no-longer in range
-    for ujuName, nce in pairs(polledUnit.jammedUnits) do
-        if nce ~= nonce then
-            minitrons.handleJammerOffUnit(polledUnit,ujuName)
-        end
-    end
+    -- Jamming effects --
+    minitrons.conditionalJammingForPoll(unit,polledUnit,nonce)
 end
 
 --[[
 -- Poll loop counter to act as a nonce for checking if activity occurred this poll
 --]]
 minitrons.pollNonce = 0
+
+--[[
+-- non-nil Value not clashing with any nonce
+--]]
+minitrons.noNonce = false
 
 --[[
 Private: do poll of groups and pools
@@ -422,6 +505,30 @@ minitrons.rebuildUnitTypeFilter = function()
     --minitrons.log_i.log(minitrons.unitTypeFilter)
 end
 
+
+--[[
+-- Rebuild a list of audible type names for a jammer unit
+--]]
+minitrons.rebuildAudibleTypesForUnit = function(polledUnit)
+    local types = {}
+
+    if polledUnit == nil or polledUnit.jammerProfiles == nil then return end
+
+    for _, profileKey in pairs(polledUnit.jammerProfiles) do
+        local profile = minitrons.jammerProfiles[profileKey]
+
+        local profileTypes
+
+        if profile then profileTypes = profile.jammedUnitTypes end
+        if not profileTypes then profileTypes = {} end
+
+        for k,_ in pairs(profileTypes) do
+            types[k] = minitrons.noNonce
+        end
+    end
+
+    polledUnit.audibleUnitTypes = types
+end
 --API----------------------------------------------------------------------------------------------------
 minitrons.addJammerUnit = function(unitName,jammerProfiles)
     if jammerProfiles == nil then
@@ -475,11 +582,13 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
             time0 = 0, 
             jammerActive = false, 
             jammedUnits={}, 
+            audibleTypes={}, 
             groupName = groupName,
             unitName = unitName
         }
     end
 
+    minitrons.rebuildAudibleTypesForUnit(minitrons.polledUnits[unitName])
     minitrons.resetCommsMenus(minitrons.polledUnits[unitName])
 
 end
@@ -505,11 +614,22 @@ end
 minitrons.handleUnitSpawn = function(unit)
     if not unit then return end
 
-    --minitrons.log_i.log("spawning " .. unit:getTypeName()) -- TODO
+    local unitName = unit:getName()
 
     if minitrons.unitTypeFilter[unit:getTypeName()] then
         table.insert(minitrons.jammableUnits, unit)
-        minitrons.jammableUnitsEx[unit:getName()] = {jammerCount = 0}
+        minitrons.jammableUnitsEx[unitName] = {jammerCount = 0}
+    end
+
+    -- Reset jammer on a new spawn of a player unit
+    local existingPlayer = minitrons.polledUnits[unitName]
+    if existingPlayer then
+        existingPlayer.heat0 = 0
+        existingPlayer.time0 = 0
+        existingPlayer.jammerActive = false
+        existingPlayer.activeProfile = nil
+
+        minitrons.resetCommsMenus(existingPlayer)
     end
 end
 
