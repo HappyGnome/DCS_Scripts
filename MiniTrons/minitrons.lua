@@ -13,6 +13,10 @@ end
 
 minitrons = {}
 
+-- Feature suggest: Damage to jammer while on, permanent destruction (until respawn)
+-- Feature suggest: investigate LOS as condtion for the audio & jamming
+-- Feature suggest: Just turn of radars, not AI
+
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 minitrons.poll_interval = 2.7 --seconds, time between updates of jamming effects
 --
@@ -20,29 +24,32 @@ minitrons.heat_decay = 120 -- per second up to 3600
 minitrons.heat_growth = 120 -- per second up to 3600
 minitrons.heat_maxstart = 240 -- Max heat at which jamming can be enabled
 minitrons.heat_cutout = 3600
+minitrons.damage_rate = 1
+minitrons.max_damage = 300
 
 minitrons.default_jam_range = 10000
 minitrons.default_audio_range = 20000
 
 minitrons.menu_jammer_label = "Minitrons Jammer"
+minitrons.jammerUsMsg = "Jammer u/s (burnt out)"
 
 minitrons.jammerProfiles =
 {
-    ["SA-3"]={jammedUnitTypes = {--[[ TypeName = {} ]]}},
-    ["Blue AAA"]={jammedUnitTypes = {
-            ["HEMTT_C-RAM_Phalanx"] ={}
-    }},
-    ["Blue EWR"]={jammedUnitTypes = {
-        ["FPS-117"] = {}
-    }}
+--    ["SA-3"]={jammedUnitTypes = {--[[ TypeName = {} ]]}},
+--    ["Blue AAA"]={jammedUnitTypes = {
+--            ["HEMTT_C-RAM_Phalanx"] ={}
+--    }},
+--    ["Blue EWR"]={jammedUnitTypes = {
+--        ["FPS-117"] = {}
+--    }}
 }
+
+----------------------------------------------------------------------------------------------------------
 
 minitrons.unitTypeDisplayNameCache =
 {
     -- ["TypeName"] = "DisplayName"
 }
-
-----------------------------------------------------------------------------------------------------------
 
 minitrons.polledUnits =
 {
@@ -144,7 +151,7 @@ minitrons.jamUnit = function(jammedUnitName)
         local controller
 
         if unit then
-            group = unit:getGroup() -- TODO: Can we just turn the radar off for this unit?
+            group = unit:getGroup() 
         end
 
         if group then
@@ -201,6 +208,7 @@ minitrons.handleCommOff = function(polledUnit)
     local now = timer.getTime()
 
     polledUnit.heat0 = math.min(minitrons.heat_cutout, polledUnit.heat0 + (now - polledUnit.time0) * minitrons.heat_growth)
+    polledUnit.damage0 = polledUnit.damage0 + (now - polledUnit.time0) * minitrons.damage_rate
     polledUnit.time0 = now
 
     minitrons.handleJammerOff(polledUnit)
@@ -228,7 +236,14 @@ minitrons.handleCommOn = function(polledUnit, profile)
 
     local heat1 =  polledUnit.heat0 - (now - polledUnit.time0) * minitrons.heat_decay
 
-    if heat1 > minitrons.heat_maxstart then
+    if polledUnit.burntOut then
+        if unit then
+
+            trigger.action.outTextForUnit(unit:getID()  ,minitrons.jammerUsMsg,5,false)
+        end
+        return 
+
+    elseif heat1 > minitrons.heat_maxstart then
         if unit then
 
             local availInMins = math.ceil ((heat1 - minitrons.heat_maxstart) / (60 * minitrons.heat_decay))
@@ -239,6 +254,7 @@ minitrons.handleCommOn = function(polledUnit, profile)
     end
 
     polledUnit.heat0 = math.max(0,heat1)
+    -- polledUnit.damage0 = ... -- Jammer was off - no damage to add
     polledUnit.time0 = now
 
     polledUnit.activeProfile = profile
@@ -247,7 +263,6 @@ minitrons.handleCommOn = function(polledUnit, profile)
     if unit then
         trigger.action.outTextForUnit(unit:getID()  ,"Jammer on. Mode: " .. profile,5,false)
     end
-
 
     -- Update comms menus after this handler completes
     helms.dynamic.scheduleFunction(minitrons.resetCommsMenus,{polledUnit},now+1,true)
@@ -323,7 +338,7 @@ end
 minitrons.conditionalJammingForPoll = function(unit,polledUnit,nonce)
 
     -- Clear jammer count for jammed units
-    if (not polledUnit.jammerActive) then
+    if (not polledUnit.jammerActive) or (polledUnit.burntOut) then
         minitrons.handleJammerOff(polledUnit)
         return
     end
@@ -423,36 +438,52 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
         polledUnit.jammerActive = false
     end
 
+    -- Check for audible units --
+
+    minitrons.updateAudioForPoll(unit,polledUnit,nonce)
+
     -- Handle cooldown and overheat
     local heat1
+    local damage1 = polledUnit.damage0
 
     if polledUnit.jammerActive then
         heat1 = polledUnit.heat0 + minitrons.heat_growth * (now - polledUnit.time0)
+        damage1 = damage1 + minitrons.damage_rate * (now - polledUnit.time0)
+
     else
         heat1 = polledUnit.heat0 - minitrons.heat_decay * (now - polledUnit.time0)
     end
 
-    if heat1 > minitrons.heat_cutout then
+    -- If Jammer overheated or burnt out
+    if damage1 > minitrons.max_damage  or heat1 > minitrons.heat_cutout then
 
-        if unit then
-            trigger.action.outTextForUnit(unit:getID()  ,"Jammer overheated",5,false)
+        local msg = "Jammer overheated"
+
+        if damage1 > minitrons.max_damage then
+            msg = minitrons.jammerUsMsg
+
+            polledUnit.burntOut = true
+            damage1 = minitrons.max_damage -- do not trigger the burnt-out event next time
+
         end
 
-        polledUnit.heat0 = minitrons.heat_cutout
+        if unit then
+            trigger.action.outTextForUnit(unit:getID()  , msg,5,false)
+        end
+
+        polledUnit.heat0 = minitrons.heat_cutout -- do not trigger the overheated event next time
         polledUnit.time0 = now
+        polledUnit.damage0 = damage1 
         polledUnit.jammerActive = false
 
         minitrons.resetCommsMenus(polledUnit) --
 
-    elseif heat1 <= minitrons.heat_maxstart and polledUnit.heat0 > minitrons.heat_maxstart then -- Cooldown
-
-        polledUnit.heat0 = heat1
-        polledUnit.time0 = now
+--    elseif heat1 <= minitrons.heat_maxstart and polledUnit.heat0 > minitrons.heat_maxstart then -- Cooldown handling
+--
+--        polledUnit.heat0 = heat1
+--        polledUnit.time0 = now
+--        polledUnit.damage0 = damage1 
     end
-
-    -- Check for audible units --
-
-    minitrons.updateAudioForPoll(unit,polledUnit,nonce)
 
     -- Jamming effects --
     minitrons.conditionalJammingForPoll(unit,polledUnit,nonce)
@@ -536,10 +567,14 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
         return
     end
 
+    if not minitrons.configurationReady then
+        minitrons.log_e.log("rebuildConfig was not called before adding jammer unit")
+    end
+
     -- Replace profile options with valid options
-    for _,v in pairs(jammerProfiles) do
+    for k,v in pairs(jammerProfiles) do
         if minitrons.jammerProfiles[v] == nil then
-            jammerProfiles[v] = nil
+            jammerProfiles[k] = nil
             minitrons.log_e.log("jammerProfile not found: "..v)
         end
     end
@@ -584,7 +619,8 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
             jammedUnits={}, 
             audibleTypes={}, 
             groupName = groupName,
-            unitName = unitName
+            unitName = unitName,
+            damage0 = 0
         }
     end
 
@@ -593,6 +629,66 @@ minitrons.addJammerUnit = function(unitName,jammerProfiles)
 
 end
 
+--[[
+-- Add the types of named unit(s) to the named profile 
+--]]
+minitrons.addUnitToProfile = function(profileName,...)
+
+    if (not profileName) or (not arg) or (next(arg) == nil) then return end
+
+--    ["SA-3"]={jammedUnitTypes = {--[[ TypeName = {} ]]}},
+    local jammedUnitTypes = {}
+
+    if not minitrons.jammerProfiles[profileName] then
+        minitrons.jammerProfiles[profileName] = {}
+    end
+    
+    if minitrons.jammerProfiles[profileName].jammedUnitTypes then
+        jammedUnitTypes = minitrons.jammerProfiles[profileName].jammedUnitTypes
+    end
+
+    for _, unitName in ipairs(arg) do
+        local unit = Unit.getByName(unitName)
+
+        if unit then
+            jammedUnitTypes[unit:getTypeName()] = {}
+        else
+            minitrons.log_i.log("Unit type " .. unitName .. " not found.")
+        end
+    end
+
+    minitrons.configurationReady = false
+    minitrons.jammerProfiles[profileName].jammedUnitTypes = jammedUnitTypes
+
+    minitrons.log_i.log(minitrons.jammerProfiles)
+
+--    -- rebuild comms and lookups for jammer units already added
+--    for _,pu in pairs(minitrons.polledUnits) do
+--        minitrons.rebuildAudibleTypesForUnit(pu)
+--        minitrons.resetCommsMenus(pu)
+--    end
+
+end
+
+--[[
+-- To be called after changing profiles, before adding jammer units
+--]]
+minitrons.rebuildConfig = function()
+
+    -- Rebuild list of unit types affected by minitrons
+    minitrons.rebuildUnitTypeFilter()
+
+    -- Simulate spawn event for all existing units
+    for _,coa in pairs(coalition.side) do
+        for _,gp in pairs(coalition.getGroups(coa)) do
+            for _, unit in pairs(gp:getUnits()) do
+                minitrons.handleUnitSpawn(unit)
+            end
+        end
+    end
+
+    minitrons.configurationReady = true
+end
 
 --[[
 -- Minimal logic notes:
@@ -626,7 +722,9 @@ minitrons.handleUnitSpawn = function(unit)
     if existingPlayer then
         existingPlayer.heat0 = 0
         existingPlayer.time0 = 0
+        existingPlayer.damage0 = 0
         existingPlayer.jammerActive = false
+        existingPlayer.burntOut = false
         existingPlayer.activeProfile = nil
 
         minitrons.resetCommsMenus(existingPlayer)
@@ -642,18 +740,9 @@ minitrons.EventHandler = {
 }
 
 --STARTUP----------------------------------------------------------------------------------------------------
-minitrons.rebuildUnitTypeFilter()
-
 world.addEventHandler(minitrons.EventHandler)
 
--- Simulate spawn event for all existing units
-for _,coa in pairs(coalition.side) do
-    for _,gp in pairs(coalition.getGroups(coa)) do
-        for _, unit in pairs(gp:getUnits()) do
-            minitrons.handleUnitSpawn(unit)
-        end
-    end
-end
+minitrons.rebuildConfig()
 
 helms.dynamic.scheduleFunction(minitrons.doPoll_,nil,timer.getTime()+minitrons.poll_interval)
 

@@ -63,7 +63,8 @@ helms.util.obj2str = function(obj)
     if t == 'table' then
         msg = msg .. '{'
         for k, v in pairs(obj) do
-            msg = msg .. k .. ':' .. helms.util.obj2str(v) .. ', '
+
+            msg = msg .. '[' .. helms.util.obj2str(k) .. '] =' .. helms.util.obj2str(v) .. ', '
         end
         msg = msg .. '}'
     elseif t == 'string' then
@@ -1772,7 +1773,7 @@ helms.predicate.limitUnitRecount = function(maxCount, resetOnSpawn)
         end
     end
 
-    pretTbl.pred = function(unit)
+    predTbl.pred = function(unit)
         local count = predTbl.counted[unit:getName()]
         return count == nil or count < maxCount
     end
