@@ -13,7 +13,6 @@ end
 
 minitrons = {}
 
--- Feature suggest: Damage to jammer while on, permanent destruction (until respawn)
 -- Feature suggest: investigate LOS as condtion for the audio & jamming
 -- Feature suggest: Just turn of radars, not AI
 
@@ -45,6 +44,10 @@ minitrons.jammerProfiles =
 }
 
 ----------------------------------------------------------------------------------------------------------
+--[[
+-- common filtering for jamming and audio is done in one pass. Units outside the pre-screen range are filtered out
+--]]
+minitrons.prescreen_range = math.max(minitrons.default_jam_range, minitrons.default_audio_range)
 
 minitrons.unitTypeDisplayNameCache =
 {
@@ -335,7 +338,7 @@ end
 --[[
 -- Check for jammable units within range of a given unit (given its active mode). Apply effects to those units
 --]]
-minitrons.conditionalJammingForPoll = function(unit,polledUnit,nonce)
+minitrons.conditionalJammingForPoll = function(unit,polledUnit,nonce,jammableUnitsPs)
 
     -- Clear jammer count for jammed units
     if (not polledUnit.jammerActive) or (polledUnit.burntOut) then
@@ -361,7 +364,7 @@ minitrons.conditionalJammingForPoll = function(unit,polledUnit,nonce)
         return jammedUnitTypes[junit:getTypeName()] ~= nil
     end
     
-    local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredJam,pred)
+    local matchUnits = helms.predicate.filterObjects(jammableUnitsPs,zonePredJam,pred)
 
     if not matchUnits then matchUnits = {} end
 
@@ -381,7 +384,7 @@ end
 --[[
 -- Check for audible units within range of a given unit. Show messages / play audio to the jamming player if applicable
 --]]
-minitrons.updateAudioForPoll = function(unit,polledUnit,nonce)
+minitrons.updateAudioForPoll = function(unit,polledUnit,nonce, jammableUnitsPs)
 
     if (not unit) or (not polledUnit) or (not polledUnit.audibleUnitTypes) then return end
 
@@ -392,7 +395,7 @@ minitrons.updateAudioForPoll = function(unit,polledUnit,nonce)
         return audibleUnitTypes[junit:getTypeName()] ~= nil 
     end
     
-    local matchUnits = helms.predicate.filterObjects(minitrons.jammableUnits,zonePredAudio,pred)
+    local matchUnits = helms.predicate.filterObjects(jammableUnitsPs,zonePredAudio,pred)
 
     if not matchUnits then matchUnits = {} end
 
@@ -428,6 +431,32 @@ minitrons.updateAudioForPoll = function(unit,polledUnit,nonce)
 end
 
 --[[
+-- Check for jammable units within pre-screen range of a given unit, and with LOS
+-- Return list of units
+--]]
+minitrons.prescreenForPoll = function(unit)
+
+    if (not unit) then return end
+
+    local zonePredPre = helms.predicate.makeCircZoneDescUnit(unit, minitrons.prescreen_range)
+
+    local up = unit:getPoint()
+
+    up.y = up.y + 1 -- Avoid ground clipping
+
+    local pred = function(junit)
+
+        local jp = junit:getPoint()
+        jp.y = jp.y + 1
+
+        return land.isVisible(up,jp)
+    end
+    
+    return helms.predicate.filterObjects(minitrons.jammableUnits,zonePredPre,pred)
+end
+
+
+--[[
 -- Check for jammable units near the given unit name and apply effects
 --]]
 minitrons.pollUnit = function(polledUnit, nonce, now)
@@ -438,9 +467,12 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
         polledUnit.jammerActive = false
     end
 
+    -- Prescreen jammable units 
+    local jammableUnitsPs = minitrons.prescreenForPoll(unit)
+
     -- Check for audible units --
 
-    minitrons.updateAudioForPoll(unit,polledUnit,nonce)
+    minitrons.updateAudioForPoll(unit,polledUnit,nonce, jammableUnitsPs)
 
     -- Handle cooldown and overheat
     local heat1
@@ -486,7 +518,7 @@ minitrons.pollUnit = function(polledUnit, nonce, now)
     end
 
     -- Jamming effects --
-    minitrons.conditionalJammingForPoll(unit,polledUnit,nonce)
+    minitrons.conditionalJammingForPoll(unit,polledUnit,nonce, jammableUnitsPs)
 end
 
 --[[

@@ -1,5 +1,5 @@
 --#######################################################################################################
--- HeLMS v1.15 -  Helpful Library of Mission Scripts
+-- HeLMS v1.17 -  Helpful Library of Mission Scripts
 --
 -- Common utilities for scripts by HappyGnome. Lightweight replacement for some MIST features.
 --
