@@ -1,6 +1,8 @@
 # Changelog
 
 ## Latest
+* Minitrons initial implementation
+## 1.12a
 * Added IrStrobe effects for units and statics
 * Fixed KoTH double kill bug
 * Added static detection to HeLMS predicates

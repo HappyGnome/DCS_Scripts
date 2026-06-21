@@ -1,5 +1,5 @@
 --#######################################################################################################
--- HeLMS v1.15 -  Helpful Library of Mission Scripts
+-- HeLMS v1.17 -  Helpful Library of Mission Scripts
 --
 -- Common utilities for scripts by HappyGnome. Lightweight replacement for some MIST features.
 --
@@ -63,7 +63,8 @@ helms.util.obj2str = function(obj)
     if t == 'table' then
         msg = msg .. '{'
         for k, v in pairs(obj) do
-            msg = msg .. k .. ':' .. helms.util.obj2str(v) .. ', '
+
+            msg = msg .. '[' .. helms.util.obj2str(k) .. '] =' .. helms.util.obj2str(v) .. ', '
         end
         msg = msg .. '}'
     elseif t == 'string' then
@@ -1178,8 +1179,7 @@ helms.mission._buildMEGroupLookup = function()
                                         coa = coaK,
                                         ctry = ctryK,
                                         ctryId = ctryV.id,
-                                        cat =
-                                            catK,
+                                        cat = catK,
                                         gp = gpK,
                                         catEnum = helms.mission._catNameToEnum(catK),
                                         startPoint = { x = gpV.x, y = gpV.y },
@@ -1209,6 +1209,46 @@ helms.mission.getMEGroupDataByName = function(name)
     --helms.log_i.log(helms.util.obj2str(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])) --debug
     if not keys then return nil end
     return helms.util.deep_copy(env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp])
+end
+
+--[[
+-- Get group Id of mission editor group
+--]]
+helms.mission.getMEGroupIdByName = function(name)
+    local keys = helms.mission._GroupLookup[name]
+    if not keys then return nil end
+
+    return env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp].groupId
+end
+
+--[[
+-- Get the group name in the mission containing the given unit name
+-- return a table {groupName = "", idxInGroup = n, unitCount = m}, or nil if the unit name was not found in the mission
+-- - idxInGroup is the index in the named group's `units` table in the mission
+-- - unitCount = number of units in the group
+--]]
+helms.mission.getMEGroupKeysForUnit = function(unitName)
+
+    -- Lazily build a lookup
+    if helms.mission._UnitLookup == nil then
+
+        local lookup = {}
+        for gpName, keys in pairs(helms.mission._GroupLookup) do
+            local group = env.mission.coalition[keys.coa].country[keys.ctry][keys.cat].group[keys.gp]
+            
+            if group.units then
+                local unitCount = #group.units
+
+                for k,v in pairs(group.units) do 
+                    lookup[v.name] = {groupName = gpName, idxInGroup = k, unitCount = unitCount}
+                end 
+            end
+        end
+
+        helms.mission._UnitLookup = lookup
+    end
+
+    return helms.mission._UnitLookup[unitName]
 end
 
 --[[
@@ -1518,7 +1558,7 @@ helms.predicate.unitExists = function(coa, cat, zoneName, ...)
         local zoneDesc = helms.predicate.makeZoneDesc_(zoneName)
 
         for k, group in pairs(groups) do
-            units = group:getUnits()
+            local units = group:getUnits()
 
             if helms.predicate.hasObjectMatch(units, zoneDesc, unpack(arg)) then
                 return true
@@ -1535,7 +1575,6 @@ helms.predicate.unitExists = function(coa, cat, zoneName, ...)
             or searchGroups(coalition.getGroups(coalition.side.RED, cat), zoneName, unpack(arg))
     end
 end
-
 
 helms.predicate.staticExists = function(coa, zoneName, ...)
     -- Validate enums
@@ -1577,6 +1616,18 @@ helms.predicate.pointInZone_ = function(point, zoneDesc)
 
     return ((not zoneDesc.vertices) and helms.maths.get2DDist(zoneDesc.centre, point) <= zoneDesc.radius)
         or helms.maths.isPointInPoly(point, zoneDesc.vertices)
+end
+
+helms.predicate.makeCircZoneDescPoint_ = function(centre2D, radius)
+
+    local quickBounds = {
+        xMax = centre2D.x + radius,
+        xMin = centre2D.x - radius,
+        yMax = centre2D.y + radius,
+        yMin = centre2D.y - radius
+    }
+
+    return { centre = centre2D, radius = radius, quickBounds = quickBounds }
 end
 
 helms.predicate.makeZoneDesc_ = function(zoneName)
@@ -1621,18 +1672,22 @@ helms.predicate.makeZoneDesc_ = function(zoneName)
         centre = { x = zone.point.x, y = zone.point.z }
         radius = zone.radius
 
-        quickBounds = {
-            xMax = centre.x + radius,
-            xMin = centre.x - radius,
-            yMax = centre.y + radius,
-            yMin = centre.y -
-                radius
-        }
-
-        result = { centre = centre, radius = radius, quickBounds = quickBounds }
+        result = helms.predicate.makeCircZoneDescPoint_ (centre,radius)
     end
 
     return result
+end
+
+--[[
+-- Make zone definition for a circular zone around a unit
+--]]
+helms.predicate.makeCircZoneDescUnit = function(unit, radius)
+
+    if unit == nil then return end
+
+    local centre = helms.maths.as2D(unit:getPoint())
+
+    return helms.predicate.makeCircZoneDescPoint_ (centre,radius)
 end
 
 helms.predicate.hasObjectMatch = function(objs, zoneDesc, ...)
@@ -1666,6 +1721,42 @@ helms.predicate.hasObjectMatch = function(objs, zoneDesc, ...)
     return false
 end
 
+--[[
+-- Return all objects passing the zone predicate and additional predicates
+--]]
+helms.predicate.filterObjects = function(objs, zoneDesc, ...)
+    if objs == nil then
+        return nil
+    end
+
+    local result = {}
+
+    for k, obj in pairs(objs) do
+        local fail = not helms.predicate.pointInZone_(obj:getPoint(), zoneDesc)
+
+        if (not fail) and arg then
+            for kp, pred in pairs(arg) do
+                if (not fail) then
+                    if type(pred) == 'function' and (not pred(obj)) then
+                        fail = true
+                    elseif type(pred) == 'table' and (not pred.eval(obj)) then
+                        fail = true
+                    end
+                end
+            end
+        end
+
+        if not fail then -- obj found
+            if type(pred) == 'table' then
+                pred.triggered(obj)
+            end
+            table.insert(result, obj)
+        end
+    end
+
+    return result
+end
+
 helms.predicate.limitUnitRecount = function(maxCount, resetOnSpawn)
     if maxCount == nil then maxCount = 1 end
     if resetOnSpawn == nil then resetOnSpawn = false end
@@ -1682,7 +1773,7 @@ helms.predicate.limitUnitRecount = function(maxCount, resetOnSpawn)
         end
     end
 
-    pretTbl.pred = function(unit)
+    predTbl.pred = function(unit)
         local count = predTbl.counted[unit:getName()]
         return count == nil or count < maxCount
     end
@@ -1722,6 +1813,47 @@ helms.predicate.makeAltRange = function(minFt, maxFt)
 
         return alt >= minFt and alt <= maxFt
     end
+end
+
+--[[
+-- Create predicate that returns true if a unit's type name (case insensitive) matches a given type name or a list of type names
+--]]
+helms.predicate.unitType = function(typeNames)
+    if type(typeNames) == "table" then
+        local casedTable = {}
+
+        for k,v in pairs(typeNames) do
+            v = string.lower(v)
+            casedTable[v] = true
+        end
+
+        return function(unit)
+            local name = string.lower(unit:getTypeName())
+
+            return casedTable[name]
+        end
+    else
+        local casedName = string.lower(typeNames)
+
+        return function(unit)
+            local name = string.lower(unit:getTypeName())
+
+            return name == casedName
+        end
+    end
+end
+
+--[[
+-- Get the coalition.side that opposes a given coalition.side
+--]]
+helms.predicate.opposingCoa = function(coa)
+    if coa == coalition.side.RED then
+        return coalition.side.BLUE
+    elseif coa == coalition.side.BLUE then
+        return coalition.side.RED
+    end
+
+    return coa
 end
 
 helms.predicate.pnot = function(pred)
@@ -2826,17 +2958,49 @@ helms.ui.convert.getETAString = function(point1, point2, estMps)
     return string.format("%02d%02dL", dhms["h"], dhms["m"])
 end
 
+-- Path type enum
+helms.ui.PathType = {
+    all = 1,
+    coa = 2,
+    group = 3
+}
+
 --[[
 keys: name
 values: {
-	[1] = #items
-	[2] = path for DCS commands
-	[3] = {item paths, or nested object for submenus}
-	[4] = coalition (side) or nil
+    itemCount = # child items,
+    dcsPath = path internal to DCS,
+    childItems = list of child items in recursive format, or the Dcs path for leaves,
+    coa = side or groupID
 }
 
 --]]
 helms.ui.commsMenus_ = {}
+
+helms.ui.commsMenus_[helms.ui.PathType.all] = {itemCount = 0, childItems = {}}
+helms.ui.commsMenus_[helms.ui.PathType.coa] = {itemCount = 0, childItems = {}}
+helms.ui.commsMenus_[helms.ui.PathType.group] = {itemCount = 0, childItems = {}}
+
+--[[
+-- Create helms-internal path spec for root comms menu for a side
+--]]
+helms.ui.pathRootSide = function(side)
+    return {[1]=helms.ui.PathType.coa,[2] = side}
+end
+--
+--[[
+-- Create helms-internal path spec for root comms menu for a group
+--]]
+helms.ui.pathRootGroup = function(groupId)
+    return {[1]=helms.ui.PathType.group,[2] = groupId}
+end
+--
+--[[
+-- Create helms-internal path spec for root comms menu for all-player comms options
+--]]
+helms.ui.pathRootAll = function()
+    return {[1]=helms.ui.PathType.all}
+end
 
 helms.ui.ensureDefaultSubmenu = function(side)
     if side and side ~= coalition.side.NEUTRAL then --coalition specific addition	
@@ -2844,6 +3008,34 @@ helms.ui.ensureDefaultSubmenu = function(side)
     else                                            --add for all	
         return helms.ui.ensureSubmenu(nil, "Other Assets")
     end
+end
+
+--[[
+-- Get parent path for group specific Comms menus. Return value can be used with helms.ui.ensureSubMenu etc
+-- group can be a group object, groupId, or groupName (only supports groups in the mission editor)
+--]]
+helms.ui.ensureSubmenuForGroup = function(group, label)
+    local groupId
+
+    local gpType = type(group)
+
+    if gpType== "table" then
+        groupId = group:getID()
+    elseif gpType== "number" then
+        groupId = group
+    elseif gpType== "string" then
+        groupId = helms.mission.getMEGroupIdByName(group)
+    end
+
+    if groupId == nil then
+        helms.log_e.log("ensureSubmenuForGroup: No group found")
+        helms.log_e.log(group)
+        return nil
+    end
+
+    local path = helms.ui.pathRootGroup(groupId)
+
+    return helms.ui.ensureSubmenu(path, label)
 end
 
 --[[
@@ -2857,46 +3049,89 @@ returns: path - a path table for future calls to ensureSubmenu, addCommand, etc.
 		 subMenuAdded - indicates if a new menu option was added. I.e. this submenu did not already exist.
 --]]
 helms.ui.ensureSubmenu = function(parentMenuPath, label, prependCoa)
+
+    if parentMenuPath == nil then
+        parentMenuPath = helms.ui.pathRootAll()
+    elseif type(parentMenuPath) ~= "table" then
+        parentMenuPath = helms.ui.pathRootSide(parentMenuPath) -- For legacy reasons, interpret non-table as a side enum
+    end
+
+    -- Get copy of parent path that's safe to edit
     local retPath = {}
-    if type(parentMenuPath) == "table" then
-        retPath = helms.util.shallow_copy(parentMenuPath)
-    end
+    retPath = helms.util.shallow_copy(parentMenuPath)
 
-    local parentCommsMenusBase, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
+    local parentCommsMenusBase, sideOrGroup, dcsParentPath, _, pathType = helms.ui.unpackCommsPath_(parentMenuPath)
     local parentCommsMenus
-    if parentCommsMenusBase then
-        parentCommsMenus = parentCommsMenusBase.childItems
-    else
-        parentCommsMenus = helms.ui.commsMenus_
+
+    if parentCommsMenusBase == nil then
+        helms.log_e.log("ensureSubmenu: parentCommsMenuBase cannot be nil")
+        return
     end
 
-    local menuNameRootText = label
-    local menuNameRoot = label .. helms.ui.convert.sideToString(side)
-    if prependCoa then
-        menuNameRootText = helms.ui.convert.sideToString(side) .. " " .. menuNameRootText
+    if pathType ~= helms.ui.PathType.all and sideOrGroup == nil then
+        if pathType ~= nil then
+            helms.log_e.log("sideOrGroup cannot be null for path type " .. pathType)
+        else
+            helms.log_e.log("sideOrGroup cannot be null for path type null")
+        end
+        helms.log_i.log(parentMenuPath)
+        helms.log_i.log(helms.ui.commsMenus_)
+        return
     end
-    local menuName = menuNameRoot
+
+    -- Get the sibling items of the required item
+    parentCommsMenus = parentCommsMenusBase.childItems
+
+    -- Display text
+    local menuNameRootText = label
+    local menuName = "0"..label -- prevent clash e.g. "1_NEXT__" is reserved
+
+    if pathType == helms.ui.PathType.coa then
+
+        if prependCoa then
+            menuNameRootText = helms.ui.convert.sideToString(sideOrGroup) .. " " .. menuNameRootText
+        end
+
+        menuName = menuName .. helms.ui.convert.sideToString(sideOrGroup) -- in case we're at the top level of the coa menu heirarchy
+
+    elseif pathType == helms.ui.PathType.group then
+        menuName = menuName .. sideOrGroup -- in case we're at the top level of the group menu heirarchy
+    end
+
     local subMenuAdded = false
 
-    local menu
-    if parentCommsMenus[menuName] == nil then --create submenu
-        menu, _, dcsParentPath = helms.ui.getPageWithSpace_(parentCommsMenusBase, retPath)
-        local menuItems = parentCommsMenus
+    local menu -- helms menu page key where submenu is / should be added
 
-        if menu then menuItems = menu.childItems end
-        if side then
+    if parentCommsMenus[menuName] == nil then --create submenu
+        menu, _, dcsParentPath = helms.ui.getPageWithSpace_(parentCommsMenusBase, retPath, pathType, sideOrGroup)
+
+        -- helms.log_i.log("Adding item under dcs path:")
+        -- helms.log_i.log(dcsParentPath)
+
+        -- Get table of children of the same menu parent to update
+        local menuItems = parentCommsMenus -- add direct to named parent
+        if menu then menuItems = menu.childItems end -- if parent menu was full
+
+        if pathType == helms.ui.PathType.coa then
             menuItems[menuName] = {
                 itemCount = 0,
-                dcsPath = missionCommands.addSubMenuForCoalition(side, menuNameRootText, dcsParentPath),
+                dcsPath = missionCommands.addSubMenuForCoalition(sideOrGroup, menuNameRootText, dcsParentPath),
                 childItems = {},
-                coa = side
+                --coa = sideOrGroup,
+            }
+        elseif pathType == helms.ui.PathType.group then
+            menuItems[menuName] = {
+                itemCount = 0,
+                dcsPath = missionCommands.addSubMenuForGroup(sideOrGroup, menuNameRootText, dcsParentPath),
+                childItems = {},
+                --coa = sideOrGroup,
             }
         else
             menuItems[menuName] = {
                 itemCount = 0,
                 dcsPath = missionCommands.addSubMenu(menuNameRootText, dcsParentPath),
                 childItems = {},
-                coa = nil
+                --coa = nil,
             }
         end
         if menu then
@@ -2906,34 +3141,44 @@ helms.ui.ensureSubmenu = function(parentMenuPath, label, prependCoa)
         retPath[#retPath + 1] = menuName
     else
         retPath[#retPath + 1] = menuName
-        menu, _, _ = helms.ui.getPageWithSpace_(parentCommsMenus[menuName], retPath)
+        helms.ui.getPageWithSpace_(parentCommsMenus[menuName], retPath, pathType, sideOrGroup) -- Existing submenu - return path to a page with space
     end
 
     return retPath, nil, subMenuAdded
 end
 
-helms.ui.getPageWithSpace_ = function(commsMenus, pathBuilder)
+--[[
+-- Get a page with space in the given commsMenus heirarchy. Append page path keys to pathBuilder.
+--]]
+helms.ui.getPageWithSpace_ = function(commsMenus, pathBuilder, pathType, sideOrGroup)
     if commsMenus == nil then
         return nil, {}, nil
     end
     if pathBuilder == nil then pathBuilder = {} end
     while commsMenus.itemCount >= 9 do --create overflow if no space here
-        local newMenuName = "__NEXT__"
-        local side = commsMenus.coa
+        local newMenuName = "1_NEXT__"
+
         if commsMenus.childItems[newMenuName] == nil then --create submenu of menu at menuName
-            if side then
+            if pathType == helms.ui.PathType.coa then
                 commsMenus.childItems[newMenuName] = {
                     itemCount = 0,
-                    dcsPath = missionCommands.addSubMenuForCoalition(side, "Next", commsMenus.dcsPath),
+                    dcsPath = missionCommands.addSubMenuForCoalition(sideOrGroup, "Next", commsMenus.dcsPath),
                     childItems = {},
-                    coa = side
+                    --coa = sideOrGroup
+                }
+            elseif pathType == helms.ui.PathType.group then
+                commsMenus.childItems[newMenuName] = {
+                    itemCount = 0,
+                    dcsPath = missionCommands.addSubMenuForGroup(sideOrGroup, "Next", commsMenus.dcsPath),
+                    childItems = {},
+                    --coa = sideOrGroup
                 }
             else
                 commsMenus.childItems[newMenuName] = {
                     itemCount = 0,
                     dcsPath = missionCommands.addSubMenu("Next", commsMenus.dcsPath),
                     childItems = {},
-                    coa = nil
+                    --coa = nil
                 }
             end
         end
@@ -2943,16 +3188,40 @@ helms.ui.getPageWithSpace_ = function(commsMenus, pathBuilder)
     return commsMenus, pathBuilder, commsMenus.dcsPath
 end
 
+--[[
+-- parentMenuPath = side/group ID, or {[1] = "opt1", [2]= "opt2", [3]="opt3", ...} to represent ~/opt1/opt2/opt3/...
+-- upLevels specifies hom many levels at the end of the path to ignore
+-- extract relevant data for the specified menu option from the global menu tree (helms.ui.commsMenus_)
+-- returns:
+--      parentCommsMenus and pathType will not return nil
+--]]
 helms.ui.unpackCommsPath_ = function(parentMenuPath, upLevels)
     local dcsParentPath = nil
     local parentCommsMenus = nil
-    local side = nil
+    local sideOrGroup = nil
     local nextItemKey = nil
+    local pathType = helms.ui.PathType.all
 
     if parentMenuPath ~= nil and type(parentMenuPath) == "table" then
         local maxKey = #parentMenuPath
         if upLevels ~= nil then
             maxKey = maxKey - upLevels
+        end
+
+        if parentMenuPath[1] ~= nil then
+            pathType = parentMenuPath[1] -- Paths start with the helms.ui.PathType enum
+        end
+
+        -- Get side or group-specific top-level menu (create it in the helms.ui.commsMenus_ heirarchy if it's missing)
+        if pathType ~= helms.ui.PathType.all then
+            sideOrGroup = parentMenuPath[2]
+
+            if sideOrGroup == nil or helms.ui.commsMenus_[pathType] == nil then
+                helms.log_e.log("sideOrGroup cannot be nil for path type " .. pathType)
+                return
+            elseif helms.ui.commsMenus_[pathType][sideOrGroup] == nil then
+                helms.ui.commsMenus_[pathType][sideOrGroup] = {itemCount = 0, childItems = {}}
+            end
         end
 
         for k, v in ipairs(parentMenuPath) do
@@ -2967,15 +3236,21 @@ helms.ui.unpackCommsPath_ = function(parentMenuPath, upLevels)
                 parentCommsMenus = helms.ui.commsMenus_[v]
             end
         end
+
         if parentCommsMenus then
             dcsParentPath = parentCommsMenus.dcsPath
-            side = parentCommsMenus.coa
+        else
+            parentCommsMenus = helms.ui.commsMenus_[pathType]
         end
-    elseif parentMenuPath ~= nil then
-        side = parentMenuPath
+    elseif parentMenuPath ~= nil then -- Not a table - for legacy reasons assume it's a side enum
+        sideOrGroup = parentMenuPath
+        pathType = helms.ui.PathType.coa
+        parentCommsMenus = helms.ui.commsMenus_[pathType]
+    else -- Default to root of default path type
+        parentCommsMenus = helms.ui.commsMenu_[pathType]
     end
 
-    return parentCommsMenus, side, dcsParentPath, nextItemKey
+    return parentCommsMenus, sideOrGroup, dcsParentPath, nextItemKey, pathType
 end
 
 --[[
@@ -2986,8 +3261,15 @@ handler = handler method,
 args = args for handler
 --]]
 helms.ui.addCommand = function(parentMenuPath, label, handler, ...)
-    local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
-    parentCommsMenus, _, dcsParentPath             = helms.ui.getPageWithSpace_(parentCommsMenus)
+
+    if parentMenuPath == nil then
+        parentMenuPath = helms.ui.pathRootAll()
+    elseif type(parentMenuPath) ~= "table" then
+        parentMenuPath = helms.ui.pathRootSide(parentMenuPath) -- For legacy reasons, interpret non-table as a side enum
+    end
+
+    local parentCommsMenus, sideOrGroup, dcsParentPath, _, pathType = helms.ui.unpackCommsPath_(parentMenuPath)
+    parentCommsMenus, _, dcsParentPath             = helms.ui.getPageWithSpace_(parentCommsMenus,nil,pathType,sideOrGroup)
 
     if parentCommsMenus == nil then
         helms.log_e.log("Could not add comms menu " .. label)
@@ -2995,8 +3277,12 @@ helms.ui.addCommand = function(parentMenuPath, label, handler, ...)
     end
 
     local newDcsPath
-    if side then
-        newDcsPath = missionCommands.addCommandForCoalition(side, label,
+    if pathType == helms.ui.PathType.coa then
+        newDcsPath = missionCommands.addCommandForCoalition(sideOrGroup, label,
+            dcsParentPath,
+            handler, unpack(arg))
+    elseif pathType == helms.ui.PathType.group then
+        newDcsPath = missionCommands.addCommandForGroup(sideOrGroup, label,
             dcsParentPath,
             handler, unpack(arg))
     else
@@ -3005,38 +3291,82 @@ helms.ui.addCommand = function(parentMenuPath, label, handler, ...)
             handler, unpack(arg))
     end
 
-    local newIndex = parentCommsMenus.itemCount + 1
-    parentCommsMenus.itemCount = newIndex
-    parentCommsMenus.childItems[newIndex] = newDcsPath
-    return newIndex
+    local itemIndex = "2"..label -- 0 = submenu, 1 = reserved
+    parentCommsMenus.itemCount = parentCommsMenus.itemCount + 1
+    parentCommsMenus.childItems[itemIndex] = newDcsPath
+    return itemIndex
 end
 
 helms.ui.removeItem = function(parentMenuPath, itemIndex)
-    local parentCommsMenus, side, dcsParentPath, _ = helms.ui.unpackCommsPath_(parentMenuPath)
+    local parentCommsMenus, sideOrGroup, dcsParentPath, _, pathType = helms.ui.unpackCommsPath_(parentMenuPath)
 
-    if parentCommsMenus ~= nil then
-        local path
-        if itemIndex ~= nil then
-            path = parentCommsMenus.childItems[itemIndex]
-            if path ~= nil then
-                parentCommsMenus.childItems[itemIndex] = nil
-                parentCommsMenus.itemCount = parentCommsMenus.itemCount - 1
-            end
-        else -- remove parent menu
-            path = dcsParentPath
-            local parent2CommsMenus, _, _, nextKey = helms.ui.unpackCommsPath_(parentMenuPath, 1)
-            if parent2CommsMenus ~= nil and nextKey ~= nil then
-                parent2CommsMenus.childItems[nextKey] = nil
-                parent2CommsMenus.itemCount = parent2CommsMenus.itemCount - 1
-            end
+    if parentCommsMenus == nil then
+        return
+    end
+
+    local path
+    if itemIndex ~= nil then
+        if parentCommsMenus.childItems[itemIndex] ~= nil then
+            path = parentCommsMenus.childItems[itemIndex] -- In case of items this is just the dcs path
+
+            parentCommsMenus.childItems[itemIndex] = nil
+            parentCommsMenus.itemCount = parentCommsMenus.itemCount - 1
         end
-
-        if path ~= nil and side == nil then
-            missionCommands.removeItem(path)
-        elseif path ~= nil then
-            missionCommands.removeItemForCoalition(side, path)
+    else -- remove parent menu
+        path = dcsParentPath
+        local parent2CommsMenus, _, _, nextKey, _ = helms.ui.unpackCommsPath_(parentMenuPath, 1)
+        if parent2CommsMenus ~= nil and nextKey ~= nil then
+            parent2CommsMenus.childItems[nextKey] = nil
+            parent2CommsMenus.itemCount = parent2CommsMenus.itemCount - 1
         end
     end
+
+    if path ~= nil then
+        if pathType == helms.ui.PathType.all then
+            missionCommands.removeItem(path)
+        elseif sideOrGroup~=nil then
+            if pathType == helms.ui.PathType.coa then
+                missionCommands.removeItemForCoalition(sideOrGroup, path)
+            elseif pathType == helms.ui.PathType.group then
+
+                missionCommands.removeItemForGroup(sideOrGroup, path)
+            end
+        end
+    end
+end
+
+--[[
+-- Remove all child items
+--]]
+helms.ui.removeChildItems = function(parentMenuPath)
+    local parentCommsMenus, sideOrGroup, _, _, pathType = helms.ui.unpackCommsPath_(parentMenuPath)
+
+    if parentCommsMenus == nil then
+        return
+    end
+
+    for _, path in pairs(parentCommsMenus.childItems) do
+
+        if path.dcsPath then
+            path = path.dcsPath -- this item is a submenu, not a raw dcsPath
+        end
+
+        if pathType == helms.ui.PathType.all then
+            missionCommands.removeItem(path)
+        elseif sideOrGroup~=nil then
+            if pathType == helms.ui.PathType.coa then
+                missionCommands.removeItemForCoalition(sideOrGroup, path)
+            elseif pathType == helms.ui.PathType.group then
+
+                missionCommands.removeItemForGroup(sideOrGroup, path)
+            end
+        end
+
+    end
+
+    parentCommsMenus.childItems = {}
+    parentCommsMenus.itemCount = 0
+
 end
 
 helms.ui._renderedDrawingIds = {}     -- key = name, value = {id = ,active = }
