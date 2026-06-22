@@ -745,7 +745,7 @@ minitrons.handleUnitSpawn = function(unit)
     local unitName = unit:getName()
 
     if minitrons.unitTypeFilter[unit:getTypeName()] then
-        table.insert(minitrons.jammableUnits, unit)
+        minitrons.jammableUnits[unitName] = unit
         minitrons.jammableUnitsEx[unitName] = {jammerCount = 0}
     end
 
