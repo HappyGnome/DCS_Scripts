@@ -13,10 +13,14 @@ if not helms then return end
 if helms.version < 1.17 then 
 	helms.log_e.log("Invalid HeLMS version for game_ammo_mode")
 end
+
 ---NAMESPACES----------------------------------------------------------------------------------------------
 game_ammo_mode = {}
 
 game_ammo_mode.version = 1.0
+
+game_ammo_mode.trackedPlayers = {}
+game_ammo_mode.trackedUnits = {}
 ---------------------------------------------------------------------------------------------------------
 
 --[[
@@ -36,17 +40,17 @@ if not env.mission.forcedOptions["weapons"] then
     return
 end
 
-
-
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
+--
+game_ammo_mode.default_spawn_ammo = 1
 
-game_ammo_mode.ammo_classes = 
-{
-    -- TODO: complete list
-    ["Fox-1"] = {["weapons.missiles.AIM_7"] = {}, ["weapons.missiles.AIM-7F"] = {}},
-    ["Fox-2"] = {["AIM_9"] = {}, ["AIM_9X"] = {}, },
-    ["Fox-3"] = {["weapons.missiles.AIM_120C"] = {}, ["weapons.missiles.AIM_120"] = {}}
-}
+--game_ammo_mode.ammo_classes = 
+--{
+--    -- TODO: complete list
+--    ["Fox-1"] = {["weapons.missiles.AIM_7"] = {}, ["weapons.missiles.AIM-7F"] = {}},
+--    ["Fox-2"] = {["AIM_9"] = {}, ["AIM_9X"] = {}, },
+--    ["Fox-3"] = {["weapons.missiles.AIM_120C"] = {}, ["weapons.missiles.AIM_120"] = {}}
+--}
 
 --[[
 -- guidance = 2 = Fox-2 ?
@@ -63,11 +67,116 @@ game_ammo_mode.ammo_classes =
 
 ----------------------------------------------------------------------------------------------------------
 
+--[[
+-- List currently ammo count
+--]]
+game_ammo_mode.sayAmmoCount = function(trackedPlayer)
+
+    local unitName = trackedPlayer.unitName
+    local unit = Unit.getByName(unitName)
+    local trackedUnit = game_ammo_mode.trackedUnits[unitName]
+
+    if (not unit) or (not trackedUnit) or (not trackedUnit.ammoAll) then return end
+
+    local msg = "Ammo : " .. trackedUnit.ammoAll
+
+    if trackedUnit.ammoAll <= 0 then
+        msg = "Ammo : EMPTY"
+    end
+
+    trigger.action.outTextForUnit(unit:getID(),msg,5,false)
+end
+
+-- TODO: in comms menu, show ammo of all in the group...
+----[[
+---- Set comms menus for the current jammer state
+----]]
+--game_ammo_mode.resetCommsMenus = function(trackedPlayer)
+--
+--    if trackedPlayer.commsParent then
+--        helms.ui.removeChildItems(trackedPlayer.commsParent)
+--    elseif trackedPlayer.groupName then
+--        trackedPlayer.commsParent = helms.ui.ensureSubmenuForGroup(trackedPlayer.groupName, game_ammo_mode.menu_jammer_label)
+--    end
+--
+--    if not trackedPlayer.commsParent then
+--        game_ammo_mode.log_e.log("No comms parent for group")
+--        return
+--    end
+--
+--    if trackedPlayer.jammerActive then
+--        helms.ui.addCommand(trackedPlayer.commsParent,"Audio",game_ammo_mode.repeatAudio, trackedPlayer)
+--        helms.ui.addCommand(trackedPlayer.commsParent,"Off",game_ammo_mode.handleCommOff, trackedPlayer)
+--    else
+--
+--        helms.ui.addCommand(trackedPlayer.commsParent,"Audio",game_ammo_mode.repeatAudio, trackedPlayer)
+--        for _,v in pairs(trackedPlayer.jammerProfiles) do
+--    
+--            helms.ui.addCommand(trackedPlayer.commsParent,"On: "..v,game_ammo_mode.handleCommOn, trackedPlayer, v)
+--        end
+--    end
+--
+--end
+
+-- TODO : Handle unit gain ammo
+-- TODO : periodically print ammo count for all players
 
 -----------------------------------------------------------------------------------------------------------
--- Event handlers
+--EVENTS----------------------------------------------------------------------------------------------------
+--
+--[[
+-- For units in the mission to start with, simulate spawn events
+--]]
+game_ammo_mode.simulateInitialSpawns = function()
 
+    -- Simulate spawn event for all existing units
+    for _,coa in pairs(coalition.side) do
+        for _,gp in pairs(coalition.getGroups(coa)) do
+            for _, unit in pairs(gp:getUnits()) do
+                game_ammo_mode.handleUnitSpawn(unit)
+            end
+        end
+    end
+end
+
+--[[
+-- Called when a unit spawns : reset ammo counter for the unit. Create comms menus if it's a player
+--]]
+game_ammo_mode.handleUnitSpawn = function(unit)
+    if not unit then return end
+
+    local unitName = unit:getName()
+
+
+    game_ammo_mode.trackedUnits[unitName] = {ammoAll = game_ammo_mode.default_spawn_ammo}
+
+    local playerName = unit:getPlayerName()
+
+    if playerName then
+
+        local trackedPlayer = {unitName = unitName, playerName = playerName}
+
+        game_ammo_mode.trackedPlayers[unitName] = trackedPlayer
+        --game_ammo_mode.resetCommsMenus(trackedPlayer)
+    end
+end
+--
+--[[
+-- Called when a unit dies : Delete ammo count
+--]]
+game_ammo_mode.handleUnitDead = function(unit)
+    if not unit then return end
+
+    local unitName = unit:getName()
+
+    game_ammo_mode.trackedUnits[unitName] = nil
+end
+
+--[[
+-- Handle a shot. Check against the shooter's ammo count, and despawn the store if they were out of ammo. Send messages to the player.
+--]]
 game_ammo_mode.shotHandler = function(unit, weapon)
+    --TODO
     if (unit==nil or weapon == nil) then return end
 
     if(game_ammo_mode.testCount > 0) then
@@ -84,19 +193,17 @@ game_ammo_mode.shotHandler = function(unit, weapon)
     return true -- continue polling 
 end
 
+--[[
+-- Main event handler object
+--]]
  game_ammo_mode.eventHandler = { 
  	onEvent = function(self,event)
- 		--[[if (event.id == world.event.S_EVENT_HIT) then
- 			helms.util.safeCall(game_ammo_mode.hitHandler,{event.target,event.initiator},game_ammo_mode.catchError)
- 		elseif (event.id == world.event.S_EVENT_KILL) then
- 			helms.util.safeCall(game_ammo_mode.killHandler,{event.target,event.initiator},game_ammo_mode.catchError)
-         elseif (event.id == world.event.S_EVENT_DEAD) then
-            helms.util.safeCall(game_ammo_mode.deadHandler,{event.initiator, event.time},game_ammo_mode.catchError)
-         --elseif (event.id == world.event.S_EVENT_PILOT_DEAD) then
-             --helms.util.safeCall(game_ammo_mode.deadHandler,{event.initiator},game_ammo_mode.catchError)
-         --elseif (event.id == world.event.S_EVENT_UNIT_LOST) then
-             helms.util.safeCall(game_ammo_mode.deadHandler,{event.initiator, event.time},game_ammo_mode.catchError)
-         --else]]if(event.id == world.event.S_EVENT_SHOT) then
+
+        if (event.id == world.event.S_EVENT_BIRTH) then
+            helms.util.safeCall(game_ammo_mode.handleUnitSpawn, { event.initiator }, game_ammo_mode.catchError)
+        elseif (event.id == world.event.S_EVENT_DEAD) then
+            helms.util.safeCall(game_ammo_mode.handleUnitDead, { event.initiator }, game_ammo_mode.catchError)
+         elseif(event.id == world.event.S_EVENT_SHOT) then
              helms.util.safeCall(game_ammo_mode.shotHandler, {event.initiator,event.weapon},game_ammo_mode.catchError)
  		end
  	end
@@ -108,4 +215,8 @@ end
 --#######################################################################################################
 -- Game_ammo_mode (PART 2)
 --
+--
+
+game_ammo_mode.simulateInitialSpawns()
+
 return game_ammo_mode
