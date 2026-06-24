@@ -18,6 +18,8 @@ end
 game_ammo_mode = {}
 
 game_ammo_mode.version = 1.0
+game_ammo_mode.menu_label = "Ammo"
+game_ammo_mode.print_poll_interval = 30
 
 game_ammo_mode.trackedPlayers = {}
 game_ammo_mode.trackedUnits = {}
@@ -70,7 +72,7 @@ game_ammo_mode.default_spawn_ammo = 1
 --[[
 -- List currently ammo count
 --]]
-game_ammo_mode.sayAmmoCount = function(trackedPlayer)
+game_ammo_mode.sayAmmoCount = function(trackedPlayer, preMsg)
 
     local unitName = trackedPlayer.unitName
     local unit = Unit.getByName(unitName)
@@ -78,7 +80,12 @@ game_ammo_mode.sayAmmoCount = function(trackedPlayer)
 
     if (not unit) or (not trackedUnit) or (not trackedUnit.ammoAll) then return end
 
-    local msg = "Ammo : " .. trackedUnit.ammoAll
+    local msg = ""
+    if preMsg ~= nil then
+        msg = preMsg .. "\n"
+    end
+
+    msg = msg .. "Ammo : " .. trackedUnit.ammoAll
 
     if trackedUnit.ammoAll <= 0 then
         msg = "Ammo : EMPTY"
@@ -87,39 +94,83 @@ game_ammo_mode.sayAmmoCount = function(trackedPlayer)
     trigger.action.outTextForUnit(unit:getID(),msg,5,false)
 end
 
--- TODO: in comms menu, show ammo of all in the group...
-----[[
----- Set comms menus for the current jammer state
-----]]
---game_ammo_mode.resetCommsMenus = function(trackedPlayer)
---
---    if trackedPlayer.commsParent then
---        helms.ui.removeChildItems(trackedPlayer.commsParent)
---    elseif trackedPlayer.groupName then
---        trackedPlayer.commsParent = helms.ui.ensureSubmenuForGroup(trackedPlayer.groupName, game_ammo_mode.menu_jammer_label)
---    end
---
---    if not trackedPlayer.commsParent then
---        game_ammo_mode.log_e.log("No comms parent for group")
---        return
---    end
---
---    if trackedPlayer.jammerActive then
---        helms.ui.addCommand(trackedPlayer.commsParent,"Audio",game_ammo_mode.repeatAudio, trackedPlayer)
---        helms.ui.addCommand(trackedPlayer.commsParent,"Off",game_ammo_mode.handleCommOff, trackedPlayer)
---    else
---
---        helms.ui.addCommand(trackedPlayer.commsParent,"Audio",game_ammo_mode.repeatAudio, trackedPlayer)
---        for _,v in pairs(trackedPlayer.jammerProfiles) do
---    
---            helms.ui.addCommand(trackedPlayer.commsParent,"On: "..v,game_ammo_mode.handleCommOn, trackedPlayer, v)
---        end
---    end
---
---end
+--[[
+-- List currently ammo count for group
+--]]
+game_ammo_mode.sayAmmoCountForGroup = function(groupName)
 
--- TODO : Handle unit gain ammo
--- TODO : periodically print ammo count for all players
+    local group = Group.getByName(groupName)
+    local units = group:getUnits()
+
+    if not units then return end
+
+    for _, unit in pairs(units) do
+        local trackedPlayer = game_ammo_mode.trackedPlayers[unit:getName()]
+
+        if trackedPlayer then
+            game_ammo_mode.sayAmmoCount(trackedPlayer)
+        end
+    end
+end
+
+--[[
+-- Set comms menus for the current jammer state
+--]]
+game_ammo_mode.resetCommsMenus = function(trackedPlayer)
+
+    if trackedPlayer == nil then return end
+
+    if trackedPlayer.commsParent then
+        return
+        --helms.ui.removeChildItems(trackedPlayer.commsParent)
+    elseif trackedPlayer.groupName then
+        trackedPlayer.commsParent = helms.ui.ensureSubmenuForGroup(trackedPlayer.groupName, game_ammo_mode.menu_label)
+    end
+
+    if not trackedPlayer.commsParent then
+        game_ammo_mode.log_e.log("No comms parent for group")
+        return
+    end
+
+    helms.ui.addCommand(trackedPlayer.commsParent,"Current",game_ammo_mode.sayAmmoCountForGroup, trackedPlayer.groupName)
+
+end
+
+--[[
+-- Handle a shot. Check against the shooter's ammo count, and despawn the store if they were out of ammo. Send messages to the player.
+--]]
+game_ammo_mode.reloadAmmo = function(unitName, count)
+    if (unitName==nil or count == nil) then return end
+
+    local trackedUnit = game_ammo_mode.trackedUnits[unitName]
+    local trackedPlayer = game_ammo_mode.trackedPlayers[unitName]
+
+    if not trackedUnit then return end
+
+    trackedUnit.ammoAll = trackedUnit.ammoAll + count
+
+    if trackedPlayer then
+        game_ammo_mode.sayAmmoCount(trackedPlayer, "Reload: " .. count)
+    end
+
+end
+
+--POLL----------------------------------------------------------------------------------------------------
+--
+--[[
+Private: Periodically print ammo counts
+--]]
+game_ammo_mode.doPrintPoll_ = function()
+
+	local now = timer.getTime()
+
+    for _, v in pairs(game_ammo_mode.trackedPlayers) do
+        helms.util.safeCall(game_ammo_mode.sayAmmoCount,{v},game_ammo_mode.catchError)
+    end    
+
+	--schedule next poll----------------------------------
+	return now+game_ammo_mode.print_poll_interval
+end
 
 -----------------------------------------------------------------------------------------------------------
 --EVENTS----------------------------------------------------------------------------------------------------
@@ -152,9 +203,11 @@ game_ammo_mode.handleUnitSpawn = function(unit)
 
     local playerName = unit:getPlayerName()
 
+    local groupName = unit:getGroup():getName()
+
     if playerName then
 
-        local trackedPlayer = {unitName = unitName, playerName = playerName}
+        local trackedPlayer = {unitName = unitName, playerName = playerName, groupName = groupName}
 
         game_ammo_mode.trackedPlayers[unitName] = trackedPlayer
         --game_ammo_mode.resetCommsMenus(trackedPlayer)
@@ -176,21 +229,24 @@ end
 -- Handle a shot. Check against the shooter's ammo count, and despawn the store if they were out of ammo. Send messages to the player.
 --]]
 game_ammo_mode.shotHandler = function(unit, weapon)
-    --TODO
     if (unit==nil or weapon == nil) then return end
 
-    if(game_ammo_mode.testCount > 0) then
-        game_ammo_mode.testCount = game_ammo_mode.testCount - 1
+    local unitName = unit:getName()
+    local trackedUnit = game_ammo_mode.trackedUnits[unitName]
+
+    if not trackedUnit then return end
+
+    if(trackedUnit.ammoAll > 0) then
+        trackedUnit.ammoAll = trackedUnit.ammoAll - 1
 
     else
+        trackedUnit.ammoAll = 0
 
-        helms.dynamic.scheduleFunction(Object.destroy, {weapon}, timer.getTime() + 5, true)
-        --weapon:destroy()
+        helms.dynamic.scheduleFunction(Object.destroy, {weapon}, timer.getTime() + 0.5, true)
 
-        trigger.action.outTextForUnit(unit:getID(), "Nope", 5, false)
+        trigger.action.outTextForUnit(unit:getID(), "No shot: Out of ammo", 5, false)
     end
 
-    return true -- continue polling 
 end
 
 --[[
@@ -211,11 +267,10 @@ end
  world.addEventHandler(game_ammo_mode.eventHandler)
 
 -----------------------------------------------------------------------------------------------------------
+-- One-time setup -----------------------------------------------------------------------------------------
 
---#######################################################################################################
--- Game_ammo_mode (PART 2)
---
---
+--start poll
+helms.dynamic.scheduleFunction(game_ammo_mode.doPrintPoll_,nil,timer.getTime()+game_ammo_mode.print_poll_interval)
 
 game_ammo_mode.simulateInitialSpawns()
 
