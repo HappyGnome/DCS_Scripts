@@ -17,12 +17,13 @@ end
 ---NAMESPACES----------------------------------------------------------------------------------------------
 game_ammo_mode = {}
 
+
 game_ammo_mode.version = 1.0
-game_ammo_mode.menu_label = "Ammo"
-game_ammo_mode.print_poll_interval = 30
 
 game_ammo_mode.trackedPlayers = {}
 game_ammo_mode.trackedUnits = {}
+game_ammo_mode.trackedUnitsRaw = {} -- Raw DCS units
+game_ammo_mode.reloadZones = {}
 ---------------------------------------------------------------------------------------------------------
 
 --[[
@@ -45,6 +46,12 @@ end
 -- MODULE OPTIONS:----------------------------------------------------------------------------------------
 --
 game_ammo_mode.default_spawn_ammo = 1
+
+game_ammo_mode.menu_label = "Ammo"
+game_ammo_mode.print_poll_interval = 30
+game_ammo_mode.zone_poll_interval = 1.1
+game_ammo_mode.zoneSmokeCount = 12
+
 
 --game_ammo_mode.ammo_classes = 
 --{
@@ -139,20 +146,82 @@ end
 --[[
 -- Handle a shot. Check against the shooter's ammo count, and despawn the store if they were out of ammo. Send messages to the player.
 --]]
-game_ammo_mode.reloadAmmo = function(unitName, count)
-    if (unitName==nil or count == nil) then return end
+game_ammo_mode.reloadAmmo = function(unitName, ammoGive)
+    if (unitName==nil or ammoGive == nil) then return end
 
     local trackedUnit = game_ammo_mode.trackedUnits[unitName]
     local trackedPlayer = game_ammo_mode.trackedPlayers[unitName]
 
     if not trackedUnit then return end
 
-    trackedUnit.ammoAll = trackedUnit.ammoAll + count
+    for k,v in pairs(ammoGive) do
 
-    if trackedPlayer then
-        game_ammo_mode.sayAmmoCount(trackedPlayer, "Reload: " .. count)
+        trackedUnit[k] = trackedUnit[k] + v
     end
 
+    if trackedPlayer and ammoGive.ammoAll then
+        game_ammo_mode.sayAmmoCount(trackedPlayer, "Reload: " .. ammoGive.ammoAll)
+    end
+
+end
+
+--[[
+-- Check for units in a given reload zone, and give them a reload if they're not cooling down
+-- Return true to keep polling this zone
+--]]
+game_ammo_mode.pollReloadZone = function(zone)
+    -- zone = {zonePred, ammoGive = {ammoAll = ...}, recentUnits = {unitName = time}, activeTill = time, cooldown = time, side = coa, zoneName = ""}
+
+    local now = timer.getTime()
+
+    local recentUnits = zone.recentUnits
+
+    if recentUnits == nil then
+        recentUnits = {}
+        zone.recentUnits = recentUnits
+    end
+
+    local cooldownPred = function(unit)
+        local t = recentUnits[unit:getName()]
+        return  t == nil or t < now
+    end
+
+    local side = zone.side
+
+    local sidePred = function(unit)
+        local coa = unit:getCoalition()
+        return  side == nil or coa == side
+    end
+
+    local unitsFound = helms.predicate.filterObjects(game_ammo_mode.trackedUnitsRaw, zone.zonePred, cooldownPred, sidePred)
+
+    if unitsFound == nil then return end
+
+    for _,unit in pairs(unitsFound) do
+        local unitName = unit:getName()
+
+        game_ammo_mode.reloadAmmo(unitName,zone.ammoGive)
+
+        recentUnits[unitName] = now + zone.cooldown
+    end
+
+end
+
+--[[
+-- Remove zone from reload poll, and remove drawings/smoke
+--]]
+game_ammo_mode.removeReloadZone = function(zoneIdx)
+    local zone = game_ammo_mode.reloadZones[zoneIdx]
+
+    if zone == nil then return end
+
+    if zone.smokeHandle then
+        helms.effect.stopSmoke(zone.smokeHandle)
+    end
+
+    helms.ui.removeZoneDrawing(zone.zoneName)
+
+    game_ammo_mode.reloadZones[zoneIdx] = nil
 end
 
 --POLL----------------------------------------------------------------------------------------------------
@@ -170,6 +239,75 @@ game_ammo_mode.doPrintPoll_ = function()
 
 	--schedule next poll----------------------------------
 	return now+game_ammo_mode.print_poll_interval
+        end
+
+--[[
+Private: Check for units in a reload-zone
+--]]
+game_ammo_mode.doZonePoll_ = function()
+
+	local now = timer.getTime()
+
+    for k, v in pairs(game_ammo_mode.reloadZones) do
+        helms.util.safeCall(game_ammo_mode.pollReloadZone,{v},game_ammo_mode.catchError)
+    end    
+
+	--schedule next poll----------------------------------
+	return now+game_ammo_mode.zone_poll_interval
+end
+
+-----------------------------------------------------------------------------------------------------------
+--API----------------------------------------------------------------------------------------------------
+
+game_ammo_mode.createReloadZone =function( zoneName, onForS, give, cooldownS, side, smokeColour, drawRgba)
+    --zone = {zonePred, ammoGive = {ammoAll = ...}, recentUnits = {unitName = time}, activeTill = time, cooldown = time, side = coa, zoneName = ""}
+
+	local now = timer.getTime()
+    local zonePred = helms.predicate.makeZoneDesc_(zoneName)
+
+
+    local giveClean = {}
+    if give.ammoAll then
+        giveClean.ammoAll = give.ammoAll
+    else
+        game_ammo_mode.log_e.log("ammoAll option required for zone give. Zone: ".. zoneName)
+        return 
+    end
+
+    local activeTill = nil
+    if onForS ~= nil then
+        activeTill = now + onForS
+    end
+
+    local zone = {
+        zonePred = zonePred,
+        ammoGive = giveClean, 
+        recentUnits = {}, 
+        activeTill = activeTill, 
+        cooldown= cooldownS, 
+        side = side, 
+        zoneName = zoneName}
+
+    table.insert(game_ammo_mode.reloadZones, zone)
+
+    local idx = #game_ammo_mode.reloadZones
+
+    if smokeColour then
+        zone.smokeHandle = helms.effect.startSmokeOnZone(zoneName,nil,smokeColour,game_ammo_mode.zoneSmokeCount)
+
+        --helms.effect.startSmokeOnZone = function(zoneName, colour, borderColour, borderSmokes)
+    end
+
+    if drawRgba then
+        local opts = {lineHexRgba = drawRgba, fillHexRgba = nil, lineType = helms.ui.drawingLineType.solid}
+        -- `opts` = {lineHexRgba = ..., fillHexRgba = ..., lineType = ...} or nil
+
+        helms.ui.showZoneAsDrawing(zoneName, side, opts)
+    end
+
+    if activeTill ~= nil then
+        helms.dynamic.scheduleFunction(game_ammo_mode.removeReloadZone,{idx},activeTill)
+    end
 end
 
 -----------------------------------------------------------------------------------------------------------
@@ -200,6 +338,7 @@ game_ammo_mode.handleUnitSpawn = function(unit)
 
 
     game_ammo_mode.trackedUnits[unitName] = {ammoAll = game_ammo_mode.default_spawn_ammo}
+    game_ammo_mode.trackedUnitsRaw[unitName] = unit
 
     local playerName = unit:getPlayerName()
 
@@ -210,7 +349,7 @@ game_ammo_mode.handleUnitSpawn = function(unit)
         local trackedPlayer = {unitName = unitName, playerName = playerName, groupName = groupName}
 
         game_ammo_mode.trackedPlayers[unitName] = trackedPlayer
-        --game_ammo_mode.resetCommsMenus(trackedPlayer)
+        game_ammo_mode.resetCommsMenus(trackedPlayer)
     end
 end
 --
@@ -223,6 +362,7 @@ game_ammo_mode.handleUnitDead = function(unit)
     local unitName = unit:getName()
 
     game_ammo_mode.trackedUnits[unitName] = nil
+    game_ammo_mode.trackedUnitsRaw[unitName] = nil
 end
 
 --[[
@@ -271,6 +411,7 @@ end
 
 --start poll
 helms.dynamic.scheduleFunction(game_ammo_mode.doPrintPoll_,nil,timer.getTime()+game_ammo_mode.print_poll_interval)
+helms.dynamic.scheduleFunction(game_ammo_mode.doZonePoll_,nil,timer.getTime()+game_ammo_mode.zone_poll_interval)
 
 game_ammo_mode.simulateInitialSpawns()
 

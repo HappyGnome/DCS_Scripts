@@ -3439,8 +3439,10 @@ helms.ui.showZoneAsDrawing = function(zoneName, coalition, opts)
     -- Use ME zone colour, if not overridden in opts
     if (opts.fillHexRgba == nil) and (meZoneData.color) then
         drawData.fillColour = meZoneData.color
-    else
+    elseif opts.fillHexRgba ~= nil then
         drawData.fillColour = helms.util.hexToRgba(opts.fillHexRgba)
+    else
+        opts.fillHexRgba = "0x00000000"
     end
 
     if meZoneData.type == helms.mission.zoneTypes['Quad'] and meZoneData.verticies then
